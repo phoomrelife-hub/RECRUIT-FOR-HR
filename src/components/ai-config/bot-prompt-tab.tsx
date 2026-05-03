@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronRight, Save, History, Loader2, Check } from "lucide-react";
+import { ChevronRight, Save, History, Loader2, Check, Zap, Eye, EyeOff } from "lucide-react";
 
 const SECTIONS = [
   {
@@ -78,6 +78,23 @@ const SECTIONS = [
 
 const CONTENT_KEYS = SECTIONS.map((s) => s.key);
 
+const PROVIDERS = [
+  {
+    value: "qwen",
+    label: "Qwen (DashScope)",
+    defaultModel: "qwen-plus",
+    hint: "dashscope.aliyun.com",
+    models: ["qwen-plus", "qwen-turbo", "qwen-max", "qwen2.5-72b-instruct"],
+  },
+  {
+    value: "openrouter",
+    label: "OpenRouter",
+    defaultModel: "openai/gpt-4o-mini",
+    hint: "openrouter.ai",
+    models: ["openai/gpt-4o-mini", "openai/gpt-4o", "anthropic/claude-3-haiku", "google/gemini-flash-1.5", "meta-llama/llama-3.1-8b-instruct:free"],
+  },
+];
+
 export function BotPromptTab() {
   const [values, setValues] = useState<Record<string, string>>({});
   const [active, setActive] = useState(true);
@@ -85,14 +102,18 @@ export function BotPromptTab() {
   const [openKeys, setOpenKeys] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; reply?: string; error?: string } | null>(null);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [hasError, setHasError] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [provider, setProvider] = useState("qwen");
+  const [model, setModel] = useState("");
+  const [apiKey, setApiKey] = useState("");
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isDirty = useRef(false);
 
-  useEffect(() => {
-    load();
-  }, []);
+  useEffect(() => { load(); }, []);
 
   async function load() {
     setLoading(true);
@@ -104,6 +125,9 @@ export function BotPromptTab() {
         for (const key of CONTENT_KEYS) vals[key] = data[key] ?? "";
         setValues(vals);
         setActive(data.active !== "false");
+        setProvider(data.provider_name ?? "qwen");
+        setModel(data.provider_model ?? "");
+        setApiKey(data.provider_api_key ?? "");
       }
     } catch {
       setHasError(true);
@@ -111,14 +135,18 @@ export function BotPromptTab() {
     setLoading(false);
   }
 
-  async function save(vals = values, isActive = active) {
+  function buildPayload(vals = values, isActive = active, prov = provider, mod = model, key = apiKey) {
+    return { ...vals, active: isActive ? "true" : "false", provider_name: prov, provider_model: mod, provider_api_key: key };
+  }
+
+  async function save(payload = buildPayload()) {
     setSaving(true);
     setHasError(false);
     try {
       const res = await fetch("/api/settings/ai/bot-prompt", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...vals, active: isActive ? "true" : "false" }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error();
       setSavedAt(new Date());
@@ -129,13 +157,27 @@ export function BotPromptTab() {
     setSaving(false);
   }
 
+  async function testConnection() {
+    setTesting(true);
+    setTestResult(null);
+    await save(buildPayload());
+    try {
+      const res = await fetch("/api/settings/ai/test-kimi");
+      const data = await res.json();
+      setTestResult(data);
+    } catch {
+      setTestResult({ ok: false, error: "Network error" });
+    }
+    setTesting(false);
+  }
+
   function handleChange(key: string, val: string) {
     const next = { ...values, [key]: val };
     setValues(next);
     isDirty.current = true;
     if (autoSave) {
       if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-      autoSaveTimer.current = setTimeout(() => save(next, active), 2000);
+      autoSaveTimer.current = setTimeout(() => save(buildPayload(next)), 2000);
     }
   }
 
@@ -143,18 +185,17 @@ export function BotPromptTab() {
     setActive(checked);
     if (autoSave) {
       if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-      autoSaveTimer.current = setTimeout(() => save(values, checked), 2000);
+      autoSaveTimer.current = setTimeout(() => save(buildPayload(values, checked)), 2000);
     }
   }
 
-  function toggleSection(key: string) {
-    setOpenKeys((prev) => {
-      const next = new Set(prev);
-      next.has(key) ? next.delete(key) : next.add(key);
-      return next;
-    });
+  function handleProviderChange(val: string) {
+    const p = PROVIDERS.find((x) => x.value === val);
+    setProvider(val);
+    if (!model) setModel(p?.defaultModel ?? "");
   }
 
+  const currentProvider = PROVIDERS.find((p) => p.value === provider) ?? PROVIDERS[0];
   const filledCount = CONTENT_KEYS.filter((k) => (values[k] ?? "").trim().length > 0).length;
   const totalChars = CONTENT_KEYS.reduce((sum, k) => sum + (values[k] ?? "").length, 0);
 
@@ -162,27 +203,100 @@ export function BotPromptTab() {
 
   return (
     <div>
+      {/* AI Provider card */}
+      <div className="border border-slate-200 rounded-xl p-5 mb-5 bg-white">
+        <div className="flex items-center gap-2 mb-4">
+          <Zap className="h-4 w-4 text-blue-600" />
+          <span className="font-semibold text-slate-800 text-sm">AI Provider</span>
+        </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {/* Provider select */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-600">Provider</label>
+            <div className="flex gap-2">
+              {PROVIDERS.map((p) => (
+                <button
+                  key={p.value}
+                  onClick={() => handleProviderChange(p.value)}
+                  className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
+                    provider === p.value
+                      ? "border-blue-500 bg-blue-50 text-blue-700"
+                      : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-slate-400">{currentProvider.hint}</p>
+          </div>
+
+          {/* Model input */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-600">Model</label>
+            <input
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              placeholder={currentProvider.defaultModel}
+              list={`model-list-${provider}`}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <datalist id={`model-list-${provider}`}>
+              {currentProvider.models.map((m) => <option key={m} value={m} />)}
+            </datalist>
+            <p className="text-xs text-slate-400">พิมพ์ชื่อ model เองได้</p>
+          </div>
+
+          {/* API Key */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-600">API Key</label>
+            <div className="relative">
+              <input
+                type={showApiKey ? "text" : "password"}
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="sk-..."
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 pr-9 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                onClick={() => setShowApiKey((v) => !v)}
+                className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+              >
+                {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+            <button
+              onClick={testConnection}
+              disabled={testing || !apiKey}
+              className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 disabled:opacity-40"
+            >
+              {testing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
+              Test connection
+            </button>
+          </div>
+        </div>
+
+        {/* Test result */}
+        {testResult && (
+          <div className={`mt-3 px-4 py-2.5 rounded-lg text-sm ${testResult.ok ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
+            {testResult.ok ? `✓ ใช้งานได้ — "${testResult.reply}"` : `✗ ${testResult.error}`}
+          </div>
+        )}
+      </div>
+
       {/* Header bar */}
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-1 text-sm">
-            <button
-              onClick={() => setOpenKeys(new Set(CONTENT_KEYS))}
-              className="text-blue-600 hover:underline font-medium"
-            >
+            <button onClick={() => setOpenKeys(new Set(CONTENT_KEYS))} className="text-blue-600 hover:underline font-medium">
               เปิดทั้งหมด
             </button>
             <span className="text-slate-300 mx-0.5">/</span>
-            <button
-              onClick={() => setOpenKeys(new Set())}
-              className="text-blue-600 hover:underline font-medium"
-            >
+            <button onClick={() => setOpenKeys(new Set())} className="text-blue-600 hover:underline font-medium">
               ปิดทั้งหมด
             </button>
           </div>
-          <span className="text-sm text-slate-500">
-            {filledCount}/{SECTIONS.length} หมวดที่กรอกแล้ว
-          </span>
+          <span className="text-sm text-slate-500">{filledCount}/{SECTIONS.length} หมวดที่กรอกแล้ว</span>
           {hasError && (
             <span className="flex items-center gap-1.5 text-xs text-red-500 font-medium">
               <span className="h-1.5 w-1.5 rounded-full bg-red-500 inline-block" />
@@ -199,9 +313,7 @@ export function BotPromptTab() {
               onClick={() => setAutoSave((v) => !v)}
               className={`relative w-9 h-5 rounded-full transition-colors ${autoSave ? "bg-blue-500" : "bg-slate-300"}`}
             >
-              <span
-                className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${autoSave ? "translate-x-4" : "translate-x-0"}`}
-              />
+              <span className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${autoSave ? "translate-x-4" : "translate-x-0"}`} />
             </button>
             Auto-save
           </label>
@@ -213,9 +325,7 @@ export function BotPromptTab() {
               onClick={() => handleActiveToggle(!active)}
               className={`relative w-9 h-5 rounded-full transition-colors ${active ? "bg-green-500" : "bg-slate-300"}`}
             >
-              <span
-                className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${active ? "translate-x-4" : "translate-x-0"}`}
-              />
+              <span className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${active ? "translate-x-4" : "translate-x-0"}`} />
             </button>
             Active
           </label>
@@ -230,13 +340,7 @@ export function BotPromptTab() {
             disabled={saving}
             className="flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:opacity-60 font-medium min-w-[90px] justify-center"
           >
-            {saving ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : savedAt && !isDirty.current ? (
-              <Check className="h-3.5 w-3.5" />
-            ) : (
-              <Save className="h-3.5 w-3.5" />
-            )}
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : savedAt && !isDirty.current ? <Check className="h-3.5 w-3.5" /> : <Save className="h-3.5 w-3.5" />}
             บันทึก
           </button>
         </div>
@@ -258,22 +362,14 @@ export function BotPromptTab() {
           return (
             <div key={section.key}>
               <button
-                onClick={() => toggleSection(section.key)}
+                onClick={() => setOpenKeys((prev) => { const n = new Set(prev); n.has(section.key) ? n.delete(section.key) : n.add(section.key); return n; })}
                 className="w-full flex items-center justify-between px-5 py-4 hover:bg-slate-50 transition-colors text-left bg-white"
               >
                 <div className="flex items-center gap-3">
-                  <ChevronRight
-                    className={`h-4 w-4 text-slate-400 transition-transform shrink-0 ${isOpen ? "rotate-90" : ""}`}
-                  />
-                  <span className="font-medium text-slate-800 text-sm">
-                    {section.thLabel}
-                  </span>
-                  <span className="text-sm text-slate-400">
-                    ({section.enLabel})
-                  </span>
-                  <span
-                    className={`h-2 w-2 rounded-full shrink-0 ${isFilled ? "bg-green-500" : "bg-slate-300"}`}
-                  />
+                  <ChevronRight className={`h-4 w-4 text-slate-400 transition-transform shrink-0 ${isOpen ? "rotate-90" : ""}`} />
+                  <span className="font-medium text-slate-800 text-sm">{section.thLabel}</span>
+                  <span className="text-sm text-slate-400">({section.enLabel})</span>
+                  <span className={`h-2 w-2 rounded-full shrink-0 ${isFilled ? "bg-green-500" : "bg-slate-300"}`} />
                 </div>
                 <span className="text-sm text-slate-400 tabular-nums shrink-0 ml-4">
                   {content.length.toLocaleString()} ตัวอักษร
