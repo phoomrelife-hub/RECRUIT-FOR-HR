@@ -12,7 +12,6 @@ import {
   Tag,
   Plug,
   ShieldCheck,
-  Bot,
   Brain,
   type LucideIcon,
 } from "lucide-react";
@@ -113,12 +112,6 @@ export const navSections: NavSection[] = [
         title: "Tags",
         href: "/tags",
         icon: Tag,
-        roles: ["SUPER_ADMIN", "HR_MANAGER"],
-      },
-      {
-        title: "AI Config",
-        href: "/bot-config",
-        icon: Bot,
         roles: ["SUPER_ADMIN", "HR_MANAGER"],
       },
       {
