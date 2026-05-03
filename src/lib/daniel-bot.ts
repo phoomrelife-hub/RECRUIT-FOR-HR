@@ -1,36 +1,61 @@
+import { db } from "./db";
 import { askKimi, type KimiMessage } from "./kimi";
 
-const SCRIPT = [
-  "สวัสดีครับ! ผมชื่อ Daniel 🤖 ผู้ช่วย HR ของ Relife ครับ\n\nตอนนี้เรากำลังเปิดรับสมัครงานหลายตำแหน่งครับ คุณสนใจสมัครตำแหน่งอะไรครับ?",
-  "ขอบคุณครับ 🙏 ช่วยแนะนำตัวหน่อยนะครับ ชื่อ-นามสกุล และอายุของคุณครับ",
-  "ยอดเยี่ยมเลยครับ! มีประสบการณ์ทำงานในสายงานนี้มาก่อนไหมครับ? ถ้ามีช่วยเล่าสั้นๆ ให้ฟังได้เลยครับ",
-  "เข้าใจแล้วครับ 👍 อยากทราบเรื่องเงินเดือนที่ต้องการครับ คาดหวังไว้ประมาณเท่าไหร่ครับ?",
-  "ได้เลยครับ แล้วสามารถเริ่มงานได้เร็วที่สุดเมื่อไหร่ครับ?",
-  "ขอบคุณมากสำหรับข้อมูลครับ 🎉 ทีม HR จะทำการพิจารณาและติดต่อกลับโดยเร็วที่สุดครับ ขอให้โชคดีนะครับ! 😊",
-];
-
-const SYSTEM_PROMPT = `คุณคือ Daniel ผู้ช่วย HR อัจฉริยะของบริษัท Relife
+const FALLBACK_PROMPT = `คุณคือ Daniel ผู้ช่วย HR อัจฉริยะของบริษัท Relife
 หน้าที่ของคุณคือคัดกรองผู้สมัครงานเบื้องต้นผ่าน LINE
 ตอบเป็นภาษาไทย กระชับ สุภาพ และเป็นมิตร
 ถามข้อมูลที่จำเป็น: ตำแหน่งที่สนใจ, ชื่อ-อายุ, ประสบการณ์, เงินเดือนที่ต้องการ, วันเริ่มงาน
 ห้ามให้ข้อมูลเงินเดือน หรือตัดสินใจรับสมัครแทน HR`;
 
+async function getSystemPrompt(): Promise<string> {
+  try {
+    const settings = await db.setting.findMany({
+      where: { key: { startsWith: "bot." } },
+    });
+
+    const config: Record<string, string> = {};
+    for (const s of settings) config[s.key.replace("bot.", "")] = s.value;
+
+    if (config.active === "false") return "";
+
+    const sections = [
+      { key: "objectives", label: "เป้าหมายหลัก" },
+      { key: "company_info", label: "ข้อมูลบริษัท" },
+      { key: "conversation_flow", label: "ลำดับการสนทนา" },
+      { key: "response_guidelines", label: "แนวทางการตอบ" },
+      { key: "open_positions", label: "ตำแหน่งที่เปิดรับ" },
+      { key: "critical_rules", label: "กฎสำคัญ" },
+      { key: "contact_info", label: "ข้อมูลติดต่อ HR" },
+      { key: "custom_instructions", label: "คำสั่งเพิ่มเติม" },
+    ];
+
+    const parts = sections
+      .map(({ key, label }) => {
+        const val = (config[key] ?? "").trim();
+        return val ? `## ${label}\n${val}` : null;
+      })
+      .filter(Boolean);
+
+    return parts.length > 0 ? parts.join("\n\n") : FALLBACK_PROMPT;
+  } catch {
+    return FALLBACK_PROMPT;
+  }
+}
+
 type ConversationMessage = { role: "user" | "assistant"; content: string };
 
 export async function getDanielReply(
-  candidateMsgCount: number,
+  _candidateMsgCount: number,
   recentMessages: ConversationMessage[]
 ): Promise<string> {
-  const scriptIndex = candidateMsgCount - 1;
+  const systemPrompt = await getSystemPrompt();
 
-  // ใช้ script ถ้ายังอยู่ในขอบเขต
-  if (scriptIndex >= 0 && scriptIndex < SCRIPT.length) {
-    return SCRIPT[scriptIndex];
+  if (!systemPrompt) {
+    return "ขอบคุณสำหรับข้อความนะครับ ทีม HR จะติดต่อกลับไปในเร็วๆ นี้ครับ 🙏";
   }
 
-  // off-script → ถาม Kimi
   const messages: KimiMessage[] = [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: systemPrompt },
     ...recentMessages.map((m) => ({ role: m.role, content: m.content })),
   ];
 

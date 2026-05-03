@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
-import { verifyLineSignature, type LineWebhookPayload } from "@/lib/line";
-import { sendToDanielHR } from "@/lib/telegram";
+import { verifyLineSignature, replyMessage, type LineWebhookPayload } from "@/lib/line";
+import { getDanielReply } from "@/lib/daniel-bot";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
@@ -19,6 +19,7 @@ export async function POST(req: Request) {
 
     const lineUserId = event.source.userId;
     const messageText = event.message.text;
+    const replyToken = event.replyToken;
     const externalId = event.message.id;
 
     // find or create candidate by lineUserId
@@ -75,15 +76,42 @@ export async function POST(req: Request) {
       data: { lastMessageAt: new Date(), status: "ACTIVE", unreadCount: { increment: 1 } },
     });
 
-    // ส่งไปให้ Daniel-HR ผ่าน Telegram (ถ้า botEnabled)
+    // bot reply if enabled
     if (conversation.botEnabled) {
-      await sendToDanielHR(
-        lineUserId,
-        candidate.nickname ?? "LINE User",
-        messageText,
-        conversation.id
-      );
-      // Daniel-HR จะตอบกลับผ่าน /api/telegram/webhook → LINE Push อัตโนมัติ
+      const candidateMsgCount = await db.message.count({
+        where: { conversationId: conversation.id, senderType: "CANDIDATE" },
+      });
+
+      const recentMessages = await db.message.findMany({
+        where: {
+          conversationId: conversation.id,
+          senderType: { in: ["CANDIDATE", "BOT"] },
+        },
+        orderBy: { createdAt: "asc" },
+        take: 20,
+      });
+
+      const history = recentMessages.map((m) => ({
+        role: (m.senderType === "CANDIDATE" ? "user" : "assistant") as "user" | "assistant",
+        content: m.content,
+      }));
+
+      const botReply = await getDanielReply(candidateMsgCount, history);
+
+      await db.message.create({
+        data: {
+          conversationId: conversation.id,
+          content: botReply,
+          senderType: "BOT",
+        },
+      });
+
+      await db.conversation.update({
+        where: { id: conversation.id },
+        data: { lastMessageAt: new Date() },
+      });
+
+      await replyMessage(replyToken, botReply);
     }
   }
 
