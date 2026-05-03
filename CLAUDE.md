@@ -141,7 +141,7 @@ npx prisma generate  # regenerate client
 - [x] Phase 8: Dashboard + Reports
 - [x] Phase 9: Real LINE Integration + Integrations UI
 - [x] Phase 10: Security + Audit Log
-- [x] Phase 11: AI Config + AI Playground Module
+- [x] Phase 11: AI Config + AI Playground Module *(deployed 2026-05-03, commit b83bc3a)*
 
 ## UI Conventions
 - Colors: blue-600 primary, slate-* neutral, green passed, red rejected, yellow waiting
