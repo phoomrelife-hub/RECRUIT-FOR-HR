@@ -23,12 +23,19 @@ export default async function IntegrationsPage() {
   const openclawLineWebhook =
     settings.find((s) => s.key === "openclaw.line_webhook_url")?.value ?? "";
 
+  const telegramConfigured = !!(
+    process.env.TELEGRAM_BOT_TOKEN &&
+    process.env.TELEGRAM_GROUP_ID &&
+    process.env.TELEGRAM_TOPIC_ID
+  );
+
   return (
     <IntegrationsClient
       syncUrl={syncUrl}
       isLineConfigured={isLineConfigured}
       openclawLineWebhook={openclawLineWebhook}
       syncSecret={process.env.OPENCLAW_SYNC_SECRET ? "set" : ""}
+      telegramConfigured={telegramConfigured}
     />
   );
 }

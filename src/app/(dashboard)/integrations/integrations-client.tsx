@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle, XCircle, Copy, Check, Eye, EyeOff, Trash2, Link } from "lucide-react";
+import { CheckCircle, XCircle, Copy, Check, Eye, EyeOff, Trash2, Link, Send } from "lucide-react";
 
 type Props = {
   syncUrl: string;
   isLineConfigured: boolean;
   openclawLineWebhook: string;
   syncSecret: string;
+  telegramConfigured: boolean;
 };
 
 function CopyField({ value, label }: { value: string; label?: string }) {
@@ -35,6 +36,7 @@ export default function IntegrationsClient({
   isLineConfigured,
   openclawLineWebhook,
   syncSecret,
+  telegramConfigured,
 }: Props) {
   // LINE credentials state
   const [lineConfigured, setLineConfigured] = useState(isLineConfigured);
@@ -45,6 +47,11 @@ export default function IntegrationsClient({
   const [showToken, setShowToken] = useState(false);
   const [lineSaving, setLineSaving] = useState(false);
   const [lineError, setLineError] = useState("");
+
+  // Telegram state
+  const [tgWebhookUrl, setTgWebhookUrl] = useState("");
+  const [tgSetting, setTgSetting] = useState(false);
+  const [tgMsg, setTgMsg] = useState("");
 
   // OpenClaw state
   const [ocWebhook, setOcWebhook] = useState(openclawLineWebhook);
@@ -302,6 +309,85 @@ export default function IntegrationsClient({
             <li>ตั้ง OpenClaw ให้ POST มาที่ Sync Endpoint พร้อม header x-openclaw-secret</li>
             <li>เพิ่ม OPENCLAW_SYNC_SECRET ใน Vercel Environment Variables</li>
           </ol>
+        </div>
+      </div>
+
+      {/* ── Telegram / Daniel-HR ─────────────────────── */}
+      <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
+              <Send className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <p className="font-semibold text-slate-900">Telegram — Daniel-HR Bot</p>
+              <p className="text-sm text-slate-500">ส่งข้อความ LINE ไปให้ Daniel-HR ตอบผ่าน Telegram</p>
+            </div>
+          </div>
+          {telegramConfigured ? (
+            <span className="flex items-center gap-1.5 text-sm text-green-600 font-medium bg-green-50 px-3 py-1 rounded-full">
+              <CheckCircle className="w-4 h-4" /> Env พร้อมแล้ว
+            </span>
+          ) : (
+            <span className="flex items-center gap-1.5 text-sm text-amber-500 font-medium bg-amber-50 px-3 py-1 rounded-full">
+              <XCircle className="w-4 h-4" /> ยังไม่ได้ตั้ง Env
+            </span>
+          )}
+        </div>
+
+        {/* Env status */}
+        <div className="bg-slate-50 rounded-lg p-3 text-sm space-y-1">
+          <p className="font-medium text-slate-700 mb-2">Environment Variables (ตั้งใน Vercel)</p>
+          {[
+            { key: "TELEGRAM_BOT_TOKEN", desc: "Bot Token จาก OpenClaw" },
+            { key: "TELEGRAM_GROUP_ID", desc: "Group ID เช่น -1003770931529" },
+            { key: "TELEGRAM_TOPIC_ID", desc: "Topic ID เช่น 522" },
+          ].map(({ key, desc }) => (
+            <div key={key} className="flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${telegramConfigured ? "bg-green-500" : "bg-slate-300"}`} />
+              <code className="text-xs bg-slate-200 px-1.5 py-0.5 rounded">{key}</code>
+              <span className="text-slate-500 text-xs">{desc}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Setup Webhook button */}
+        <div>
+          <p className="text-sm font-medium text-slate-700 mb-2">ตั้ง Telegram Webhook (ทำครั้งเดียว)</p>
+          <button
+            disabled={!telegramConfigured || tgSetting}
+            onClick={async () => {
+              setTgSetting(true);
+              setTgMsg("");
+              try {
+                const res = await fetch("/api/telegram/setup", { method: "POST" });
+                const data = await res.json();
+                if (data.ok) {
+                  setTgWebhookUrl(data.webhookUrl);
+                  setTgMsg("✅ ตั้ง Webhook สำเร็จ! Daniel-HR พร้อมรับข้อความแล้ว");
+                } else {
+                  setTgMsg("❌ ตั้งไม่สำเร็จ — ตรวจสอบ TELEGRAM_BOT_TOKEN");
+                }
+              } catch {
+                setTgMsg("❌ เกิดข้อผิดพลาด");
+              } finally {
+                setTgSetting(false);
+              }
+            }}
+            className="w-full py-2.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            {tgSetting ? "กำลังตั้งค่า..." : "ตั้ง Telegram Webhook"}
+          </button>
+          {tgMsg && <p className="text-sm mt-2 text-slate-600">{tgMsg}</p>}
+          {tgWebhookUrl && <CopyField value={tgWebhookUrl} label="Webhook URL ที่ตั้งแล้ว" />}
+        </div>
+
+        {/* Flow guide */}
+        <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-sm text-blue-700">
+          <p className="font-medium mb-1">Flow การทำงาน</p>
+          <p className="text-blue-600 text-xs leading-relaxed">
+            LINE candidate → recruit inbox → Telegram topic 522 → Daniel-HR ตอบ → LINE Push กลับ candidate
+          </p>
         </div>
       </div>
 
