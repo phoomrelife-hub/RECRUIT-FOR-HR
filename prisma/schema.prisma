@@ -559,6 +559,25 @@ enum AuditAction {
   SUBMIT_SCREENING_ANSWERS
   SCORE_CANDIDATE
   GENERATE_AI_SUMMARY
+  // Phase 11
+  UPDATE_AI_PROVIDER
+  UPDATE_AI_PERSONA
+  UPDATE_AI_PROMPT
+  PUBLISH_AI_PROMPT
+  RESTORE_AI_PROMPT
+  UPDATE_AI_SCREENING_FLOW
+  UPDATE_AI_POSITION_RULE
+  UPDATE_AI_FAQ
+  UPDATE_AI_TEMPLATE
+  UPDATE_AI_GUARDRAIL
+  UPDATE_AI_HANDOFF_RULE
+  UPDATE_AI_TAGGING_RULE
+  UPDATE_AI_SCORING
+  UPDATE_AI_SUMMARY_TEMPLATE
+  RUN_AI_PLAYGROUND
+  UPDATE_AI_COST_LIMIT
+  UPDATE_AI_FALLBACK
+  UPDATE_AI_ROUTING
 }
 
 model AuditLog {
@@ -583,4 +602,293 @@ model Setting {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("settings")
+}
+
+// ─────────────────────────────────────────────
+// PHASE 11: AI CONFIG
+// ─────────────────────────────────────────────
+
+model AiProvider {
+  id          String   @id @default(cuid())
+  name        String   @unique // "anthropic", "openai", "kimi"
+  displayName String   @map("display_name")
+  apiKey      String?  @map("api_key")
+  baseUrl     String?  @map("base_url")
+  isActive    Boolean  @default(false) @map("is_active")
+  defaultModel String? @map("default_model")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  routingRules AiModelRoutingRule[]
+
+  @@map("ai_providers")
+}
+
+model AiPersona {
+  id        String   @id @default(cuid())
+  botName   String   @default("Daniel") @map("bot_name")
+  tone      String   @default("professional")
+  language  String   @default("thai_english")
+  greeting  String?
+  signature String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("ai_personas")
+}
+
+enum PromptVersionStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model AiPromptVersion {
+  id          String              @id @default(cuid())
+  version     Int
+  title       String
+  content     String
+  status      PromptVersionStatus @default(DRAFT)
+  publishedAt DateTime?           @map("published_at")
+  archivedAt  DateTime?           @map("archived_at")
+  createdById String?             @map("created_by_id")
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+
+  @@map("ai_prompt_versions")
+}
+
+model AiScreeningFlow {
+  id        String   @id @default(cuid())
+  name      String
+  isActive  Boolean  @default(false) @map("is_active")
+  greeting  String?
+  closing   String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  questions AiScreeningQuestion[]
+
+  @@map("ai_screening_flows")
+}
+
+model AiScreeningQuestion {
+  id        String   @id @default(cuid())
+  flowId    String   @map("flow_id")
+  question  String
+  fieldKey  String   @map("field_key")
+  required  Boolean  @default(false)
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  flow AiScreeningFlow @relation(fields: [flowId], references: [id], onDelete: Cascade)
+
+  @@map("ai_screening_questions")
+}
+
+model AiPositionRule {
+  id            String   @id @default(cuid())
+  jobPositionId String?  @map("job_position_id")
+  isGlobal      Boolean  @default(false) @map("is_global")
+  rule          String
+  sortOrder     Int      @default(0) @map("sort_order")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("ai_position_rules")
+}
+
+model AiFaq {
+  id        String   @id @default(cuid())
+  question  String
+  answer    String
+  category  String?
+  isActive  Boolean  @default(true) @map("is_active")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("ai_faqs")
+}
+
+model AiResponseTemplate {
+  id        String   @id @default(cuid())
+  name      String
+  trigger   String?
+  content   String
+  isActive  Boolean  @default(true) @map("is_active")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("ai_response_templates")
+}
+
+model AiGuardrail {
+  id          String   @id @default(cuid())
+  type        String   // "blocked_topic", "required_disclosure", "max_messages"
+  description String
+  value       String?
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("ai_guardrails")
+}
+
+model AiHandoffRule {
+  id           String   @id @default(cuid())
+  name         String
+  triggerType  String   @map("trigger_type") // "keyword", "sentiment", "message_count", "time"
+  triggerValue String   @map("trigger_value")
+  action       String   // "notify_hr", "pause_bot", "notify_and_pause"
+  isActive     Boolean  @default(true) @map("is_active")
+  sortOrder    Int      @default(0) @map("sort_order")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("ai_handoff_rules")
+}
+
+model AiTaggingRule {
+  id          String   @id @default(cuid())
+  name        String
+  condition   String   // JSON: { field, operator, value }
+  tagId       String?  @map("tag_id")
+  tagName     String?  @map("tag_name")
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("ai_tagging_rules")
+}
+
+model AiScoringConfig {
+  id        String   @id @default(cuid())
+  name      String   @default("Default Scoring")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  categories AiScoringCategory[]
+
+  @@map("ai_scoring_configs")
+}
+
+model AiScoringCategory {
+  id          String   @id @default(cuid())
+  configId    String   @map("config_id")
+  name        String
+  weight      Int      @default(0)
+  description String?
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  config AiScoringConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+
+  @@map("ai_scoring_categories")
+}
+
+model AiSummaryTemplate {
+  id        String   @id @default(cuid())
+  name      String
+  template  String
+  isDefault Boolean  @default(false) @map("is_default")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("ai_summary_templates")
+}
+
+model AiPlaygroundTestRun {
+  id           String   @id @default(cuid())
+  name         String?
+  providerId   String?  @map("provider_id")
+  model        String?
+  systemPrompt String?  @map("system_prompt")
+  totalTokens  Int?     @map("total_tokens")
+  totalCost    Float?   @map("total_cost")
+  latencyMs    Int?     @map("latency_ms")
+  createdById  String?  @map("created_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  messages AiPlaygroundMessage[]
+
+  @@map("ai_playground_test_runs")
+}
+
+model AiPlaygroundMessage {
+  id        String   @id @default(cuid())
+  runId     String   @map("run_id")
+  role      String   // "user", "assistant", "system"
+  content   String
+  tokens    Int?
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  run AiPlaygroundTestRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@map("ai_playground_messages")
+}
+
+model AiLog {
+  id           String   @id @default(cuid())
+  providerId   String?  @map("provider_id")
+  model        String?
+  action       String   // "chat", "screening", "summary", "playground"
+  candidateId  String?  @map("candidate_id")
+  promptTokens Int?     @map("prompt_tokens")
+  outputTokens Int?     @map("output_tokens")
+  totalTokens  Int?     @map("total_tokens")
+  costEstimate Float?   @map("cost_estimate")
+  latencyMs    Int?     @map("latency_ms")
+  success      Boolean  @default(true)
+  errorMessage String?  @map("error_message")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("ai_logs")
+}
+
+model AiCostLimit {
+  id        String   @id @default(cuid())
+  period    String   @default("monthly") // daily, weekly, monthly
+  limitUsd  Float    @map("limit_usd")
+  alertAt   Float?   @map("alert_at") // percentage 0-100
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("ai_cost_limits")
+}
+
+model AiModelRoutingRule {
+  id          String   @id @default(cuid())
+  useCase     String   @map("use_case") // "chat", "screening", "summary", "fallback"
+  providerId  String?  @map("provider_id")
+  model       String?
+  maxTokens   Int?     @map("max_tokens")
+  temperature Float?   @default(0.7)
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  provider AiProvider? @relation(fields: [providerId], references: [id])
+
+  @@map("ai_model_routing_rules")
+}
+
+model AiFallbackSetting {
+  id              String   @id @default(cuid())
+  enabled         Boolean  @default(true)
+  maxRetries      Int      @default(2) @map("max_retries")
+  fallbackMessage String?  @map("fallback_message")
+  notifyHr        Boolean  @default(true) @map("notify_hr")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("ai_fallback_settings")
 }

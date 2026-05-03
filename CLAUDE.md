@@ -141,6 +141,7 @@ npx prisma generate  # regenerate client
 - [x] Phase 8: Dashboard + Reports
 - [x] Phase 9: Real LINE Integration + Integrations UI
 - [x] Phase 10: Security + Audit Log
+- [x] Phase 11: AI Config + AI Playground Module
 
 ## UI Conventions
 - Colors: blue-600 primary, slate-* neutral, green passed, red rejected, yellow waiting
@@ -259,6 +260,31 @@ SUBMIT_SCREENING_ANSWERS, SCORE_CANDIDATE, GENERATE_AI_SUMMARY
 - UI ที่ `/bot-config` — SUPER_ADMIN + HR_MANAGER เข้าถึงได้; HR_STAFF redirect to /dashboard
 - Auto-save: 2s debounce หลัง typing; manual save button ก็มี; saving state แสดงใน button
 - `bot-config-client.tsx` — accordion per section, character count, filled counter, system prompt preview panel
+
+## Phase 11: AI Config + AI Playground Module (Planned)
+Route: `/settings/ai` — accessible to SUPER_ADMIN + HR_MANAGER only (HR_STAFF redirect to /dashboard)
+
+### 17-tab layout under `/settings/ai`:
+Overview · Provider & Model · Persona · System Prompt · Screening Flow · Position Rules · Knowledge/FAQ · Response Templates · Guardrails · Handoff Rules · Auto Tagging · Scoring · Summary Template · Playground · Logs · Cost Control · Fallback
+
+### Key DB models to add (all include id, created_at, updated_at, created_by):
+`AiProvider` · `AiPersona` · `AiPromptVersion` (draft/published/archived) · `AiScreeningFlow` + `AiScreeningQuestion` · `AiPositionRule` · `AiFaq` · `AiResponseTemplate` · `AiGuardrail` · `AiHandoffRule` · `AiTaggingRule` · `AiScoringConfig` + `AiScoringCategory` · `AiSummaryTemplate` · `AiPlaygroundTestRun` + `AiPlaygroundMessage` · `AiLog` · `AiCostLimit` · `AiModelRoutingRule` · `AiFallbackSetting`
+
+### API routes under `/api/settings/ai/`:
+`overview` · `providers` (+ `:id/test`) · `persona` · `prompts` (+ `:id/publish`, `:id/restore`) · `screening-flow` · `position-rules` · `faqs` · `templates` · `guardrails` · `handoff-rules` · `tagging-rules` · `scoring` · `summary-templates` · `playground/run` · `playground/save` · `logs` · `cost-control` · `fallback`
+
+### Key conventions:
+- API keys masked after save — never return full key from API
+- "Test Connection" button per provider — mock success if real provider not ready
+- Prompt versioning: draft → publish flow; old versions can be restored/archived
+- Playground is tab 14 inside `/settings/ai` — does NOT send to real LINE/Facebook; mock-only
+- Mock AI service at `src/lib/ai/ai-mock.service.ts` — returns response, extractedFields, tags, score, handoff, tokenEstimate, costEstimate, latencyMs
+- Sidebar nav: Settings section, item "AI Config" href `/settings/ai` (Bot icon, SUPER_ADMIN + HR_MANAGER)
+- Separate `src/components/ai-config/` folder for all tab components
+- Services: `src/lib/ai/` — ai-config.service.ts, ai-provider.service.ts, ai-playground.service.ts, ai-logs.service.ts, ai-cost.service.ts, ai-mock.service.ts, ai-prompt-builder.ts
+- Scoring weights should sum to 100 (warn if not); default: Experience 20, Communication 20, Availability 15, Salary Fit 15, Role Fit 20, Attitude 10
+- Handoff rule trigger sets `conversation.botEnabled = false` when action includes "Pause Bot"
+- Audit log events for all config changes (see AuditAction enum — add Phase 11 actions)
 
 ## Important Rules
 1. shadcn uses `@base-ui/react` — use `render` prop not `asChild`. Select `onValueChange` is `(value: string | null) => void`, wrap with `(v) => v && handler(v)`

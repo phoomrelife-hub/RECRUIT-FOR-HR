@@ -54,6 +54,25 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   SUBMIT_SCREENING_ANSWERS: "Submit Screening",
   SCORE_CANDIDATE: "Score Candidate",
   GENERATE_AI_SUMMARY: "AI Summary",
+  // Phase 11
+  UPDATE_AI_PROVIDER: "Update AI Provider",
+  UPDATE_AI_PERSONA: "Update AI Persona",
+  UPDATE_AI_PROMPT: "Update AI Prompt",
+  PUBLISH_AI_PROMPT: "Publish AI Prompt",
+  RESTORE_AI_PROMPT: "Restore AI Prompt",
+  UPDATE_AI_SCREENING_FLOW: "Update Screening Flow",
+  UPDATE_AI_POSITION_RULE: "Update Position Rule",
+  UPDATE_AI_FAQ: "Update AI FAQ",
+  UPDATE_AI_TEMPLATE: "Update AI Template",
+  UPDATE_AI_GUARDRAIL: "Update Guardrail",
+  UPDATE_AI_HANDOFF_RULE: "Update Handoff Rule",
+  UPDATE_AI_TAGGING_RULE: "Update Tagging Rule",
+  UPDATE_AI_SCORING: "Update AI Scoring",
+  UPDATE_AI_SUMMARY_TEMPLATE: "Update Summary Template",
+  RUN_AI_PLAYGROUND: "Run AI Playground",
+  UPDATE_AI_COST_LIMIT: "Update Cost Limit",
+  UPDATE_AI_FALLBACK: "Update Fallback",
+  UPDATE_AI_ROUTING: "Update AI Routing",
 };
 
 const ACTION_COLORS: Partial<Record<AuditAction, string>> = {
