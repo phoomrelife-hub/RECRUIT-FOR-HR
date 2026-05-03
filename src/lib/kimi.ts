@@ -1,5 +1,7 @@
-const KIMI_API = "https://api.moonshot.cn/v1/chat/completions";
-const KIMI_MODEL = "moonshot-v1-8k";
+// Qwen (Alibaba DashScope) — OpenAI-compatible API
+// Get key at: dashscope.aliyun.com → API Keys
+const QWEN_API = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions";
+const QWEN_MODEL = "qwen-plus";
 
 export type KimiMessage = {
   role: "system" | "user" | "assistant";
@@ -7,17 +9,17 @@ export type KimiMessage = {
 };
 
 export async function askKimi(messages: KimiMessage[]): Promise<string> {
-  const apiKey = process.env.KIMI_API_KEY;
-  if (!apiKey) throw new Error("KIMI_API_KEY is not set");
+  const apiKey = process.env.QWEN_API_KEY;
+  if (!apiKey) throw new Error("QWEN_API_KEY is not set");
 
-  const res = await fetch(KIMI_API, {
+  const res = await fetch(QWEN_API, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: KIMI_MODEL,
+      model: QWEN_MODEL,
       messages,
       temperature: 0.7,
       max_tokens: 500,
@@ -26,7 +28,7 @@ export async function askKimi(messages: KimiMessage[]): Promise<string> {
 
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`Kimi API error: ${err}`);
+    throw new Error(`Qwen API error: ${err}`);
   }
 
   const data = await res.json();

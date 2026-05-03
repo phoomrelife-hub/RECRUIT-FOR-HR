@@ -7,20 +7,20 @@ export async function GET() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const apiKey = process.env.KIMI_API_KEY;
+  const apiKey = process.env.QWEN_API_KEY;
   if (!apiKey) {
-    return NextResponse.json({ ok: false, error: "KIMI_API_KEY is not set in environment" });
+    return NextResponse.json({ ok: false, error: "QWEN_API_KEY is not set in environment" });
   }
 
   try {
-    const res = await fetch("https://api.moonshot.cn/v1/chat/completions", {
+    const res = await fetch("https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: "moonshot-v1-8k",
+        model: "qwen-plus",
         messages: [{ role: "user", content: "สวัสดี ตอบสั้นๆ ว่า OK" }],
         max_tokens: 20,
       }),
