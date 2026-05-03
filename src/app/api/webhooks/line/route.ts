@@ -98,20 +98,22 @@ export async function POST(req: Request) {
 
       const botReply = await getDanielReply(candidateMsgCount, history);
 
-      await db.message.create({
-        data: {
-          conversationId: conversation.id,
-          content: botReply,
-          senderType: "BOT",
-        },
-      });
+      if (botReply) {
+        await db.message.create({
+          data: {
+            conversationId: conversation.id,
+            content: botReply,
+            senderType: "BOT",
+          },
+        });
 
-      await db.conversation.update({
-        where: { id: conversation.id },
-        data: { lastMessageAt: new Date() },
-      });
+        await db.conversation.update({
+          where: { id: conversation.id },
+          data: { lastMessageAt: new Date() },
+        });
 
-      await replyMessage(replyToken, botReply);
+        await replyMessage(replyToken, botReply);
+      }
     }
   }
 

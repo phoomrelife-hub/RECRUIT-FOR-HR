@@ -49,12 +49,10 @@ type ConversationMessage = { role: "user" | "assistant"; content: string };
 export async function getDanielReply(
   _candidateMsgCount: number,
   recentMessages: ConversationMessage[]
-): Promise<string> {
+): Promise<string | null> {
   const systemPrompt = await getSystemPrompt();
 
-  if (!systemPrompt) {
-    return "ขอบคุณสำหรับข้อความนะครับ ทีม HR จะติดต่อกลับไปในเร็วๆ นี้ครับ 🙏";
-  }
+  if (!systemPrompt) return null;
 
   const messages: KimiMessage[] = [
     { role: "system", content: systemPrompt },
@@ -64,6 +62,6 @@ export async function getDanielReply(
   try {
     return await askKimi(messages);
   } catch {
-    return "ขอบคุณสำหรับข้อความนะครับ ทีม HR จะติดต่อกลับไปในเร็วๆ นี้ครับ 🙏";
+    return null;
   }
 }
