@@ -8,17 +8,27 @@ export default async function IntegrationsPage() {
   if (!session?.user || session.user.role !== "SUPER_ADMIN") redirect("/dashboard");
 
   const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
-  const webhookUrl = `${baseUrl}/api/webhooks/line`;
+  const syncUrl = `${baseUrl}/api/openclaw/sync`;
 
   const settings = await db.setting.findMany({
-    where: { key: { in: ["line.channel_secret", "line.channel_access_token"] } },
+    where: {
+      key: { in: ["line.channel_secret", "line.channel_access_token", "openclaw.line_webhook_url"] },
+    },
   });
-  const isConfigured = settings.length === 2;
+
+  const isLineConfigured = settings.filter((s) =>
+    ["line.channel_secret", "line.channel_access_token"].includes(s.key)
+  ).length === 2;
+
+  const openclawLineWebhook =
+    settings.find((s) => s.key === "openclaw.line_webhook_url")?.value ?? "";
 
   return (
     <IntegrationsClient
-      webhookUrl={webhookUrl}
-      isConfigured={isConfigured}
+      syncUrl={syncUrl}
+      isLineConfigured={isLineConfigured}
+      openclawLineWebhook={openclawLineWebhook}
+      syncSecret={process.env.OPENCLAW_SYNC_SECRET ? "set" : ""}
     />
   );
 }

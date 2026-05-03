@@ -1,18 +1,13 @@
 import { db } from "@/lib/db";
-import { verifyLineSignature, replyMessage, type LineWebhookPayload } from "@/lib/line";
-import { getDanielReply } from "@/lib/daniel-bot";
+import { verifyLineSignature, type LineWebhookPayload } from "@/lib/line";
+import { sendToDanielHR } from "@/lib/telegram";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
   const rawBody = await req.text();
   const signature = req.headers.get("x-line-signature") ?? "";
 
-  console.log("[LINE webhook] hit — signature:", signature ? "present" : "MISSING");
-  console.log("[LINE webhook] body:", rawBody.slice(0, 200));
-
-  const valid = verifyLineSignature(rawBody, signature);
-  console.log("[LINE webhook] signature valid:", valid);
-
+  const valid = await verifyLineSignature(rawBody, signature);
   if (!valid) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
@@ -24,7 +19,6 @@ export async function POST(req: Request) {
 
     const lineUserId = event.source.userId;
     const messageText = event.message.text;
-    const replyToken = event.replyToken;
     const externalId = event.message.id;
 
     // find or create candidate by lineUserId
@@ -81,44 +75,15 @@ export async function POST(req: Request) {
       data: { lastMessageAt: new Date(), status: "ACTIVE", unreadCount: { increment: 1 } },
     });
 
-    // bot reply if enabled
+    // ส่งไปให้ Daniel-HR ผ่าน Telegram (ถ้า botEnabled)
     if (conversation.botEnabled) {
-      const candidateMsgCount = await db.message.count({
-        where: { conversationId: conversation.id, senderType: "CANDIDATE" },
-      });
-
-      const recentMessages = await db.message.findMany({
-        where: {
-          conversationId: conversation.id,
-          senderType: { in: ["CANDIDATE", "BOT"] },
-        },
-        orderBy: { createdAt: "asc" },
-        take: 20,
-      });
-
-      const history = recentMessages.map((m) => ({
-        role: (m.senderType === "CANDIDATE" ? "user" : "assistant") as "user" | "assistant",
-        content: m.content,
-      }));
-
-      const botReply = await getDanielReply(candidateMsgCount, history);
-
-      if (botReply) {
-        await db.message.create({
-          data: {
-            conversationId: conversation.id,
-            content: botReply,
-            senderType: "BOT",
-          },
-        });
-
-        await db.conversation.update({
-          where: { id: conversation.id },
-          data: { lastMessageAt: new Date() },
-        });
-
-        await replyMessage(replyToken, botReply);
-      }
+      await sendToDanielHR(
+        lineUserId,
+        candidate.nickname ?? "LINE User",
+        messageText,
+        conversation.id
+      );
+      // Daniel-HR จะตอบกลับผ่าน /api/telegram/webhook → LINE Push อัตโนมัติ
     }
   }
 

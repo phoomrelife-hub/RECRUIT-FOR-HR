@@ -19,6 +19,12 @@ export const proxy = auth((req) => {
   // public webhook endpoints — no auth required
   if (req.nextUrl.pathname.startsWith("/api/webhooks")) return NextResponse.next();
 
+  // OpenClaw sync — called from local OpenClaw server, no session
+  if (req.nextUrl.pathname === "/api/openclaw/sync") return NextResponse.next();
+
+  // Telegram webhook — called from Telegram servers, no session
+  if (req.nextUrl.pathname === "/api/telegram/webhook") return NextResponse.next();
+
   if (!isLoggedIn && !isAuthPage) {
     return NextResponse.redirect(new URL("/login", req.url));
   }
