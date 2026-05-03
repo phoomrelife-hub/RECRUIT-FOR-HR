@@ -1,36 +1,76 @@
+import { db } from "./db";
 import { askKimi, type KimiMessage } from "./kimi";
 
-const SCRIPT = [
-  "สวัสดีครับ! ผมชื่อ Daniel 🤖 ผู้ช่วย HR ของ Relife ครับ\n\nตอนนี้เรากำลังเปิดรับสมัครงานหลายตำแหน่งครับ คุณสนใจสมัครตำแหน่งอะไรครับ?",
-  "ขอบคุณครับ 🙏 ช่วยแนะนำตัวหน่อยนะครับ ชื่อ-นามสกุล และอายุของคุณครับ",
-  "ยอดเยี่ยมเลยครับ! มีประสบการณ์ทำงานในสายงานนี้มาก่อนไหมครับ? ถ้ามีช่วยเล่าสั้นๆ ให้ฟังได้เลยครับ",
-  "เข้าใจแล้วครับ 👍 อยากทราบเรื่องเงินเดือนที่ต้องการครับ คาดหวังไว้ประมาณเท่าไหร่ครับ?",
-  "ได้เลยครับ แล้วสามารถเริ่มงานได้เร็วที่สุดเมื่อไหร่ครับ?",
-  "ขอบคุณมากสำหรับข้อมูลครับ 🎉 ทีม HR จะทำการพิจารณาและติดต่อกลับโดยเร็วที่สุดครับ ขอให้โชคดีนะครับ! 😊",
-];
+const DEFAULT_SYSTEM_PROMPT = `คุณคือ Daniel ผู้ช่วย HR อัจฉริยะของบริษัท Relife
 
-const SYSTEM_PROMPT = `คุณคือ Daniel ผู้ช่วย HR อัจฉริยะของบริษัท Relife
-หน้าที่ของคุณคือคัดกรองผู้สมัครงานเบื้องต้นผ่าน LINE
-ตอบเป็นภาษาไทย กระชับ สุภาพ และเป็นมิตร
-ถามข้อมูลที่จำเป็น: ตำแหน่งที่สนใจ, ชื่อ-อายุ, ประสบการณ์, เงินเดือนที่ต้องการ, วันเริ่มงาน
-ห้ามให้ข้อมูลเงินเดือน หรือตัดสินใจรับสมัครแทน HR`;
+## เป้าหมายหลัก
+คัดกรองผู้สมัครงานเบื้องต้น รวบรวมข้อมูลพื้นฐาน และแจ้งว่า HR จะติดต่อกลับ
+
+## ลำดับการสนทนา
+1. ทักทายและแนะนำตัวเป็น Daniel
+2. ถามตำแหน่งที่สนใจ
+3. ขอชื่อ-นามสกุลและอายุ
+4. ถามประสบการณ์ทำงาน
+5. ถามเงินเดือนที่ต้องการ
+6. ถามวันเริ่มงาน
+7. ขอบคุณและแจ้งว่า HR จะติดต่อกลับโดยเร็ว
+
+## แนวทางการตอบ
+ตอบเป็นภาษาไทย กระชับ สุภาพ เป็นมิตร ใช้ emoji ได้บ้าง ถามทีละคำถาม
+
+## กฎสำคัญ
+ห้ามระบุเงินเดือนหรือสวัสดิการที่ชัดเจน ห้ามตัดสินใจรับสมัครแทน HR`;
+
+async function buildSystemPrompt(): Promise<string> {
+  try {
+    const settings = await db.setting.findMany({
+      where: { key: { startsWith: "bot." } },
+    });
+
+    const config: Record<string, string> = {};
+    for (const s of settings) {
+      config[s.key.replace("bot.", "")] = s.value;
+    }
+
+    // ถ้าบอทถูก set เป็น inactive ให้ return null จะถูกจัดการที่ caller
+    if (config.active === "false") return "";
+
+    const SECTION_MAP: Array<{ key: string; label: string; labelEn: string }> = [
+      { key: "objectives", label: "เป้าหมายหลัก", labelEn: "Primary Objectives" },
+      { key: "company_info", label: "ข้อมูลบริษัท", labelEn: "Company Info" },
+      { key: "conversation_flow", label: "ลำดับการสนทนา", labelEn: "Conversation Flow" },
+      { key: "response_guidelines", label: "แนวทางการตอบ", labelEn: "Response Guidelines" },
+      { key: "open_positions", label: "ตำแหน่งที่เปิดรับ", labelEn: "Open Positions" },
+      { key: "critical_rules", label: "กฎสำคัญ", labelEn: "Critical Rules" },
+      { key: "contact_info", label: "ข้อมูลติดต่อ HR", labelEn: "Contact Info" },
+      { key: "custom_instructions", label: "คำสั่งเพิ่มเติม", labelEn: "Custom Instructions" },
+    ];
+
+    const parts = SECTION_MAP.map(({ key, label, labelEn }) => {
+      const val = (config[key] ?? "").trim();
+      if (!val) return null;
+      return `## ${label} (${labelEn})\n${val}`;
+    }).filter(Boolean);
+
+    return parts.length > 0 ? parts.join("\n\n") : DEFAULT_SYSTEM_PROMPT;
+  } catch {
+    return DEFAULT_SYSTEM_PROMPT;
+  }
+}
 
 type ConversationMessage = { role: "user" | "assistant"; content: string };
 
 export async function getDanielReply(
-  candidateMsgCount: number,
+  _candidateMsgCount: number,
   recentMessages: ConversationMessage[]
-): Promise<string> {
-  const scriptIndex = candidateMsgCount - 1;
+): Promise<string | null> {
+  const systemPrompt = await buildSystemPrompt();
 
-  // ใช้ script ถ้ายังอยู่ในขอบเขต
-  if (scriptIndex >= 0 && scriptIndex < SCRIPT.length) {
-    return SCRIPT[scriptIndex];
-  }
+  // ถ้า active=false ให้บอทไม่ตอบ
+  if (systemPrompt === "") return null;
 
-  // off-script → ถาม Kimi
   const messages: KimiMessage[] = [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: systemPrompt },
     ...recentMessages.map((m) => ({ role: m.role, content: m.content })),
   ];
 

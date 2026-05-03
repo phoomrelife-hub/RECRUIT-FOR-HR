@@ -12,6 +12,7 @@ import {
   Tag,
   Plug,
   ShieldCheck,
+  Bot,
   type LucideIcon,
 } from "lucide-react";
 import { UserRole } from "@prisma/client";
@@ -118,6 +119,12 @@ export const navSections: NavSection[] = [
         href: "/integrations",
         icon: Plug,
         roles: ["SUPER_ADMIN"],
+      },
+      {
+        title: "Bot Config",
+        href: "/bot-config",
+        icon: Bot,
+        roles: ["SUPER_ADMIN", "HR_MANAGER"],
       },
       {
         title: "Audit Logs",
