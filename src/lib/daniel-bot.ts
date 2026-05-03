@@ -10,11 +10,11 @@ const FALLBACK_PROMPT = `คุณคือ Daniel ผู้ช่วย HR อ�
 async function getSystemPrompt(): Promise<string> {
   try {
     const settings = await db.setting.findMany({
-      where: { key: { startsWith: "bot." } },
+      where: { key: { startsWith: "ai.prompt." } },
     });
 
     const config: Record<string, string> = {};
-    for (const s of settings) config[s.key.replace("bot.", "")] = s.value;
+    for (const s of settings) config[s.key.replace("ai.prompt.", "")] = s.value;
 
     if (config.active === "false") return "";
 
@@ -23,9 +23,11 @@ async function getSystemPrompt(): Promise<string> {
       { key: "company_info", label: "ข้อมูลบริษัท" },
       { key: "conversation_flow", label: "ลำดับการสนทนา" },
       { key: "response_guidelines", label: "แนวทางการตอบ" },
-      { key: "open_positions", label: "ตำแหน่งที่เปิดรับ" },
+      { key: "faqs", label: "คำถามที่พบบ่อย" },
       { key: "critical_rules", label: "กฎสำคัญ" },
+      { key: "position_info", label: "ข้อมูลตำแหน่งงาน" },
       { key: "contact_info", label: "ข้อมูลติดต่อ HR" },
+      { key: "response_templates", label: "Template การตอบ" },
       { key: "custom_instructions", label: "คำสั่งเพิ่มเติม" },
     ];
 

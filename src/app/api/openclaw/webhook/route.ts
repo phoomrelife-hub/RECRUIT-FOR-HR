@@ -1,17 +1,6 @@
 import { db } from "@/lib/db";
+import { getDanielReply } from "@/lib/daniel-bot";
 import { NextResponse } from "next/server";
-
-const BOT_SCRIPT = [
-  "สวัสดีครับ! ผมชื่อ Claw 🤖 ผู้ช่วย AI คัดกรองของ Relife ครับ\n\nตอนนี้เรากำลังเปิดรับสมัครงานหลายตำแหน่งครับ คุณสนใจสมัครตำแหน่งอะไรครับ?",
-  "ขอบคุณครับ 🙏 ช่วยแนะนำตัวหน่อยนะครับ ชื่อ-นามสกุล และอายุของคุณครับ",
-  "ยอดเยี่ยมเลยครับ! มีประสบการณ์ทำงานในสายงานนี้มาก่อนไหมครับ? ถ้ามีช่วยเล่าสั้นๆ ให้ฟังได้เลยครับ",
-  "เข้าใจแล้วครับ 👍 อยากทราบเรื่องเงินเดือนที่ต้องการครับ คาดหวังไว้ประมาณเท่าไหร่ครับ?",
-  "ได้เลยครับ แล้วสามารถเริ่มงานได้เร็วที่สุดเมื่อไหร่ครับ?",
-  "ขอบคุณมากสำหรับข้อมูลครับ 🎉 ทีม HR จะทำการพิจารณาและติดต่อกลับโดยเร็วที่สุดครับ ขอให้โชคดีนะครับ! 😊",
-];
-
-const DEFAULT_BOT_REPLY =
-  "ขอบคุณสำหรับข้อความนะครับ ทีม HR จะติดต่อกลับไปในเร็วๆ นี้ครับ 🙏";
 
 export async function POST(req: Request) {
   const body = await req.json();
@@ -80,15 +69,24 @@ export async function POST(req: Request) {
   // bot responds if enabled
   let botMessage = null;
   if (conversation.botEnabled) {
-    // candidateMsgIndex: how many CANDIDATE messages have been sent (including this one)
     const candidateMsgCount = await db.message.count({
       where: { conversationId: conversation.id, senderType: "CANDIDATE" },
     });
 
-    const botReplyContent =
-      BOT_SCRIPT[candidateMsgCount - 1] ?? DEFAULT_BOT_REPLY;
+    // load recent conversation history for context (last 20 messages)
+    const recentMsgs = await db.message.findMany({
+      where: { conversationId: conversation.id, senderType: { in: ["CANDIDATE", "BOT"] } },
+      orderBy: { createdAt: "asc" },
+      take: 20,
+    });
 
-    // small delay simulation: just save directly
+    const history = recentMsgs.map((m) => ({
+      role: m.senderType === "CANDIDATE" ? ("user" as const) : ("assistant" as const),
+      content: m.content,
+    }));
+
+    const botReplyContent = await getDanielReply(candidateMsgCount, history);
+
     botMessage = await db.message.create({
       data: {
         conversationId: conversation.id,
