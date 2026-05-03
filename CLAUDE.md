@@ -30,7 +30,7 @@ DIRECT_URL=postgresql://...pooler...:5432/postgres
 NEXT_PUBLIC_SUPABASE_URL=https://xynzirkumyqsxiuyiyut.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 AUTH_SECRET=...
-NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_URL=https://recruit-for-hr.vercel.app  ← production (localhost:3000 for local dev)
 ANTHROPIC_API_KEY=sk-ant-...   ← required for AI Summary (Phase 6)
 ```
 
@@ -64,6 +64,7 @@ src/app/(dashboard)/                    — protected pages with sidebar layout
   interviews/                           — all interviews list (Upcoming / Past, stats)
   reports/                              — analytics & reports (SUPER_ADMIN + HR_MANAGER only)
   integrations/                         — LINE integration settings (SUPER_ADMIN only)
+  bot-config/                           — AI Config: ปรับแต่ง prompt/บุคลิก Daniel HR bot (SUPER_ADMIN + HR_MANAGER)
 src/app/api/
   tags/                                 — list all tags (GET), create tag (POST) — HR_MANAGER+ only create
   tags/[id]/                            — update tag (PUT), delete tag (DELETE) — HR_MANAGER+ only
@@ -86,6 +87,7 @@ src/app/api/
   openclaw/webhook/                     — mock incoming candidate message + bot auto-reply (POST)
   webhooks/line/                        — real LINE webhook receiver (POST, no auth required)
   integrations/line/                    — manage LINE credentials in DB (GET/PUT/DELETE, SUPER_ADMIN only)
+  bot-config/                           — GET all bot config sections, PUT update sections (HR_MANAGER+)
   pipeline/                             — GET all candidates for Kanban board (filter: jobPositionId)
   screening-forms/                      — list all forms (GET), create form (POST) — HR_MANAGER+ only
   screening-forms/[id]/                 — get/update/delete form; DELETE SUPER_ADMIN only
@@ -96,7 +98,7 @@ src/app/api/
   interviews/[id]/feedback/             — get feedback (GET), upsert feedback + auto-INTERVIEWED (POST)
 src/lib/line.ts                         — LINE API client (verifyLineSignature, replyMessage, pushMessage) — reads from DB
 src/lib/kimi.ts                         — Kimi AI client (moonshot-v1-8k)
-src/lib/daniel-bot.ts                   — Daniel HR bot (6-step script + Kimi fallback)
+src/lib/daniel-bot.ts                   — Daniel HR bot — โหลด system prompt จาก DB (bot.* settings) + Kimi fallback
 src/components/layout/                  — Sidebar (with dynamic inbox unread badge), Topbar
 src/components/ui/                      — shadcn components (incl. textarea.tsx)
 src/components/dashboard/              — stat-card.tsx, trend-chart.tsx (recharts "use client")
@@ -226,7 +228,7 @@ SUBMIT_SCREENING_ANSWERS, SCORE_CANDIDATE, GENERATE_AI_SUMMARY
 - LINE credentials เก็บใน `Setting` table (key: `line.channel_secret`, `line.channel_access_token`)
 - `src/lib/line.ts` — อ่าน credentials จาก DB ก่อน fallback env var; exports: `verifyLineSignature`, `replyMessage`, `pushMessage`
 - `src/lib/kimi.ts` — Kimi AI client (moonshot-v1-8k) สำหรับ Daniel HR bot fallback
-- `src/lib/daniel-bot.ts` — Bot logic: 6-step fixed script (ฟรี) + Kimi fallback เมื่อ off-script
+- `src/lib/daniel-bot.ts` — Bot logic: โหลด system prompt จาก DB (bot.* settings) + Kimi (moonshot-v1-8k) reply
 - Bot reply ใช้ LINE Reply API (replyToken, ฟรี); HR outgoing ใช้ LINE Push API (lineUserId)
 - เมื่อ LINE message เข้า → find/create candidate by `lineUserId` → find/create conversation → save message → auto-promote NEW_APPLICANT→BOT_SCREENING → bot reply (ถ้า botEnabled)
 - Integrations page ที่ `/integrations` — SUPER_ADMIN only, มี form กรอก/แก้ไข credentials + แสดง Webhook URL + Disconnect
@@ -246,6 +248,17 @@ SUBMIT_SCREENING_ANSWERS, SCORE_CANDIDATE, GENERATE_AI_SUMMARY
 - Monthly trend aggregated in JS (not raw SQL): build Map of last 6 months, count by createdAt
 - Reports sections: Summary Stats → Monthly Trend + Source Donut → Recruitment Funnel (horizontal bar) → Interview Status Donut + Hiring Outcomes Bar → By Position Table
 - Reports data type exported from `reports-client.tsx` as `ReportsData`
+
+## AI Config Conventions (Bot Config)
+- Bot config sections เก็บใน `Setting` table ด้วย prefix `bot.*` (ไม่ต้องมี migration ใหม่)
+- 8 sections: `objectives`, `company_info`, `conversation_flow`, `response_guidelines`, `open_positions`, `critical_rules`, `contact_info`, `custom_instructions`
+- Active toggle: `bot.active = "false"` = inactive; ค่าอื่นหรือไม่มี key = active
+- `src/lib/daniel-bot.ts` — `getSystemPrompt()` โหลดจาก DB ทุก request; ถ้า inactive return ""; ถ้าไม่มี section ใดเลย fallback to `FALLBACK_PROMPT`
+- `GET /api/bot-config` — returns all bot.* settings as `{ key: value }` object (ALLOWED_KEYS only)
+- `PUT /api/bot-config` — upserts each key to Setting table with `bot.{key}` prefix; HR_MANAGER+ only
+- UI ที่ `/bot-config` — SUPER_ADMIN + HR_MANAGER เข้าถึงได้; HR_STAFF redirect to /dashboard
+- Auto-save: 2s debounce หลัง typing; manual save button ก็มี; saving state แสดงใน button
+- `bot-config-client.tsx` — accordion per section, character count, filled counter, system prompt preview panel
 
 ## Important Rules
 1. shadcn uses `@base-ui/react` — use `render` prop not `asChild`. Select `onValueChange` is `(value: string | null) => void`, wrap with `(v) => v && handler(v)`
