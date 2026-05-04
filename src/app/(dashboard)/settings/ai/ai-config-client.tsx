@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { AI_TABS, type AiTab } from "@/components/ai-config/types";
 import { OverviewTab } from "@/components/ai-config/overview-tab";
-import { ProvidersTab } from "@/components/ai-config/providers-tab";
 import { PersonaTab } from "@/components/ai-config/persona-tab";
 import { BotPromptTab } from "@/components/ai-config/bot-prompt-tab";
 import { ScreeningFlowTab } from "@/components/ai-config/screening-flow-tab";
@@ -22,7 +21,6 @@ import { RoutingTab } from "@/components/ai-config/routing-tab";
 function TabContent({ tab }: { tab: AiTab }) {
   switch (tab) {
     case "overview": return <OverviewTab />;
-    case "providers": return <ProvidersTab />;
     case "persona": return <PersonaTab />;
     case "bot-prompt": return <BotPromptTab />;
     case "screening-flow": return <ScreeningFlowTab />;

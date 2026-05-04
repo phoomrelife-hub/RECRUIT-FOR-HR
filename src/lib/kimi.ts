@@ -1,4 +1,11 @@
-export type AiProviderName = "qwen" | "openrouter";
+export type AiProviderName =
+  | "qwen"
+  | "openrouter"
+  | "openai"
+  | "groq"
+  | "together"
+  | "mistral"
+  | "gemini";
 
 export type KimiMessage = {
   role: "system" | "user" | "assistant";
@@ -11,22 +18,37 @@ export type AiProviderConfig = {
   apiKey: string;
 };
 
+// All providers use OpenAI-compatible /chat/completions format
 const ENDPOINTS: Record<AiProviderName, string> = {
   qwen: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions",
   openrouter: "https://openrouter.ai/api/v1/chat/completions",
+  openai: "https://api.openai.com/v1/chat/completions",
+  groq: "https://api.groq.com/openai/v1/chat/completions",
+  together: "https://api.together.xyz/v1/chat/completions",
+  mistral: "https://api.mistral.ai/v1/chat/completions",
+  gemini: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
 };
 
-const DEFAULT_MODELS: Record<AiProviderName, string> = {
+export const DEFAULT_MODELS: Record<AiProviderName, string> = {
   qwen: "qwen-plus",
   openrouter: "openai/gpt-4o-mini",
+  openai: "gpt-4o-mini",
+  groq: "llama-3.1-8b-instant",
+  together: "meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo",
+  mistral: "mistral-small-latest",
+  gemini: "gemini-2.0-flash",
 };
 
 export async function askAI(messages: KimiMessage[], config: AiProviderConfig): Promise<string> {
   const endpoint = ENDPOINTS[config.provider];
+  if (!endpoint) throw new Error(`Unknown provider: ${config.provider}`);
+
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     Authorization: `Bearer ${config.apiKey}`,
   };
+
+  // OpenRouter requires extra headers
   if (config.provider === "openrouter") {
     headers["HTTP-Referer"] = "https://recruit-for-hr.vercel.app";
     headers["X-Title"] = "Relife Recruit Bot";
@@ -58,5 +80,3 @@ export async function askKimi(messages: KimiMessage[]): Promise<string> {
   if (!apiKey) throw new Error("QWEN_API_KEY is not set");
   return askAI(messages, { provider: "qwen", model: DEFAULT_MODELS.qwen, apiKey });
 }
-
-export { DEFAULT_MODELS };

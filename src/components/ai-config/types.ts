@@ -1,6 +1,5 @@
 export type AiTab =
   | "overview"
-  | "providers"
   | "persona"
   | "bot-prompt"
   | "screening-flow"
@@ -17,7 +16,6 @@ export type AiTab =
 
 export const AI_TABS: { id: AiTab; label: string }[] = [
   { id: "overview", label: "Overview" },
-  { id: "providers", label: "Provider & Model" },
   { id: "persona", label: "Persona" },
   { id: "bot-prompt", label: "Bot Prompt" },
   { id: "screening-flow", label: "Screening Flow" },

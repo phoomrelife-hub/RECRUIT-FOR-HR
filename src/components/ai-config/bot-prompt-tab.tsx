@@ -83,15 +83,50 @@ const PROVIDERS = [
     value: "qwen",
     label: "Qwen (DashScope)",
     defaultModel: "qwen-plus",
-    hint: "dashscope.aliyun.com",
-    models: ["qwen-plus", "qwen-turbo", "qwen-max", "qwen2.5-72b-instruct"],
+    hint: "dashscope-intl.aliyuncs.com · ฟรีสำหรับ tier แรก",
+    models: ["qwen-plus", "qwen-turbo", "qwen-max", "qwen2.5-72b-instruct", "qwen2.5-7b-instruct"],
   },
   {
     value: "openrouter",
     label: "OpenRouter",
     defaultModel: "openai/gpt-4o-mini",
-    hint: "openrouter.ai",
-    models: ["openai/gpt-4o-mini", "openai/gpt-4o", "anthropic/claude-3-haiku", "google/gemini-flash-1.5", "meta-llama/llama-3.1-8b-instruct:free"],
+    hint: "openrouter.ai · รองรับ 300+ models รวมถึง free models",
+    models: ["openai/gpt-4o-mini", "openai/gpt-4o", "anthropic/claude-3-haiku", "google/gemini-flash-1.5", "meta-llama/llama-3.1-8b-instruct:free", "mistralai/mistral-7b-instruct:free"],
+  },
+  {
+    value: "openai",
+    label: "OpenAI",
+    defaultModel: "gpt-4o-mini",
+    hint: "api.openai.com · ต้องมี billing",
+    models: ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"],
+  },
+  {
+    value: "groq",
+    label: "Groq",
+    defaultModel: "llama-3.1-8b-instant",
+    hint: "api.groq.com · เร็วมาก, มี free tier",
+    models: ["llama-3.1-8b-instant", "llama-3.3-70b-versatile", "llama3-8b-8192", "mixtral-8x7b-32768", "gemma2-9b-it"],
+  },
+  {
+    value: "together",
+    label: "Together AI",
+    defaultModel: "meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo",
+    hint: "api.together.xyz · open-source models ราคาถูก",
+    models: ["meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo", "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo", "mistralai/Mistral-7B-Instruct-v0.3", "Qwen/Qwen2.5-7B-Instruct-Turbo"],
+  },
+  {
+    value: "mistral",
+    label: "Mistral AI",
+    defaultModel: "mistral-small-latest",
+    hint: "api.mistral.ai · European AI, ราคาประหยัด",
+    models: ["mistral-small-latest", "mistral-medium-latest", "mistral-large-latest", "open-mistral-7b", "open-mixtral-8x7b"],
+  },
+  {
+    value: "gemini",
+    label: "Google Gemini",
+    defaultModel: "gemini-2.0-flash",
+    hint: "generativelanguage.googleapis.com · มี free tier",
+    models: ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro"],
   },
 ];
 
@@ -209,70 +244,69 @@ export function BotPromptTab() {
           <Zap className="h-4 w-4 text-blue-600" />
           <span className="font-semibold text-slate-800 text-sm">AI Provider</span>
         </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          {/* Provider select */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-slate-600">Provider</label>
-            <div className="flex gap-2">
-              {PROVIDERS.map((p) => (
-                <button
-                  key={p.value}
-                  onClick={() => handleProviderChange(p.value)}
-                  className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
-                    provider === p.value
-                      ? "border-blue-500 bg-blue-50 text-blue-700"
-                      : "border-slate-200 text-slate-600 hover:bg-slate-50"
-                  }`}
-                >
-                  {p.label}
-                </button>
-              ))}
+        <div className="space-y-4">
+          {/* Row 1: Provider + Model */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {/* Provider dropdown */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-600">Provider</label>
+              <select
+                value={provider}
+                onChange={(e) => handleProviderChange(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-700"
+              >
+                {PROVIDERS.map((p) => (
+                  <option key={p.value} value={p.value}>{p.label}</option>
+                ))}
+              </select>
+              <p className="text-xs text-slate-400">{currentProvider.hint}</p>
             </div>
-            <p className="text-xs text-slate-400">{currentProvider.hint}</p>
+
+            {/* Model input */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-600">Model</label>
+              <input
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                placeholder={currentProvider.defaultModel}
+                list={`model-list-${provider}`}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <datalist id={`model-list-${provider}`}>
+                {currentProvider.models.map((m) => <option key={m} value={m} />)}
+              </datalist>
+              <p className="text-xs text-slate-400">พิมพ์ชื่อ model เองได้ หรือเลือกจากรายการ</p>
+            </div>
           </div>
 
-          {/* Model input */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-slate-600">Model</label>
-            <input
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              placeholder={currentProvider.defaultModel}
-              list={`model-list-${provider}`}
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <datalist id={`model-list-${provider}`}>
-              {currentProvider.models.map((m) => <option key={m} value={m} />)}
-            </datalist>
-            <p className="text-xs text-slate-400">พิมพ์ชื่อ model เองได้</p>
-          </div>
-
-          {/* API Key */}
+          {/* Row 2: API Key */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-slate-600">API Key</label>
-            <div className="relative">
-              <input
-                type={showApiKey ? "text" : "password"}
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="sk-..."
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 pr-9 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+            <div className="flex gap-3">
+              <div className="relative flex-1">
+                <input
+                  type={showApiKey ? "text" : "password"}
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="sk-..."
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2.5 pr-9 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  onClick={() => setShowApiKey((v) => !v)}
+                  className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+                >
+                  {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
               <button
-                onClick={() => setShowApiKey((v) => !v)}
-                className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+                onClick={testConnection}
+                disabled={testing || !apiKey}
+                className="flex items-center gap-1.5 px-4 py-2 text-sm border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 disabled:opacity-40 whitespace-nowrap"
               >
-                {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5 text-blue-500" />}
+                ทดสอบ
               </button>
             </div>
-            <button
-              onClick={testConnection}
-              disabled={testing || !apiKey}
-              className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 disabled:opacity-40"
-            >
-              {testing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
-              Test connection
-            </button>
           </div>
         </div>
 
