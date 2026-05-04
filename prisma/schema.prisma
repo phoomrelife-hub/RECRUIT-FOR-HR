@@ -149,6 +149,7 @@ enum CandidateStatus {
 enum SourceChannel {
   LINE
   FACEBOOK
+  WEBSITE
   MANUAL
   OTHER
 }
@@ -298,9 +299,10 @@ model Conversation {
   createdAt     DateTime           @default(now()) @map("created_at")
   updatedAt     DateTime           @updatedAt @map("updated_at")
 
-  candidate Candidate       @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  messages  Message[]
-  takeovers HumanTakeover[]
+  candidate      Candidate       @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  messages       Message[]
+  takeovers      HumanTakeover[]
+  aiConversation AIConversation?
 
   @@map("conversations")
 }
@@ -891,4 +893,22 @@ model AiFallbackSetting {
   updatedAt       DateTime @updatedAt @map("updated_at")
 
   @@map("ai_fallback_settings")
+}
+
+// ─────────────────────────────────────────────
+// PHASE 12: OPENCLAW INTEGRATION
+// ─────────────────────────────────────────────
+
+model AIConversation {
+  id             String   @id @default(cuid())
+  conversationId String   @unique @map("conversation_id")
+  openclawId     String?  @map("openclaw_id")
+  status         String   @default("ACTIVE")
+  botEnabled     Boolean  @default(true) @map("bot_enabled")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@map("ai_conversations")
 }

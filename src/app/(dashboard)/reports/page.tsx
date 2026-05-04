@@ -50,6 +50,7 @@ const STAGE_COLORS: Record<CandidateStatus, string> = {
 const SOURCE_LABELS: Record<SourceChannel, string> = {
   LINE: "LINE OA",
   FACEBOOK: "Facebook",
+  WEBSITE: "Website",
   MANUAL: "Manual",
   OTHER: "Other",
 };
@@ -57,6 +58,7 @@ const SOURCE_LABELS: Record<SourceChannel, string> = {
 const SOURCE_COLORS: Record<SourceChannel, string> = {
   LINE: "#22c55e",
   FACEBOOK: "#3b82f6",
+  WEBSITE: "#a855f7",
   MANUAL: "#64748b",
   OTHER: "#94a3b8",
 };
@@ -149,7 +151,7 @@ async function getReportsData(): Promise<ReportsData> {
   }));
 
   // Source data
-  const sourceData = (["LINE", "FACEBOOK", "MANUAL", "OTHER"] as SourceChannel[]).map((s) => ({
+  const sourceData = (["LINE", "FACEBOOK", "WEBSITE", "MANUAL", "OTHER"] as SourceChannel[]).map((s) => ({
     source: s,
     label: SOURCE_LABELS[s],
     count: candidatesBySource.find((x) => x.sourceChannel === s)?._count.id ?? 0,

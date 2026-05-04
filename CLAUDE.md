@@ -142,6 +142,7 @@ npx prisma generate  # regenerate client
 - [x] Phase 9: Real LINE Integration + Integrations UI
 - [x] Phase 10: Security + Audit Log
 - [x] Phase 11: AI Config + AI Playground Module *(deployed 2026-05-03, commit b83bc3a)*
+- [x] Phase 12: OpenClaw ↔ Website Integration *(2026-05-04)*
 
 ## UI Conventions
 - Colors: blue-600 primary, slate-* neutral, green passed, red rejected, yellow waiting
@@ -285,6 +286,20 @@ Overview · Provider & Model · Persona · System Prompt · Screening Flow · Po
 - Scoring weights should sum to 100 (warn if not); default: Experience 20, Communication 20, Availability 15, Salary Fit 15, Role Fit 20, Attitude 10
 - Handoff rule trigger sets `conversation.botEnabled = false` when action includes "Pause Bot"
 - Audit log events for all config changes (see AuditAction enum — add Phase 11 actions)
+
+## OpenClaw Integration Conventions (Phase 12)
+- `src/lib/openclaw-client.ts` — OpenClaw API client: `sendToDaniel`, `testConnection`, `getConversationMessages`
+- `POST /api/openclaw/webhook` — candidate message → tries OpenClaw first, falls back to local daniel-bot; saves bot reply; handles `handoff` flag (disables botEnabled)
+- `POST /api/openclaw/sync` — OpenClaw LINE sync (unchanged from Phase 9)
+- `AIConversation` model — 1-to-1 with `Conversation`; stores `openclawId` for cross-referencing OpenClaw sessions
+- `SourceChannel` enum now includes `WEBSITE` (purple badge)
+- `/daniel` page — SUPER_ADMIN + HR_MANAGER; shows stats, live conversations, connection config + test button
+- `GET /api/daniel/stats` — activeConversations, responseRate, avgResponseSeconds, totalBotMessages
+- `GET /api/daniel/conversations` — last 20 active conversations with last message + openclawId
+- `POST /api/daniel/test-connection` — SUPER_ADMIN only; calls OpenClaw `/api/health`
+- Env vars: `OPENCLAW_API_URL` (default `http://localhost:18789`), `OPENCLAW_API_KEY`, `OPENCLAW_WEBHOOK_SECRET`
+- OpenClaw payload to `/api/webhook/recruit`: `{ conversationId, candidateId, message, channel, context }`
+- OpenClaw response: `{ reply, confidence?, openclawId?, handoff? }`
 
 ## Important Rules
 1. shadcn uses `@base-ui/react` — use `render` prop not `asChild`. Select `onValueChange` is `(value: string | null) => void`, wrap with `(v) => v && handler(v)`

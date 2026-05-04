@@ -41,6 +41,7 @@ const statusLabel: Record<CandidateStatus, string> = {
 const sourceLabel: Record<SourceChannel, string> = {
   LINE: "LINE",
   FACEBOOK: "Facebook",
+  WEBSITE: "Website",
   MANUAL: "Manual",
   OTHER: "Other",
 };

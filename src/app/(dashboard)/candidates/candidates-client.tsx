@@ -67,6 +67,7 @@ const statusLabel: Record<CandidateStatus, string> = {
 const sourceLabel: Record<SourceChannel, string> = {
   LINE: "LINE",
   FACEBOOK: "Facebook",
+  WEBSITE: "Website",
   MANUAL: "Manual",
   OTHER: "Other",
 };
@@ -74,6 +75,7 @@ const sourceLabel: Record<SourceChannel, string> = {
 const sourceBadge: Record<SourceChannel, string> = {
   LINE: "bg-green-50 text-green-700",
   FACEBOOK: "bg-blue-50 text-blue-600",
+  WEBSITE: "bg-purple-50 text-purple-700",
   MANUAL: "bg-slate-50 text-slate-600",
   OTHER: "bg-orange-50 text-orange-600",
 };
@@ -196,6 +198,7 @@ export function CandidatesClient({
             <SelectItem value="ALL">All Sources</SelectItem>
             <SelectItem value="LINE">LINE</SelectItem>
             <SelectItem value="FACEBOOK">Facebook</SelectItem>
+            <SelectItem value="WEBSITE">Website</SelectItem>
             <SelectItem value="MANUAL">Manual</SelectItem>
             <SelectItem value="OTHER">Other</SelectItem>
           </SelectContent>

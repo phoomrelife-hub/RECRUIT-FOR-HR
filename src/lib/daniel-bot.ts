@@ -1,5 +1,12 @@
 import { db } from "./db";
-import { askAI, type AiProviderConfig, type AiProviderName, type KimiMessage, DEFAULT_MODELS } from "./kimi";
+import {
+  askOpenClaw,
+  getOpenClawReply,
+  type OpenClawMessage,
+  type OpenClawReply,
+  testOpenClawConnection,
+} from "./openclaw-ai";
+import { askAI, type AiProviderConfig, type KimiMessage, DEFAULT_MODELS } from "./kimi";
 
 const FALLBACK_PROMPT = `คุณคือ Daniel ผู้ช่วย HR อัจฉริยะของบริษัท Relife
 หน้าที่ของคุณคือคัดกรองผู้สมัครงานเบื้องต้นผ่าน LINE
@@ -43,7 +50,7 @@ async function getSystemPrompt(config: Record<string, string>): Promise<string> 
 }
 
 function getProviderConfig(config: Record<string, string>): AiProviderConfig | null {
-  const provider = (config.provider_name ?? "qwen") as AiProviderName;
+  const provider = (config.provider_name ?? "qwen") as "qwen" | "openrouter";
   const model = config.provider_model || DEFAULT_MODELS[provider];
 
   // API key: DB first, then env fallback
@@ -58,11 +65,24 @@ function getProviderConfig(config: Record<string, string>): AiProviderConfig | n
 
 type ConversationMessage = { role: "user" | "assistant"; content: string };
 
+/**
+ * PRIMARY: Get reply from OpenClaw (main AI)
+ * FALLBACK: Use Kimi/Qwen if OpenClaw fails
+ */
 export async function getDanielReply(
   _candidateMsgCount: number,
   recentMessages: ConversationMessage[]
 ): Promise<string | null> {
   try {
+    // === PRIMARY: Try OpenClaw first ===
+    const openClawReply = await askOpenClaw(recentMessages as OpenClawMessage[]);
+    if (openClawReply) {
+      return openClawReply;
+    }
+
+    // === FALLBACK: Use Kimi/Qwen ===
+    console.log("[Daniel Bot] OpenClaw failed, falling back to Kimi/Qwen");
+    
     const config = await loadSettings();
     const systemPrompt = await getSystemPrompt(config);
     if (!systemPrompt) return null;
@@ -80,3 +100,47 @@ export async function getDanielReply(
     return null;
   }
 }
+
+/**
+ * Get reply with full context (for webhook handler)
+ * Uses OpenClaw as primary, with full candidate context
+ */
+export async function getDanielReplyWithContext(params: {
+  conversationId: string;
+  candidateId: string;
+  message: string;
+  channel: string;
+  context?: {
+    candidateName?: string | null;
+    position?: string | null;
+    status?: string;
+  };
+  recentMessages?: ConversationMessage[];
+}): Promise<OpenClawReply | null> {
+  // === PRIMARY: OpenClaw ===
+  const openClawResult = await getOpenClawReply(params);
+  if (openClawResult?.reply) {
+    return openClawResult;
+  }
+
+  // === FALLBACK: Kimi/Qwen ===
+  console.log("[Daniel Bot] OpenClaw failed, falling back to Kimi/Qwen");
+  
+  const fallbackReply = await getDanielReply(0, params.recentMessages ?? []);
+  if (!fallbackReply) return null;
+
+  return {
+    reply: fallbackReply,
+    confidence: 0.6,
+  };
+}
+
+/**
+ * Check if OpenClaw is connected
+ */
+export async function isOpenClawReady(): Promise<boolean> {
+  const result = await testOpenClawConnection();
+  return result.ok;
+}
+
+export { testOpenClawConnection, getOpenClawReply };
