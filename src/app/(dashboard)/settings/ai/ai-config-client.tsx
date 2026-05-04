@@ -12,6 +12,7 @@ import { HandoffRulesTab } from "@/components/ai-config/handoff-rules-tab";
 import { TaggingRulesTab } from "@/components/ai-config/tagging-rules-tab";
 import { ScoringTab } from "@/components/ai-config/scoring-tab";
 import { SummaryTemplatesTab } from "@/components/ai-config/summary-templates-tab";
+import { OpenClawTab } from "@/components/ai-config/openclaw-tab";
 import { PlaygroundTab } from "@/components/ai-config/playground-tab";
 import { LogsTab } from "@/components/ai-config/logs-tab";
 import { CostControlTab } from "@/components/ai-config/cost-control-tab";
@@ -30,6 +31,7 @@ function TabContent({ tab }: { tab: AiTab }) {
     case "tagging-rules": return <TaggingRulesTab />;
     case "scoring": return <ScoringTab />;
     case "summary-templates": return <SummaryTemplatesTab />;
+    case "openclaw": return <OpenClawTab />;
     case "playground": return <PlaygroundTab />;
     case "logs": return <LogsTab />;
     case "cost-control": return <CostControlTab />;

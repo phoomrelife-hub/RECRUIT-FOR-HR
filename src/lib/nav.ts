@@ -13,7 +13,6 @@ import {
   Plug,
   ShieldCheck,
   Brain,
-  BotMessageSquare,
   type LucideIcon,
 } from "lucide-react";
 import { UserRole } from "@prisma/client";
@@ -113,12 +112,6 @@ export const navSections: NavSection[] = [
         title: "Tags",
         href: "/tags",
         icon: Tag,
-        roles: ["SUPER_ADMIN", "HR_MANAGER"],
-      },
-      {
-        title: "OpenClaw AI",
-        href: "/bot-config/openclaw",
-        icon: BotMessageSquare,
         roles: ["SUPER_ADMIN", "HR_MANAGER"],
       },
       {
