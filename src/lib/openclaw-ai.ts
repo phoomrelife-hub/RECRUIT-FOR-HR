@@ -16,6 +16,7 @@ export interface OpenClawReply {
 }
 
 export interface OpenClawConfig {
+  enabled?: boolean;
   model?: string;
   temperature?: number;
   max_tokens?: number;
@@ -26,21 +27,33 @@ export interface OpenClawConfig {
  * Load bot config from DB settings (bot.* keys)
  */
 async function loadBotConfig(): Promise<OpenClawConfig> {
-  const settings = await db.setting.findMany({
-    where: { key: { startsWith: "bot." } },
-  });
+  try {
+    const settings = await db.setting.findMany({
+      where: { key: { startsWith: "bot." } },
+    });
 
-  const config: Record<string, string> = {};
-  for (const s of settings) {
-    config[s.key.replace("bot.", "")] = s.value;
+    const config: Record<string, string> = {};
+    for (const s of settings) {
+      config[s.key.replace("bot.", "")] = s.value;
+    }
+
+    return {
+      enabled: config.enabled !== "false", // default true
+      model: config.model || undefined,
+      temperature: config.temperature ? parseFloat(config.temperature) : undefined,
+      max_tokens: config.max_tokens ? parseInt(config.max_tokens) : undefined,
+      system_prompt: config.system_prompt || undefined,
+    };
+  } catch {
+    // If DB fails, return default config
+    return {
+      enabled: true,
+      model: undefined,
+      temperature: 0.7,
+      max_tokens: 500,
+      system_prompt: undefined,
+    };
   }
-
-  return {
-    model: config.model || undefined,
-    temperature: config.temperature ? parseFloat(config.temperature) : undefined,
-    max_tokens: config.max_tokens ? parseInt(config.max_tokens) : undefined,
-    system_prompt: config.system_prompt || undefined,
-  };
 }
 
 /**
@@ -93,6 +106,7 @@ function getDefaultPrompt(): string {
 
 /**
  * Send message to OpenClaw AI (primary AI for HR bot)
+ * Returns null if OpenClaw is not available (no error thrown)
  */
 export async function askOpenClaw(
   messages: OpenClawMessage[],
@@ -100,8 +114,14 @@ export async function askOpenClaw(
 ): Promise<string | null> {
   try {
     const botConfig = config ?? (await loadBotConfig());
-    const systemPrompt = botConfig.system_prompt ?? (await buildSystemPrompt());
+    
+    // Skip if OpenClaw is disabled
+    if (botConfig.enabled === false) {
+      console.log("[OpenClaw AI] Skipped - disabled in config");
+      return null;
+    }
 
+    const systemPrompt = botConfig.system_prompt ?? (await buildSystemPrompt());
     if (!systemPrompt) {
       return null;
     }
@@ -124,19 +144,19 @@ export async function askOpenClaw(
         temperature: botConfig.temperature ?? 0.7,
         max_tokens: botConfig.max_tokens ?? 500,
       }),
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(8000), // Reduced timeout
     });
 
     if (!res.ok) {
-      const err = await res.text();
-      console.error("OpenClaw AI error:", err);
+      console.log(`[OpenClaw AI] HTTP ${res.status} - falling back`);
       return null;
     }
 
     const data = await res.json();
     return data.choices?.[0]?.message?.content ?? null;
   } catch (error) {
-    console.error("OpenClaw AI request failed:", error);
+    // Silent fail - no error thrown, just return null for fallback
+    console.log("[OpenClaw AI] Not available, using fallback AI");
     return null;
   }
 }
@@ -144,6 +164,7 @@ export async function askOpenClaw(
 /**
  * Send candidate message to OpenClaw and get reply
  * This is the MAIN function for HR bot - replaces Kimi fallback
+ * Returns null if OpenClaw is not available (silent fail)
  */
 export async function getOpenClawReply(params: {
   conversationId: string;
@@ -158,38 +179,9 @@ export async function getOpenClawReply(params: {
   recentMessages?: { role: "user" | "assistant"; content: string }[];
 }): Promise<OpenClawReply | null> {
   try {
-    const { conversationId, candidateId, message, channel, context, recentMessages } = params;
+    const { recentMessages, message } = params;
 
-    // Try webhook endpoint first (if OpenClaw has recruit-specific endpoint)
-    const webhookRes = await fetch(`${OPENCLAW_API_URL}/api/webhook/recruit`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${OPENCLAW_API_KEY}`,
-      },
-      body: JSON.stringify({
-        conversationId,
-        candidateId,
-        message,
-        channel,
-        context,
-      }),
-      signal: AbortSignal.timeout(10000),
-    });
-
-    if (webhookRes.ok) {
-      const data = await webhookRes.json();
-      if (data.reply) {
-        return {
-          reply: data.reply,
-          confidence: data.confidence,
-          openclawId: data.openclawId,
-          handoff: data.handoff,
-        };
-      }
-    }
-
-    // Fallback: use chat completions directly
+    // Use chat completions directly (skip webhook if not needed)
     const messages: OpenClawMessage[] = [
       ...(recentMessages?.map((m) => ({
         role: m.role as "user" | "assistant",
@@ -205,14 +197,15 @@ export async function getOpenClawReply(params: {
       reply,
       confidence: 0.8,
     };
-  } catch (error) {
-    console.error("OpenClaw reply failed:", error);
+  } catch {
+    // Silent fail - let fallback handle it
     return null;
   }
 }
 
 /**
  * Test OpenClaw connection
+ * Returns { ok: false } on any error (no throwing)
  */
 export async function testOpenClawConnection(): Promise<{
   ok: boolean;
@@ -222,7 +215,7 @@ export async function testOpenClawConnection(): Promise<{
   try {
     const res = await fetch(`${OPENCLAW_API_URL}/api/health`, {
       headers: { Authorization: `Bearer ${OPENCLAW_API_KEY}` },
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(3000),
     });
 
     if (!res.ok) {
@@ -231,11 +224,8 @@ export async function testOpenClawConnection(): Promise<{
 
     const data = await res.json();
     return { ok: true, version: data.version };
-  } catch (e: unknown) {
-    return {
-      ok: false,
-      error: e instanceof Error ? e.message : "Connection failed",
-    };
+  } catch {
+    return { ok: false, error: "OpenClaw not running" };
   }
 }
 

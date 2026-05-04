@@ -50,9 +50,10 @@ export async function POST(req: Request) {
   let botReplyContent: string | null = null;
   let openclawId: string | undefined;
   let handoff = false;
+  let aiSource = "none";
 
   if (conversation.botEnabled) {
-    // === PRIMARY: OpenClaw AI (main AI engine) ===
+    // === PRIMARY: Try OpenClaw AI ===
     const recentMsgs = await db.message.findMany({
       where: { conversationId: conversation.id, senderType: { in: ["CANDIDATE", "BOT"] } },
       orderBy: { createdAt: "asc" },
@@ -80,6 +81,7 @@ export async function POST(req: Request) {
       botReplyContent = danielReply.reply;
       openclawId = danielReply.openclawId;
       handoff = danielReply.handoff ?? false;
+      aiSource = openclawId ? "openclaw" : "fallback";
 
       // sync AIConversation record with openclawId
       if (openclawId) {
@@ -126,6 +128,6 @@ export async function POST(req: Request) {
     conversationId: conversation.id,
     botEnabled: conversation.botEnabled,
     reply: botReplyContent,
-    source: openclawId ? "openclaw" : "fallback",
+    source: aiSource,
   });
 }

@@ -17,6 +17,7 @@ const ALLOWED_KEYS = [
   "provider_name",
   "provider_model",
   "provider_api_key",
+  "persona_archetype",
 ];
 
 export async function GET() {

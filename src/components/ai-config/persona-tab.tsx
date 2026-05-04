@@ -1,27 +1,49 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { Loader2, Save } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Loader2, Check, Save } from "lucide-react";
 
-interface Persona {
-  id?: string;
-  botName: string;
-  tone: string;
-  language: string;
-  greeting: string;
-  signature: string;
-}
+const ARCHETYPES = [
+  { value: "professional", emoji: "🎯", label: "มืออาชีพ", desc: "Professional" },
+  { value: "friendly", emoji: "😊", label: "เป็นกันเอง", desc: "Friendly" },
+  { value: "formal", emoji: "💼", label: "ทางการ", desc: "Formal" },
+  { value: "enthusiastic", emoji: "🌟", label: "กระตือรือร้น", desc: "Enthusiastic" },
+  { value: "trustworthy", emoji: "🤝", label: "น่าเชื่อถือ", desc: "Trustworthy" },
+  { value: "smart", emoji: "💡", label: "ฉลาดเฉลียว", desc: "Smart" },
+  { value: "warm", emoji: "❤️", label: "อบอุ่น", desc: "Warm" },
+  { value: "modern", emoji: "🚀", label: "ทันสมัย", desc: "Modern" },
+];
 
-const TONES = ["professional", "friendly", "formal", "casual", "warm"];
+const TONES = [
+  { value: "professional", label: "Professional" },
+  { value: "fun", label: "Fun" },
+  { value: "luxury", label: "Luxury" },
+  { value: "caring", label: "Caring" },
+  { value: "smart", label: "Smart" },
+  { value: "formal", label: "Formal" },
+  { value: "casual", label: "Casual" },
+  { value: "energetic", label: "Energetic" },
+];
+
 const LANGUAGES = [
   { value: "thai_english", label: "ไทย + English" },
   { value: "thai", label: "ภาษาไทยเท่านั้น" },
   { value: "english", label: "English only" },
 ];
 
+interface PersonaData {
+  botName: string;
+  archetype: string;
+  tone: string;
+  language: string;
+  greeting: string;
+  signature: string;
+}
+
 export function PersonaTab() {
-  const [persona, setPersona] = useState<Persona>({
+  const [data, setData] = useState<PersonaData>({
     botName: "Daniel",
+    archetype: "professional",
     tone: "professional",
     language: "thai_english",
     greeting: "",
@@ -32,123 +54,204 @@ export function PersonaTab() {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    fetch("/api/settings/ai/persona")
-      .then((r) => r.json())
-      .then((data) => {
-        if (data) setPersona({ botName: data.botName ?? "Daniel", tone: data.tone ?? "professional", language: data.language ?? "thai_english", greeting: data.greeting ?? "", signature: data.signature ?? "" });
-      })
-      .finally(() => setLoading(false));
+    async function load() {
+      const [personaRes, settingRes] = await Promise.all([
+        fetch("/api/settings/ai/persona"),
+        fetch("/api/settings/ai/bot-prompt"),
+      ]);
+      const persona = personaRes.ok ? await personaRes.json() : {};
+      const setting = settingRes.ok ? await settingRes.json() : {};
+      setData({
+        botName: persona.botName ?? "Daniel",
+        archetype: setting.persona_archetype ?? "professional",
+        tone: persona.tone ?? "professional",
+        language: persona.language ?? "thai_english",
+        greeting: persona.greeting ?? "",
+        signature: persona.signature ?? "",
+      });
+      setLoading(false);
+    }
+    load();
   }, []);
 
-  const update = useCallback((key: keyof Persona, value: string) => {
-    setPersona((p) => ({ ...p, [key]: value }));
-  }, []);
+  function update<K extends keyof PersonaData>(key: K, value: PersonaData[K]) {
+    setData((d) => ({ ...d, [key]: value }));
+  }
 
   async function save() {
     setSaving(true);
-    const res = await fetch("/api/settings/ai/persona", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(persona),
-    });
-    if (res.ok) { setSaved(true); setTimeout(() => setSaved(false), 2000); }
+    await Promise.all([
+      fetch("/api/settings/ai/persona", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          botName: data.botName,
+          tone: data.tone,
+          language: data.language,
+          greeting: data.greeting,
+          signature: data.signature,
+        }),
+      }),
+      fetch("/api/settings/ai/bot-prompt", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ persona_archetype: data.archetype }),
+      }),
+    ]);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
     setSaving(false);
   }
 
-  if (loading) return <div className="animate-pulse h-64 bg-slate-100 rounded-lg" />;
+  if (loading) return <div className="animate-pulse h-96 bg-slate-100 rounded-xl" />;
+
+  const selectedArchetype = ARCHETYPES.find((a) => a.value === data.archetype);
 
   return (
     <div className="space-y-6 max-w-2xl">
-      <div>
-        <h2 className="font-semibold text-slate-800">Bot Persona</h2>
-        <p className="text-sm text-slate-500">กำหนดบุคลิกและชื่อของ AI Bot</p>
+      {/* Bot name */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+        <div>
+          <label className="text-sm font-semibold text-slate-800">ชื่อ Bot</label>
+          <p className="text-xs text-slate-400 mt-0.5">ชื่อที่ bot จะแนะนำตัวกับผู้สมัคร</p>
+        </div>
+        <input
+          value={data.botName}
+          onChange={(e) => update("botName", e.target.value)}
+          className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          placeholder="Daniel"
+        />
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-lg p-6 space-y-5">
-        <Field label="Bot Name" hint="ชื่อที่ bot จะแนะนำตัว">
-          <input
-            value={persona.botName}
-            onChange={(e) => update("botName", e.target.value)}
-            className="w-full border border-slate-200 rounded-md px-3 py-2 text-sm"
-            placeholder="Daniel"
-          />
-        </Field>
+      {/* Archetype selection */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+        <div>
+          <label className="text-sm font-semibold text-slate-800">บุคลิกหลัก</label>
+          <p className="text-xs text-slate-400 mt-0.5">เลือกบุคลิกที่ bot จะแสดงออก</p>
+        </div>
+        <div className="grid grid-cols-4 gap-2.5">
+          {ARCHETYPES.map((a) => (
+            <button
+              key={a.value}
+              onClick={() => update("archetype", a.value)}
+              className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all ${
+                data.archetype === a.value
+                  ? "border-blue-500 bg-blue-50 shadow-sm"
+                  : "border-slate-100 hover:border-slate-300 bg-white"
+              }`}
+            >
+              <span className="text-2xl">{a.emoji}</span>
+              <span className={`text-xs font-medium leading-tight text-center ${data.archetype === a.value ? "text-blue-700" : "text-slate-700"}`}>
+                {a.label}
+              </span>
+              <span className="text-[10px] text-slate-400">{a.desc}</span>
+            </button>
+          ))}
+        </div>
+      </div>
 
-        <Field label="Tone" hint="โทนการสื่อสาร">
-          <div className="flex gap-2 flex-wrap">
-            {TONES.map((t) => (
-              <button
-                key={t}
-                onClick={() => update("tone", t)}
-                className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
-                  persona.tone === t
-                    ? "bg-blue-600 text-white border-blue-600"
-                    : "border-slate-200 text-slate-600 hover:border-blue-300"
-                }`}
-              >
-                {t}
-              </button>
-            ))}
-          </div>
-        </Field>
+      {/* Tone */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+        <div>
+          <label className="text-sm font-semibold text-slate-800">โทนเสียง</label>
+          <p className="text-xs text-slate-400 mt-0.5">สไตล์การสื่อสารของ bot</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {TONES.map((t) => (
+            <button
+              key={t.value}
+              onClick={() => update("tone", t.value)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium border-2 transition-all ${
+                data.tone === t.value
+                  ? "border-blue-500 bg-blue-50 text-blue-700"
+                  : "border-slate-200 text-slate-600 hover:border-blue-200 hover:bg-slate-50"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
-        <Field label="Language" hint="ภาษาที่ bot ใช้ตอบ">
-          <select
-            value={persona.language}
-            onChange={(e) => update("language", e.target.value)}
-            className="w-full border border-slate-200 rounded-md px-3 py-2 text-sm"
-          >
-            {LANGUAGES.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
-          </select>
-        </Field>
+      {/* Language + Greeting */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+        <label className="text-sm font-semibold text-slate-800">ภาษาที่ใช้</label>
+        <div className="flex gap-2">
+          {LANGUAGES.map((l) => (
+            <button
+              key={l.value}
+              onClick={() => update("language", l.value)}
+              className={`flex-1 py-2 px-3 rounded-lg text-sm border-2 transition-all font-medium ${
+                data.language === l.value
+                  ? "border-blue-500 bg-blue-50 text-blue-700"
+                  : "border-slate-200 text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              {l.label}
+            </button>
+          ))}
+        </div>
 
-        <Field label="Greeting Message" hint="ข้อความทักทายเมื่อ candidate เริ่มต้นบทสนทนา">
+        <div className="space-y-1.5 pt-2 border-t border-slate-100">
+          <label className="text-sm font-medium text-slate-700">ข้อความทักทาย</label>
+          <p className="text-xs text-slate-400">ข้อความแรกที่ bot จะส่งเมื่อเริ่มบทสนทนา</p>
           <textarea
-            value={persona.greeting}
+            value={data.greeting}
             onChange={(e) => update("greeting", e.target.value)}
             rows={3}
-            className="w-full border border-slate-200 rounded-md px-3 py-2 text-sm resize-none"
-            placeholder="สวัสดีค่ะ! ฉันคือ Daniel ผู้ช่วย HR ของ Relife..."
+            className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder={`สวัสดีครับ ผมชื่อ ${data.botName} ผู้ช่วย HR ของ Relife ครับ 😊`}
           />
-        </Field>
+        </div>
 
-        <Field label="Signature" hint="ลายเซ็นท้ายข้อความ (ถ้ามี)">
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium text-slate-700">Signature</label>
           <input
-            value={persona.signature}
+            value={data.signature}
             onChange={(e) => update("signature", e.target.value)}
-            className="w-full border border-slate-200 rounded-md px-3 py-2 text-sm"
-            placeholder="— Daniel | Relife HR Team"
+            className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder={`— ${data.botName} | Relife HR Team`}
           />
-        </Field>
+        </div>
       </div>
 
       {/* Preview */}
-      <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
-        <div className="text-xs text-slate-500 mb-2 font-medium">Preview</div>
-        <div className="bg-white rounded-lg p-3 text-sm text-slate-700 border border-slate-100">
-          {persona.greeting || `สวัสดีค่ะ ฉันคือ ${persona.botName} ผู้ช่วย HR ของ Relife`}
-          {persona.signature && <div className="mt-1 text-slate-400 text-xs">{persona.signature}</div>}
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+        <div className="text-xs font-medium text-slate-500 mb-3 flex items-center gap-2">
+          <span>Preview</span>
+          {selectedArchetype && (
+            <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-[10px]">
+              {selectedArchetype.emoji} {selectedArchetype.label}
+            </span>
+          )}
+        </div>
+        <div className="flex items-start gap-2.5">
+          <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-bold shrink-0">
+            {data.botName.charAt(0).toUpperCase()}
+          </div>
+          <div className="bg-white border border-slate-200 rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm text-slate-700 max-w-xs shadow-sm">
+            {data.greeting || `สวัสดีครับ ผมชื่อ ${data.botName} ผู้ช่วย HR ของ Relife ครับ 😊`}
+            {data.signature && (
+              <div className="mt-1.5 text-xs text-slate-400 border-t border-slate-100 pt-1.5">{data.signature}</div>
+            )}
+          </div>
         </div>
       </div>
 
       <button
         onClick={save}
         disabled={saving}
-        className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 disabled:opacity-50"
+        className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
       >
-        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-        {saved ? "Saved!" : "Save Persona"}
+        {saving ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : saved ? (
+          <Check className="h-4 w-4" />
+        ) : (
+          <Save className="h-4 w-4" />
+        )}
+        {saved ? "บันทึกแล้ว!" : "บันทึก"}
       </button>
-    </div>
-  );
-}
-
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-1.5">
-      <label className="text-sm font-medium text-slate-700">{label}</label>
-      {hint && <p className="text-xs text-slate-400">{hint}</p>}
-      {children}
     </div>
   );
 }

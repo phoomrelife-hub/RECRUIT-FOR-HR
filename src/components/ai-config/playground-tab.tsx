@@ -1,196 +1,199 @@
 "use client";
 
-import { useState } from "react";
-import { Send, Loader2, Save, RotateCcw, Zap } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Send, Loader2, RotateCcw, Bot, Info } from "lucide-react";
 
 interface Message {
-  role: "user" | "assistant" | "system";
+  role: "user" | "assistant";
   content: string;
-}
-
-interface RunResult {
-  content: string;
-  extractedFields: Record<string, string>;
-  tags: string[];
-  score: number;
-  handoff: boolean;
-  tokenEstimate: number;
-  costEstimate: number;
-  latencyMs: number;
 }
 
 export function PlaygroundTab() {
-  const [systemPrompt, setSystemPrompt] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [running, setRunning] = useState(false);
-  const [result, setResult] = useState<RunResult | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [providerInfo, setProviderInfo] = useState<{ provider?: string; model?: string } | null>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  // Load initial bot config to get provider info
+  useEffect(() => {
+    fetch("/api/settings/ai/bot-prompt")
+      .then((r) => r.json())
+      .then((cfg) => {
+        if (cfg.provider_name) {
+          setProviderInfo({ provider: cfg.provider_name, model: cfg.provider_model });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, sending]);
 
   async function send() {
-    if (!input.trim()) return;
-    const newMessages = [...messages, { role: "user" as const, content: input }];
+    const text = input.trim();
+    if (!text || sending) return;
+
+    const userMsg: Message = { role: "user", content: text };
+    const newMessages = [...messages, userMsg];
     setMessages(newMessages);
     setInput("");
-    setRunning(true);
+    setSending(true);
+    setError(null);
 
-    const res = await fetch("/api/settings/ai/playground/run", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ systemPrompt, messages: newMessages }),
-    });
+    try {
+      const res = await fetch("/api/settings/ai/chat-test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: newMessages.map((m) => ({ role: m.role, content: m.content })),
+        }),
+      });
 
-    if (res.ok) {
       const data = await res.json();
-      setResult(data);
-      setMessages([...newMessages, { role: "assistant", content: data.content }]);
+
+      if (!res.ok) {
+        setError(data.error ?? "เกิดข้อผิดพลาด กรุณาลองใหม่");
+      } else {
+        setMessages([...newMessages, { role: "assistant", content: data.reply }]);
+        if (data.provider && data.model) {
+          setProviderInfo({ provider: data.provider, model: data.model });
+        }
+      }
+    } catch {
+      setError("ไม่สามารถเชื่อมต่อได้ กรุณาตรวจสอบการตั้งค่า API");
+    } finally {
+      setSending(false);
     }
-    setRunning(false);
   }
 
-  async function saveRun() {
-    if (!result) return;
-    setSaving(true);
-    await fetch("/api/settings/ai/playground/save", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        systemPrompt,
-        messages: messages.slice(0, -1),
-        responseContent: result.content,
-        tokenEstimate: result.tokenEstimate,
-        costEstimate: result.costEstimate,
-        latencyMs: result.latencyMs,
-      }),
-    });
-    setSaving(false);
+  function reset() {
+    setMessages([]);
+    setError(null);
   }
 
   return (
-    <div className="grid grid-cols-3 gap-4 h-[75vh]">
-      {/* Left: system prompt + results */}
-      <div className="col-span-1 flex flex-col gap-3">
-        <div className="flex-none">
-          <label className="text-sm font-medium text-slate-700 block mb-1">System Prompt</label>
-          <textarea
-            value={systemPrompt}
-            onChange={(e) => setSystemPrompt(e.target.value)}
-            rows={8}
-            className="w-full border border-slate-200 rounded-lg p-3 text-xs font-mono resize-none focus:outline-none focus:ring-1 focus:ring-blue-400"
-            placeholder="Leave empty to use the published system prompt..."
-          />
+    <div className="flex flex-col h-[calc(100vh-13rem)] max-w-2xl">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-800">ทดสอบ Chatbot</h3>
+          <p className="text-xs text-slate-400 mt-0.5">ทดสอบ bot ด้วย AI จริง — ใช้ credit ตาม API ที่ตั้งค่าไว้</p>
         </div>
-
-        {result && (
-          <div className="bg-white border border-slate-200 rounded-lg p-3 space-y-2 text-xs overflow-y-auto">
-            <div className="font-medium text-slate-700 flex items-center gap-1.5">
-              <Zap className="h-3.5 w-3.5 text-amber-500" /> Analysis
-            </div>
-            <div className="grid grid-cols-2 gap-1.5">
-              <Metric label="Tokens" value={result.tokenEstimate} />
-              <Metric label="Cost" value={`$${result.costEstimate.toFixed(6)}`} />
-              <Metric label="Latency" value={`${result.latencyMs}ms`} />
-              <Metric label="Score" value={result.score} />
-            </div>
-            {result.handoff && (
-              <div className="bg-amber-50 text-amber-700 px-2 py-1 rounded text-xs">⚠ Handoff triggered</div>
-            )}
-            {result.tags.length > 0 && (
-              <div>
-                <span className="text-slate-500">Tags: </span>
-                {result.tags.map((t) => (
-                  <span key={t} className="bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded text-xs mr-1">{t}</span>
-                ))}
-              </div>
-            )}
-            {Object.keys(result.extractedFields).length > 0 && (
-              <div>
-                <span className="text-slate-500 block mb-1">Extracted:</span>
-                {Object.entries(result.extractedFields).map(([k, v]) => (
-                  <div key={k} className="text-slate-600"><b>{k}:</b> {v}</div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="flex gap-2">
-          <button
-            onClick={() => { setMessages([]); setResult(null); }}
-            className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 border border-slate-200 rounded-md text-sm text-slate-600 hover:bg-slate-50"
-          >
-            <RotateCcw className="h-3.5 w-3.5" /> Reset
-          </button>
-          {result && (
-            <button
-              onClick={saveRun}
-              disabled={saving}
-              className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 bg-green-600 text-white rounded-md text-sm hover:bg-green-700 disabled:opacity-50"
-            >
-              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-              Save Run
-            </button>
+        <div className="flex items-center gap-2">
+          {providerInfo?.model && (
+            <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-1 rounded-full flex items-center gap-1">
+              <Info className="h-3 w-3" />
+              {providerInfo.provider} · {providerInfo.model}
+            </span>
           )}
+          <button
+            onClick={reset}
+            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-50 transition-colors"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            ล้างบทสนทนา
+          </button>
         </div>
       </div>
 
-      {/* Right: chat */}
-      <div className="col-span-2 border border-slate-200 rounded-lg flex flex-col overflow-hidden">
-        <div className="p-3 border-b border-slate-100 text-sm font-medium text-slate-700 flex items-center justify-between">
-          <span>Playground Chat</span>
-          <span className="text-xs text-slate-400">Mock AI — does not connect to LINE</span>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {messages.length === 0 && (
-            <div className="text-center text-slate-400 text-sm py-12">
-              Start typing to test your bot configuration
+      {/* Chat area */}
+      <div className="flex-1 border border-slate-200 rounded-xl bg-white overflow-hidden flex flex-col">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {messages.length === 0 && !error && (
+            <div className="flex flex-col items-center justify-center h-full text-center py-16">
+              <div className="h-14 w-14 rounded-full bg-blue-600 flex items-center justify-center mb-4 shadow-md">
+                <Bot className="h-7 w-7 text-white" />
+              </div>
+              <p className="text-sm font-medium text-slate-700">พิมพ์ข้อความเพื่อทดสอบ Chatbot</p>
+              <p className="text-xs text-slate-400 mt-1">Bot จะตอบตาม Prompt & บุคลิกที่คุณตั้งค่าไว้</p>
             </div>
           )}
+
           {messages.map((m, i) => (
-            <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[75%] rounded-xl px-3 py-2 text-sm ${
-                m.role === "user"
-                  ? "bg-blue-600 text-white"
-                  : "bg-slate-100 text-slate-800"
-              }`}>
+            <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"} gap-2.5`}>
+              {m.role === "assistant" && (
+                <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-bold shrink-0 shadow-sm">
+                  D
+                </div>
+              )}
+              <div
+                className={`max-w-[78%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
+                  m.role === "user"
+                    ? "bg-blue-600 text-white rounded-br-sm"
+                    : "bg-slate-100 text-slate-800 rounded-bl-sm"
+                }`}
+              >
                 {m.content}
               </div>
+              {m.role === "user" && (
+                <div className="h-8 w-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 text-xs font-bold shrink-0">
+                  HR
+                </div>
+              )}
             </div>
           ))}
-          {running && (
-            <div className="flex justify-start">
-              <div className="bg-slate-100 rounded-xl px-3 py-2 text-sm text-slate-500">
-                <Loader2 className="h-3.5 w-3.5 animate-spin inline" /> Thinking...
+
+          {sending && (
+            <div className="flex justify-start gap-2.5">
+              <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-bold shrink-0">
+                D
+              </div>
+              <div className="bg-slate-100 rounded-2xl rounded-bl-sm px-4 py-3">
+                <div className="flex gap-1 items-center">
+                  <div className="h-2 w-2 bg-slate-400 rounded-full animate-bounce [animation-delay:0ms]" />
+                  <div className="h-2 w-2 bg-slate-400 rounded-full animate-bounce [animation-delay:150ms]" />
+                  <div className="h-2 w-2 bg-slate-400 rounded-full animate-bounce [animation-delay:300ms]" />
+                </div>
               </div>
             </div>
           )}
+
+          {error && (
+            <div className="flex justify-start gap-2.5">
+              <div className="h-8 w-8 rounded-full bg-red-100 flex items-center justify-center text-red-500 text-sm font-bold shrink-0">
+                !
+              </div>
+              <div className="bg-red-50 border border-red-200 rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm text-red-700">
+                {error}
+              </div>
+            </div>
+          )}
+
+          <div ref={bottomRef} />
         </div>
-        <div className="p-3 border-t border-slate-100 flex gap-2">
+
+        {/* Input */}
+        <div className="border-t border-slate-100 p-3 flex gap-2 bg-white">
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && send()}
-            placeholder="Type a message..."
-            className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                send();
+              }
+            }}
+            placeholder="พิมพ์ข้อความเพื่อทดสอบ..."
+            className="flex-1 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            disabled={sending}
           />
           <button
             onClick={send}
-            disabled={running || !input.trim()}
-            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
+            disabled={sending || !input.trim()}
+            className="flex items-center justify-center h-10 w-10 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 transition-colors shrink-0"
           >
-            {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </button>
         </div>
       </div>
-    </div>
-  );
-}
 
-function Metric({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="bg-slate-50 rounded px-2 py-1">
-      <div className="text-slate-400 text-[10px]">{label}</div>
-      <div className="font-medium text-slate-700">{value}</div>
+      {/* Warning note */}
+      <p className="text-[11px] text-slate-400 mt-2 text-center">
+        ⚡ การทดสอบนี้ใช้ AI จริงและอาจมีค่าใช้จ่ายตาม API ที่เลือก — ไม่เชื่อมต่อกับ LINE
+      </p>
     </div>
   );
 }
