@@ -115,6 +115,12 @@ export const navSections: NavSection[] = [
         roles: ["SUPER_ADMIN", "HR_MANAGER"],
       },
       {
+        title: "AI Config",
+        href: "/settings/ai",
+        icon: Brain,
+        roles: ["SUPER_ADMIN", "HR_MANAGER"],
+      },
+      {
         title: "Integrations",
         href: "/integrations",
         icon: Plug,
