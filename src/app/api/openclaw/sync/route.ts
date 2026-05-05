@@ -24,8 +24,12 @@ export async function POST(req: Request) {
   const body = await req.json();
   const { lineUserId, displayName, userMessage, botReply, externalMessageId } = body;
 
-  if (!lineUserId || !userMessage) {
-    return NextResponse.json({ error: "lineUserId and userMessage required" }, { status: 400 });
+  // Allow either userMessage OR botReply (or both) — at least one is required
+  if (!lineUserId || (!userMessage && !botReply)) {
+    return NextResponse.json(
+      { error: "lineUserId required, plus at least userMessage or botReply" },
+      { status: 400 }
+    );
   }
 
   // find or create candidate by lineUserId
@@ -56,42 +60,44 @@ export async function POST(req: Request) {
     });
   }
 
-  // save candidate message
-  const existing = externalMessageId
-    ? await db.message.findFirst({ where: { externalId: externalMessageId } })
-    : null;
+  // save candidate message (only when userMessage is provided)
+  if (userMessage) {
+    const existing = externalMessageId
+      ? await db.message.findFirst({ where: { externalId: externalMessageId } })
+      : null;
 
-  if (!existing) {
-    await db.message.create({
-      data: {
-        conversationId: conversation.id,
-        content: userMessage,
-        senderType: "CANDIDATE",
-        externalId: externalMessageId ?? null,
-      },
+    if (!existing) {
+      await db.message.create({
+        data: {
+          conversationId: conversation.id,
+          content: userMessage,
+          senderType: "CANDIDATE",
+          externalId: externalMessageId ?? null,
+        },
+      });
+    }
+
+    // auto-promote NEW_APPLICANT → BOT_SCREENING
+    if (candidate.currentStatus === "NEW_APPLICANT") {
+      await db.candidate.update({
+        where: { id: candidate.id },
+        data: { currentStatus: "BOT_SCREENING" },
+      });
+      await db.candidateStatusHistory.create({
+        data: {
+          candidateId: candidate.id,
+          fromStatus: "NEW_APPLICANT",
+          toStatus: "BOT_SCREENING",
+          reason: "OpenClaw LINE conversation started",
+        },
+      });
+    }
+
+    await db.conversation.update({
+      where: { id: conversation.id },
+      data: { lastMessageAt: new Date(), status: "ACTIVE", unreadCount: { increment: 1 } },
     });
   }
-
-  // auto-promote NEW_APPLICANT → BOT_SCREENING
-  if (candidate.currentStatus === "NEW_APPLICANT") {
-    await db.candidate.update({
-      where: { id: candidate.id },
-      data: { currentStatus: "BOT_SCREENING" },
-    });
-    await db.candidateStatusHistory.create({
-      data: {
-        candidateId: candidate.id,
-        fromStatus: "NEW_APPLICANT",
-        toStatus: "BOT_SCREENING",
-        reason: "OpenClaw LINE conversation started",
-      },
-    });
-  }
-
-  await db.conversation.update({
-    where: { id: conversation.id },
-    data: { lastMessageAt: new Date(), status: "ACTIVE", unreadCount: { increment: 1 } },
-  });
 
   // save bot reply if present
   if (botReply) {
