@@ -1,7 +1,8 @@
 import crypto from "crypto";
 import { db } from "./db";
 
-const LINE_API = "https://api.line.me/v2/bot/message";
+const LINE_API      = "https://api.line.me/v2/bot/message";
+const LINE_API_ROOT = "https://api.line.me/v2/bot";
 
 async function getCredentials(): Promise<{ secret: string; token: string }> {
   const settings = await db.setting.findMany({
@@ -12,6 +13,26 @@ async function getCredentials(): Promise<{ secret: string; token: string }> {
     secret: map["line.channel_secret"] || process.env.LINE_CHANNEL_SECRET || "",
     token: map["line.channel_access_token"] || process.env.LINE_CHANNEL_ACCESS_TOKEN || "",
   };
+}
+
+export type LineProfile = {
+  displayName: string;
+  pictureUrl?: string;
+  statusMessage?: string;
+};
+
+export async function getLineProfile(lineUserId: string): Promise<LineProfile | null> {
+  const { token } = await getCredentials();
+  if (!token) return null;
+  try {
+    const res = await fetch(`${LINE_API_ROOT}/profile/${lineUserId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
 }
 
 export async function verifyLineSignature(rawBody: string, signature: string): Promise<boolean> {

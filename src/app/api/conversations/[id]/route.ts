@@ -18,6 +18,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
           nickname: true,
           phone: true,
           email: true,
+          lineDisplayName: true,
+          lineProfilePicUrl: true,
           sourceChannel: true,
           currentStatus: true,
           interestedPosition: { select: { id: true, title: true } },

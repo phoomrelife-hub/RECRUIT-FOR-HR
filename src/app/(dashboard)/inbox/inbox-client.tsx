@@ -38,6 +38,8 @@ interface Candidate {
   fullName?: string | null;
   nickname?: string | null;
   phone?: string | null;
+  lineDisplayName?: string | null;
+  lineProfilePicUrl?: string | null;
   sourceChannel: string;
   currentStatus: string;
   interestedPosition?: { id: string; title: string } | null;
@@ -106,7 +108,31 @@ const statusLabel: Record<string, string> = {
 
 function candidateName(c: Candidate | null | undefined) {
   if (!c) return "Unknown";
-  return c.fullName || c.nickname || c.phone || "ไม่ระบุชื่อ";
+  return c.fullName || c.lineDisplayName || c.nickname || c.phone || "ไม่ระบุชื่อ";
+}
+
+function CandidateAvatar({ c, size = "md" }: { c: Candidate | null | undefined; size?: "sm" | "md" }) {
+  const sz = size === "sm" ? "w-7 h-7 text-xs" : "w-9 h-9 text-sm";
+  const name = candidateName(c);
+  if (c?.lineProfilePicUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={c.lineProfilePicUrl}
+        alt={name}
+        className={`${sz} rounded-full object-cover flex-shrink-0`}
+        onError={(e) => {
+          // fallback to initials if CDN link expires
+          (e.target as HTMLImageElement).style.display = "none";
+        }}
+      />
+    );
+  }
+  return (
+    <div className={`${sz} rounded-full bg-slate-200 flex items-center justify-center flex-shrink-0 font-bold text-slate-600`}>
+      {name.charAt(0).toUpperCase()}
+    </div>
+  );
 }
 
 function channelIcon(channel: string) {
@@ -261,9 +287,7 @@ function ConvItem({
     >
       <div className="flex items-start gap-3">
         {/* Avatar */}
-        <div className="w-9 h-9 rounded-full bg-slate-200 flex items-center justify-center flex-shrink-0 text-sm font-bold text-slate-600">
-          {name.charAt(0).toUpperCase()}
-        </div>
+        <CandidateAvatar c={conv.candidate} size="md" />
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-1">
@@ -544,9 +568,7 @@ export function InboxClient({
           {/* Chat Header */}
           <div className="h-16 bg-white border-b border-slate-200 px-4 flex items-center justify-between flex-shrink-0">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-sm font-bold text-slate-600 flex-shrink-0">
-                {candidateName(activeConv.candidate).charAt(0).toUpperCase()}
-              </div>
+              <CandidateAvatar c={activeConv.candidate} size="md" />
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="font-semibold text-slate-900 truncate">
@@ -557,6 +579,12 @@ export function InboxClient({
                   </span>
                 </div>
                 <div className="flex items-center gap-2 text-xs text-slate-500">
+                  {activeConv.candidate.lineDisplayName && (
+                    <span className="text-green-600 font-medium truncate flex items-center gap-0.5">
+                      <span className="text-green-500 font-bold">LINE</span>
+                      {activeConv.candidate.lineDisplayName}
+                    </span>
+                  )}
                   {activeConv.candidate.interestedPosition && (
                     <span className="truncate">{activeConv.candidate.interestedPosition.title}</span>
                   )}

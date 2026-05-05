@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { verifyLineSignature, replyMessage, type LineWebhookPayload } from "@/lib/line";
+import { verifyLineSignature, replyMessage, getLineProfile, type LineWebhookPayload } from "@/lib/line";
 import { getDanielReply } from "@/lib/daniel-bot";
 import { NextResponse } from "next/server";
 
@@ -22,15 +22,29 @@ export async function POST(req: Request) {
     const replyToken = event.replyToken;
     const externalId = event.message.id;
 
+    // fetch LINE profile (fire in background-friendly way — don't block)
+    const lineProfile = await getLineProfile(lineUserId);
+
     // find or create candidate by lineUserId
     let candidate = await db.candidate.findUnique({ where: { lineUserId } });
     if (!candidate) {
       candidate = await db.candidate.create({
         data: {
-          nickname: "LINE User",
+          nickname: lineProfile?.displayName ?? "LINE User",
           lineUserId,
+          lineDisplayName: lineProfile?.displayName ?? null,
+          lineProfilePicUrl: lineProfile?.pictureUrl ?? null,
           sourceChannel: "LINE",
           currentStatus: "NEW_APPLICANT",
+        },
+      });
+    } else if (lineProfile) {
+      // refresh profile on every message (keeps pic URL alive)
+      candidate = await db.candidate.update({
+        where: { id: candidate.id },
+        data: {
+          lineDisplayName: lineProfile.displayName,
+          lineProfilePicUrl: lineProfile.pictureUrl ?? null,
         },
       });
     }

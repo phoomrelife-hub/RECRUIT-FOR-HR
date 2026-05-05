@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, Phone, Mail, MapPin, Calendar, DollarSign, Briefcase, ExternalLink } from "lucide-react";
+import { ArrowLeft, Phone, Mail, MapPin, Calendar, DollarSign, Briefcase, ExternalLink, MessageCircle } from "lucide-react";
 import { format } from "date-fns";
 import { CandidateStatus, SourceChannel, ExperienceStatus } from "@prisma/client";
 import { CandidateProfileClient } from "./candidate-profile-client";
@@ -144,6 +144,37 @@ export default async function CandidateProfilePage({ params }: { params: Promise
       <div className="grid grid-cols-3 gap-6">
         {/* Left: Profile Info */}
         <div className="col-span-1 space-y-4">
+          {/* LINE Profile Card */}
+          {candidate.lineUserId && (
+            <Card className="border-green-200 bg-green-50">
+              <CardContent className="pt-4 pb-4">
+                <div className="flex items-center gap-3">
+                  {candidate.lineProfilePicUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={candidate.lineProfilePicUrl}
+                      alt={candidate.lineDisplayName ?? "LINE"}
+                      className="w-12 h-12 rounded-full object-cover border-2 border-green-300"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-green-200 flex items-center justify-center border-2 border-green-300">
+                      <MessageCircle className="h-6 w-6 text-green-600" />
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-green-700 mb-0.5">LINE Profile</p>
+                    <p className="text-sm font-bold text-slate-900 truncate">
+                      {candidate.lineDisplayName ?? "ไม่ระบุชื่อ"}
+                    </p>
+                    <p className="text-[10px] text-green-600 font-mono truncate mt-0.5">
+                      {candidate.lineUserId}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Contact */}
           <Card className="border-slate-200">
             <CardHeader className="pb-3">

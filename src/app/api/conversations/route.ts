@@ -34,6 +34,8 @@ export async function GET(req: Request) {
           fullName: true,
           nickname: true,
           phone: true,
+          lineDisplayName: true,
+          lineProfilePicUrl: true,
           sourceChannel: true,
           currentStatus: true,
           interestedPosition: { select: { id: true, title: true } },
