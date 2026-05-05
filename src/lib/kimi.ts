@@ -5,7 +5,8 @@ export type AiProviderName =
   | "groq"
   | "together"
   | "mistral"
-  | "gemini";
+  | "gemini"
+  | "kimi";
 
 export type KimiMessage = {
   role: "system" | "user" | "assistant";
@@ -27,6 +28,7 @@ const ENDPOINTS: Record<AiProviderName, string> = {
   together: "https://api.together.xyz/v1/chat/completions",
   mistral: "https://api.mistral.ai/v1/chat/completions",
   gemini: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+  kimi: "https://api.moonshot.cn/v1/chat/completions",
 };
 
 export const DEFAULT_MODELS: Record<AiProviderName, string> = {
@@ -37,6 +39,7 @@ export const DEFAULT_MODELS: Record<AiProviderName, string> = {
   together: "meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo",
   mistral: "mistral-small-latest",
   gemini: "gemini-2.0-flash",
+  kimi: "moonshot-v1-8k",
 };
 
 export async function askAI(messages: KimiMessage[], config: AiProviderConfig): Promise<string> {

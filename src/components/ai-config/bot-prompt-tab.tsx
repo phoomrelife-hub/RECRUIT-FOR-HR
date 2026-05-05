@@ -128,6 +128,13 @@ const PROVIDERS = [
     hint: "generativelanguage.googleapis.com · มี free tier",
     models: ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro"],
   },
+  {
+    value: "kimi",
+    label: "Kimi (Moonshot)",
+    defaultModel: "moonshot-v1-8k",
+    hint: "api.moonshot.cn · ใช้ API key จาก platform.moonshot.cn",
+    models: ["moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"],
+  },
 ];
 
 export function BotPromptTab() {
