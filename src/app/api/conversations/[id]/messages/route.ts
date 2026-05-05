@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { pushMessage } from "@/lib/line";
+import { sendFbMessage } from "@/lib/facebook";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -47,6 +48,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       await pushMessage(conversation.candidate.lineUserId, parsed.data.content);
     } catch (err) {
       console.error("[LINE push] failed:", err);
+    }
+  } else if (conversation.channel === "FACEBOOK" && conversation.candidate.facebookUserId) {
+    try {
+      await sendFbMessage(conversation.candidate.facebookUserId, parsed.data.content);
+    } catch (err) {
+      console.error("[FB push] failed:", err);
     }
   }
 
