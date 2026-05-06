@@ -672,6 +672,7 @@ export function InboxClient({
   }, [activeId, loadConversation]);
 
   useEffect(() => {
+    refreshList(); // sync ทันทีตอน mount ไม่รอ interval แรก
     const listPoll = setInterval(() => refreshList(), 2000);
     return () => clearInterval(listPoll);
   }, [refreshList]);
