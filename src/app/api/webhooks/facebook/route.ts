@@ -1,6 +1,9 @@
 import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { verifyFbSignature, getVerifyToken, sendFbMessage, FbWebhookPayload } from "@/lib/facebook";
+import { sendToDaniel } from "@/lib/openclaw-client";
+import { getDanielReply } from "@/lib/daniel-bot";
+import { sanitizeBotReply } from "@/lib/sanitize-bot-reply";
 
 // ─── GET — Webhook verification challenge ────────────────────────────────────
 
@@ -72,7 +75,10 @@ export async function POST(req: Request) {
 
 async function handleFbMessage(facebookUserId: string, text: string, externalId: string) {
   // find or create candidate
-  let candidate = await db.candidate.findUnique({ where: { facebookUserId } });
+  let candidate = await db.candidate.findUnique({
+    where: { facebookUserId },
+    include: { interestedPosition: { select: { title: true } } },
+  });
   if (!candidate) {
     candidate = await db.candidate.create({
       data: {
@@ -81,6 +87,7 @@ async function handleFbMessage(facebookUserId: string, text: string, externalId:
         sourceChannel: "FACEBOOK",
         currentStatus: "NEW_APPLICANT",
       },
+      include: { interestedPosition: { select: { title: true } } },
     });
   }
 
@@ -129,22 +136,49 @@ async function handleFbMessage(facebookUserId: string, text: string, externalId:
     data: { lastMessageAt: new Date(), status: "ACTIVE", unreadCount: { increment: 1 } },
   });
 
-  // Bot reply (if botEnabled)
+  // Bot reply (if botEnabled) — try OpenClaw first, fall back to daniel-bot
   if (conversation.botEnabled) {
     try {
-      const { getDanielReply } = await import("@/lib/daniel-bot");
-      const messages = await db.message.findMany({
-        where: { conversationId: conversation.id },
-        orderBy: { createdAt: "desc" },
-        take: 20,
-      });
-      const candidateMsgCount = messages.filter((m) => m.senderType === "CANDIDATE").length;
-      const history = messages.reverse().map((m) => ({
-        role: m.senderType === "CANDIDATE" ? "user" : "assistant",
-        content: m.content,
-      })) as { role: "user" | "assistant"; content: string }[];
+      let botReply: string | null = null;
 
-      const botReply = await getDanielReply(candidateMsgCount, history);
+      // try OpenClaw
+      const ocReply = await sendToDaniel({
+        conversationId: conversation.id,
+        candidateId: candidate.id,
+        message: text,
+        channel: "FACEBOOK",
+        context: {
+          candidateName: candidate.nickname ?? candidate.fullName,
+          position: candidate.interestedPosition?.title ?? null,
+          status: candidate.currentStatus,
+        },
+      });
+
+      if (ocReply?.reply) {
+        botReply = sanitizeBotReply(ocReply.reply);
+        // handle handoff — HR takeover requested by bot
+        if (ocReply.handoff) {
+          await db.conversation.update({
+            where: { id: conversation.id },
+            data: { botEnabled: false },
+          });
+        }
+      } else {
+        // fall back to daniel-bot
+        const messages = await db.message.findMany({
+          where: { conversationId: conversation.id },
+          orderBy: { createdAt: "asc" },
+          take: 20,
+        });
+        const candidateMsgCount = messages.filter((m) => m.senderType === "CANDIDATE").length;
+        const history = messages.map((m) => ({
+          role: (m.senderType === "CANDIDATE" ? "user" : "assistant") as "user" | "assistant",
+          content: m.content,
+        }));
+        const fallback = await getDanielReply(candidateMsgCount, history);
+        if (fallback) botReply = sanitizeBotReply(fallback);
+      }
+
       if (botReply) {
         await sendFbMessage(facebookUserId, botReply);
         await db.message.create({
