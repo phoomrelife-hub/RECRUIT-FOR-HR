@@ -3,45 +3,38 @@
 import { useState } from "react";
 import { AI_TABS, type AiTab } from "@/components/ai-config/types";
 import { OverviewTab } from "@/components/ai-config/overview-tab";
-import { PersonaTab } from "@/components/ai-config/persona-tab";
-import { BotPromptTab } from "@/components/ai-config/bot-prompt-tab";
 import { ScreeningFlowTab } from "@/components/ai-config/screening-flow-tab";
 import { PositionRulesTab } from "@/components/ai-config/position-rules-tab";
 import { HandoffRulesTab } from "@/components/ai-config/handoff-rules-tab";
 import { TaggingRulesTab } from "@/components/ai-config/tagging-rules-tab";
 import { ScoringTab } from "@/components/ai-config/scoring-tab";
 import { SummaryTemplatesTab } from "@/components/ai-config/summary-templates-tab";
-import { OpenClawTab } from "@/components/ai-config/openclaw-tab";
 import { OpenClawRulesTab } from "@/components/ai-config/openclaw-rules-tab";
 import { PlaygroundTab } from "@/components/ai-config/playground-tab";
 import { LogsTab } from "@/components/ai-config/logs-tab";
 import { CostControlTab } from "@/components/ai-config/cost-control-tab";
 import { FallbackTab } from "@/components/ai-config/fallback-tab";
-import { RoutingTab } from "@/components/ai-config/routing-tab";
 
 function TabContent({ tab }: { tab: AiTab }) {
   switch (tab) {
     case "overview": return <OverviewTab />;
-    case "persona": return <PersonaTab />;
-    case "bot-prompt": return <BotPromptTab />;
+    case "openclaw-rules": return <OpenClawRulesTab />;
     case "screening-flow": return <ScreeningFlowTab />;
     case "position-rules": return <PositionRulesTab />;
     case "handoff-rules": return <HandoffRulesTab />;
     case "tagging-rules": return <TaggingRulesTab />;
     case "scoring": return <ScoringTab />;
     case "summary-templates": return <SummaryTemplatesTab />;
-    case "openclaw-rules": return <OpenClawRulesTab />;
-    case "openclaw": return <OpenClawTab />;
     case "playground": return <PlaygroundTab />;
     case "logs": return <LogsTab />;
     case "cost-control": return <CostControlTab />;
     case "fallback": return <FallbackTab />;
-    default: return <RoutingTab />;
+    default: return <OverviewTab />;
   }
 }
 
 export function AiConfigClient() {
-  const [activeTab, setActiveTab] = useState<AiTab>("overview");
+  const [activeTab, setActiveTab] = useState<AiTab>("openclaw-rules");
 
   return (
     <div className="flex gap-6">

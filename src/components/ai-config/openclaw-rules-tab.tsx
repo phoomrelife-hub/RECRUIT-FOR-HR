@@ -1,9 +1,26 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronRight, Save, Loader2, Check, Copy, ExternalLink } from "lucide-react";
+import {
+  ChevronRight,
+  Save,
+  Loader2,
+  Check,
+  Copy,
+  ExternalLink,
+  RefreshCw,
+  CheckCircle,
+  XCircle,
+} from "lucide-react";
 
 const SECTIONS = [
+  {
+    key: "objectives",
+    thLabel: "เป้าหมายหลัก",
+    enLabel: "Objectives",
+    placeholder: "บอทมีเป้าหมายเพื่อ... เช่น คัดกรองผู้สมัคร ให้ข้อมูลตำแหน่ง นัดสัมภาษณ์...",
+    rows: 5,
+  },
   {
     key: "identity",
     thLabel: "ตัวตนและน้ำเสียง",
@@ -19,39 +36,98 @@ const SECTIONS = [
     rows: 8,
   },
   {
+    key: "conversation_flow",
+    thLabel: "ลำดับการสนทนา",
+    enLabel: "Conversation Flow",
+    placeholder: "ขั้นตอน 1) ทักทาย 2) ถามชื่อ 3) ถามตำแหน่งที่สมัคร 4) ส่งลิงก์ฟอร์ม...",
+    rows: 8,
+  },
+  {
     key: "positions",
-    thLabel: "ข้อมูลตำแหน่งงานและบริษัท",
+    thLabel: "ข้อมูลตำแหน่งและบริษัท",
     enLabel: "Position & Company Info",
-    placeholder:
-      "ตำแหน่งที่เปิดรับ เงินเดือน คุณสมบัติ ที่อยู่บริษัท สวัสดิการ...",
+    placeholder: "ตำแหน่งที่เปิดรับ เงินเดือน คุณสมบัติ ที่อยู่บริษัท สวัสดิการ...",
     rows: 10,
   },
   {
     key: "contact",
     thLabel: "ข้อมูลติดต่อ",
     enLabel: "Contact Info",
-    placeholder: "เบอร์โทร: 082-474-4442, Email: hr@relife.co.th, LINE OA: @relifejob",
+    placeholder: "เบอร์โทร: 082-474-4442\nEmail: hr@relife.co.th\nLINE OA: @relifejob",
     rows: 4,
+  },
+  {
+    key: "faqs",
+    thLabel: "คำถามที่พบบ่อย",
+    enLabel: "FAQs",
+    placeholder: "Q: เงินเดือนเท่าไหร่?\nA: ...\n\nQ: ทำงานกี่วันต่อสัปดาห์?\nA: ...",
+    rows: 8,
+  },
+  {
+    key: "response_templates",
+    thLabel: "Template การตอบ",
+    enLabel: "Response Templates",
+    placeholder: "ข้อความต้อนรับ: สวัสดีครับ...\nแจ้งผลสมัคร: ขอบคุณที่สมัครงาน...\nนัดสัมภาษณ์: ทางบริษัทขอนัดสัมภาษณ์...",
+    rows: 8,
   },
 ] as const;
 
 type SectionKey = (typeof SECTIONS)[number]["key"];
-type Values = Record<SectionKey, string>;
+type ContentValues = Record<SectionKey, string>;
+
+const TONES = ["Professional", "Friendly", "Formal", "Casual", "Warm", "Enthusiastic"];
+const LANGUAGES = [
+  { value: "thai_english", label: "ไทย + English" },
+  { value: "thai", label: "ภาษาไทย" },
+  { value: "english", label: "English" },
+];
 
 const CONFIG_URL = "https://recruit-for-hr.vercel.app/api/openclaw/config";
 
+interface OpenClawConnection {
+  ok: boolean;
+  version?: string;
+  error?: string;
+}
+
+interface OpenClawServerConfig {
+  enabled: boolean;
+  model: string;
+  temperature: number;
+  max_tokens: number;
+  system_prompt: string;
+}
+
 export function OpenClawRulesTab() {
-  const [values, setValues] = useState<Values>({
+  const [values, setValues] = useState<ContentValues>({
+    objectives: "",
     identity: "",
     critical_rules: "",
+    conversation_flow: "",
     positions: "",
     contact: "",
+    faqs: "",
+    response_templates: "",
   });
+  const [botName, setBotName] = useState("หลิน");
+  const [tone, setTone] = useState("Friendly");
+  const [language, setLanguage] = useState("thai_english");
   const [active, setActive] = useState(false);
+  const [enabled, setEnabled] = useState(true);
+  const [serverConfig, setServerConfig] = useState<OpenClawServerConfig>({
+    enabled: true,
+    model: "default",
+    temperature: 0.7,
+    max_tokens: 500,
+    system_prompt: "",
+  });
+  const [connection, setConnection] = useState<OpenClawConnection | null>(null);
   const [autoSave, setAutoSave] = useState(true);
   const [openKeys, setOpenKeys] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingEnabled, setSavingEnabled] = useState(false);
+  const [testing, setTesting] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [hasError, setHasError] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -65,16 +141,41 @@ export function OpenClawRulesTab() {
   async function load() {
     setLoading(true);
     try {
-      const res = await fetch("/api/settings/ai/openclaw-rules");
-      if (res.ok) {
-        const data = await res.json();
+      const [rulesRes, openclawRes] = await Promise.all([
+        fetch("/api/settings/ai/openclaw-rules"),
+        fetch("/api/settings/ai/openclaw"),
+      ]);
+
+      if (rulesRes.ok) {
+        const data = await rulesRes.json();
         setValues({
+          objectives: data.objectives ?? "",
           identity: data.identity ?? "",
           critical_rules: data.critical_rules ?? "",
+          conversation_flow: data.conversation_flow ?? "",
           positions: data.positions ?? "",
           contact: data.contact ?? "",
+          faqs: data.faqs ?? "",
+          response_templates: data.response_templates ?? "",
         });
         setActive(data.active === "true");
+        setBotName(data.bot_name ?? "หลิน");
+        setTone(data.tone ?? "Friendly");
+        setLanguage(data.language ?? "thai_english");
+      }
+
+      if (openclawRes.ok) {
+        const data = await openclawRes.json();
+        const cfg = data.config ?? {};
+        setEnabled(cfg.enabled !== false);
+        setServerConfig({
+          enabled: cfg.enabled !== false,
+          model: cfg.model ?? "default",
+          temperature: cfg.temperature ?? 0.7,
+          max_tokens: cfg.max_tokens ?? 500,
+          system_prompt: cfg.system_prompt ?? "",
+        });
+        setConnection(data.connection ?? null);
       }
     } catch {
       setHasError(true);
@@ -82,11 +183,42 @@ export function OpenClawRulesTab() {
     setLoading(false);
   }
 
+  async function testConnection() {
+    setTesting(true);
+    try {
+      const res = await fetch("/api/settings/ai/openclaw");
+      if (res.ok) {
+        const data = await res.json();
+        setConnection(data.connection ?? null);
+      }
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  async function toggleEnabled(val: boolean) {
+    setSavingEnabled(true);
+    setEnabled(val);
+    try {
+      await fetch("/api/settings/ai/openclaw", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...serverConfig, enabled: val }),
+      });
+      setServerConfig((prev) => ({ ...prev, enabled: val }));
+    } finally {
+      setSavingEnabled(false);
+    }
+  }
+
   function buildPayload(
     vals = values,
-    isActive = active
-  ): Values & { active: boolean } {
-    return { ...vals, active: isActive };
+    isActive = active,
+    name = botName,
+    t = tone,
+    lang = language
+  ) {
+    return { ...vals, active: isActive, bot_name: name, tone: t, language: lang };
   }
 
   async function save(payload = buildPayload()) {
@@ -107,29 +239,37 @@ export function OpenClawRulesTab() {
     setSaving(false);
   }
 
+  function scheduleAutoSave(payload: ReturnType<typeof buildPayload>) {
+    isDirty.current = true;
+    if (!autoSave) return;
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    autoSaveTimer.current = setTimeout(() => save(payload), 2000);
+  }
+
   function handleChange(key: SectionKey, val: string) {
     const next = { ...values, [key]: val };
     setValues(next);
-    isDirty.current = true;
-    if (autoSave) {
-      if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-      autoSaveTimer.current = setTimeout(
-        () => save(buildPayload(next, active)),
-        2000
-      );
-    }
+    scheduleAutoSave(buildPayload(next));
+  }
+
+  function handleBotName(val: string) {
+    setBotName(val);
+    scheduleAutoSave(buildPayload(values, active, val, tone, language));
+  }
+
+  function handleTone(val: string) {
+    setTone(val);
+    scheduleAutoSave(buildPayload(values, active, botName, val, language));
+  }
+
+  function handleLanguage(val: string) {
+    setLanguage(val);
+    scheduleAutoSave(buildPayload(values, active, botName, tone, val));
   }
 
   function handleActiveToggle(checked: boolean) {
     setActive(checked);
-    isDirty.current = true;
-    if (autoSave) {
-      if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-      autoSaveTimer.current = setTimeout(
-        () => save(buildPayload(values, checked)),
-        2000
-      );
-    }
+    scheduleAutoSave(buildPayload(values, checked));
   }
 
   async function copyUrl() {
@@ -138,68 +278,109 @@ export function OpenClawRulesTab() {
     setTimeout(() => setCopied(false), 2000);
   }
 
-  const filledCount = SECTIONS.filter(
-    (s) => (values[s.key] ?? "").trim().length > 0
-  ).length;
-  const totalChars = SECTIONS.reduce(
-    (sum, s) => sum + (values[s.key] ?? "").length,
-    0
-  );
+  const filledCount = SECTIONS.filter((s) => (values[s.key] ?? "").trim().length > 0).length;
+  const totalChars = SECTIONS.reduce((sum, s) => sum + (values[s.key] ?? "").length, 0);
 
   if (loading) return <div className="animate-pulse h-96 bg-slate-100 rounded-xl" />;
 
   return (
     <div>
-      {/* Active toggle + info banner */}
-      <div className="border border-slate-200 rounded-xl p-5 mb-5 bg-white">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="font-semibold text-slate-800 text-sm">
-              ใช้งาน Config นี้กับ OpenClaw (หลิน)
-            </p>
-            <p className="text-xs text-slate-500 mt-0.5">
-              เปิดเพื่อให้ OpenClaw ดึง prompt จาก DB แทนไฟล์ local
-            </p>
+      {/* Connection status + OpenClaw enable toggle */}
+      <div className="border border-slate-200 rounded-xl p-4 mb-5 bg-white">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            {connection?.ok ? (
+              <span className="flex items-center gap-1.5 text-xs font-medium text-green-700 bg-green-50 border border-green-200 px-3 py-1.5 rounded-full">
+                <CheckCircle className="h-3.5 w-3.5" />
+                เชื่อมต่อแล้ว{connection.version ? ` · v${connection.version}` : ""}
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 text-xs font-medium text-red-700 bg-red-50 border border-red-200 px-3 py-1.5 rounded-full">
+                <XCircle className="h-3.5 w-3.5" />
+                ไม่ได้เชื่อมต่อ
+              </span>
+            )}
+            <button
+              onClick={testConnection}
+              disabled={testing}
+              className="flex items-center gap-1.5 text-xs text-slate-600 border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${testing ? "animate-spin" : ""}`} />
+              ทดสอบ
+            </button>
+            {!connection?.ok && connection?.error && (
+              <span className="text-xs text-slate-400">{connection.error}</span>
+            )}
           </div>
-          <button
-            role="switch"
-            aria-checked={active}
-            onClick={() => handleActiveToggle(!active)}
-            className={`relative w-11 h-6 rounded-full transition-colors ${
-              active ? "bg-green-500" : "bg-slate-300"
-            }`}
-          >
-            <span
-              className={`absolute top-1 left-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${
-                active ? "translate-x-5" : "translate-x-0"
-              }`}
-            />
-          </button>
-        </div>
 
-        {/* Status banner */}
-        <div
-          className={`mt-4 flex items-start gap-2.5 px-4 py-3 rounded-lg text-sm border ${
-            active
-              ? "bg-green-50 border-green-200 text-green-800"
-              : "bg-amber-50 border-amber-200 text-amber-800"
-          }`}
-        >
-          <span className={`mt-0.5 h-2 w-2 rounded-full shrink-0 ${active ? "bg-green-500" : "bg-amber-400"}`} />
-          {active
-            ? "OpenClaw จะดึง config นี้แทนไฟล์ local (SOUL.md, POSITIONS.md)"
-            : "OpenClaw ใช้ไฟล์ local (SOUL.md, POSITIONS.md) — config นี้ยังไม่ได้ใช้งาน"}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-slate-600">เปิดใช้งาน OpenClaw</span>
+            {savingEnabled && <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />}
+            <button
+              role="switch"
+              aria-checked={enabled}
+              onClick={() => toggleEnabled(!enabled)}
+              disabled={savingEnabled}
+              className={`relative w-11 h-6 rounded-full transition-colors disabled:opacity-60 ${
+                enabled ? "bg-blue-600" : "bg-slate-300"
+              }`}
+            >
+              <span
+                className={`absolute top-1 left-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                  enabled ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Header bar */}
+      {/* Bot basics */}
+      <div className="border border-slate-200 rounded-xl p-5 mb-5 bg-white">
+        <p className="text-sm font-semibold text-slate-800 mb-4">ข้อมูลบอท</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-600">ชื่อบอท</label>
+            <input
+              value={botName}
+              onChange={(e) => handleBotName(e.target.value)}
+              placeholder="หลิน"
+              className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-600">โทนเสียง</label>
+            <select
+              value={tone}
+              onChange={(e) => handleTone(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {TONES.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-600">ภาษา</label>
+            <select
+              value={language}
+              onChange={(e) => handleLanguage(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {LANGUAGES.map((l) => (
+                <option key={l.value} value={l.value}>{l.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Toolbar */}
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-1 text-sm">
             <button
-              onClick={() =>
-                setOpenKeys(new Set(SECTIONS.map((s) => s.key)))
-              }
+              onClick={() => setOpenKeys(new Set(SECTIONS.map((s) => s.key)))}
               className="text-blue-600 hover:underline font-medium"
             >
               เปิดทั้งหมด
@@ -218,12 +399,32 @@ export function OpenClawRulesTab() {
           {hasError && (
             <span className="flex items-center gap-1.5 text-xs text-red-500 font-medium">
               <span className="h-1.5 w-1.5 rounded-full bg-red-500 inline-block" />
-              Error
+              บันทึกไม่สำเร็จ
             </span>
           )}
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Send to OpenClaw toggle */}
+          <label className="flex items-center gap-1.5 text-sm text-slate-600 cursor-pointer select-none">
+            <button
+              role="switch"
+              aria-checked={active}
+              onClick={() => handleActiveToggle(!active)}
+              className={`relative w-9 h-5 rounded-full transition-colors ${
+                active ? "bg-green-500" : "bg-slate-300"
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                  active ? "translate-x-4" : "translate-x-0"
+                }`}
+              />
+            </button>
+            ส่งไป OpenClaw
+          </label>
+
+          {/* Auto-save toggle */}
           <label className="flex items-center gap-1.5 text-sm text-slate-600 cursor-pointer select-none">
             <button
               role="switch"
@@ -278,9 +479,7 @@ export function OpenClawRulesTab() {
                 onClick={() =>
                   setOpenKeys((prev) => {
                     const n = new Set(prev);
-                    n.has(section.key)
-                      ? n.delete(section.key)
-                      : n.add(section.key);
+                    n.has(section.key) ? n.delete(section.key) : n.add(section.key);
                     return n;
                   })
                 }
@@ -292,12 +491,8 @@ export function OpenClawRulesTab() {
                       isOpen ? "rotate-90" : ""
                     }`}
                   />
-                  <span className="font-medium text-slate-800 text-sm">
-                    {section.thLabel}
-                  </span>
-                  <span className="text-sm text-slate-400">
-                    ({section.enLabel})
-                  </span>
+                  <span className="font-medium text-slate-800 text-sm">{section.thLabel}</span>
+                  <span className="text-sm text-slate-400">({section.enLabel})</span>
                   <span
                     className={`h-2 w-2 rounded-full shrink-0 ${
                       isFilled ? "bg-green-500" : "bg-slate-300"
@@ -314,9 +509,7 @@ export function OpenClawRulesTab() {
                   <div className="pt-4">
                     <textarea
                       value={content}
-                      onChange={(e) =>
-                        handleChange(section.key, e.target.value)
-                      }
+                      onChange={(e) => handleChange(section.key, e.target.value)}
                       rows={section.rows}
                       placeholder={section.placeholder}
                       className="w-full border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-700 placeholder:text-slate-400 bg-white resize-y focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent leading-relaxed"
@@ -339,11 +532,9 @@ export function OpenClawRulesTab() {
 
       {/* Export URL */}
       <div className="border border-slate-200 rounded-xl p-5 mt-5 bg-white">
-        <div className="flex items-center gap-2 mb-3">
+        <div className="flex items-center gap-2 mb-2">
           <ExternalLink className="h-4 w-4 text-blue-600" />
-          <span className="font-semibold text-slate-800 text-sm">
-            Export URL (สำหรับ OpenClaw)
-          </span>
+          <span className="font-semibold text-slate-800 text-sm">Export URL (สำหรับ OpenClaw)</span>
         </div>
         <p className="text-xs text-slate-500 mb-3">
           ให้ OpenClaw เรียก URL นี้เพื่อดึง system prompt ล่าสุดจาก DB
@@ -362,11 +553,7 @@ export function OpenClawRulesTab() {
                 : "border-slate-200 text-slate-600 hover:bg-slate-50"
             }`}
           >
-            {copied ? (
-              <Check className="h-3.5 w-3.5" />
-            ) : (
-              <Copy className="h-3.5 w-3.5" />
-            )}
+            {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
             {copied ? "คัดลอกแล้ว" : "คัดลอก"}
           </button>
         </div>
