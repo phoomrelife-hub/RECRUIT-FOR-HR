@@ -2,7 +2,6 @@ import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { verifyFbSignature, getVerifyToken, sendFbMessage, FbWebhookPayload } from "@/lib/facebook";
 import { sendToDaniel } from "@/lib/openclaw-client";
-import { getDanielReply } from "@/lib/daniel-bot";
 import { sanitizeBotReply } from "@/lib/sanitize-bot-reply";
 
 // ─── GET — Webhook verification challenge ────────────────────────────────────
@@ -136,12 +135,9 @@ async function handleFbMessage(facebookUserId: string, text: string, externalId:
     data: { lastMessageAt: new Date(), status: "ACTIVE", unreadCount: { increment: 1 } },
   });
 
-  // Bot reply (if botEnabled) — try OpenClaw first, fall back to daniel-bot
+  // Bot reply via OpenClaw only (if botEnabled)
   if (conversation.botEnabled) {
     try {
-      let botReply: string | null = null;
-
-      // try OpenClaw
       const ocReply = await sendToDaniel({
         conversationId: conversation.id,
         candidateId: candidate.id,
@@ -155,31 +151,8 @@ async function handleFbMessage(facebookUserId: string, text: string, externalId:
       });
 
       if (ocReply?.reply) {
-        botReply = sanitizeBotReply(ocReply.reply);
-        // handle handoff — HR takeover requested by bot
-        if (ocReply.handoff) {
-          await db.conversation.update({
-            where: { id: conversation.id },
-            data: { botEnabled: false },
-          });
-        }
-      } else {
-        // fall back to daniel-bot
-        const messages = await db.message.findMany({
-          where: { conversationId: conversation.id },
-          orderBy: { createdAt: "asc" },
-          take: 20,
-        });
-        const candidateMsgCount = messages.filter((m) => m.senderType === "CANDIDATE").length;
-        const history = messages.map((m) => ({
-          role: (m.senderType === "CANDIDATE" ? "user" : "assistant") as "user" | "assistant",
-          content: m.content,
-        }));
-        const fallback = await getDanielReply(candidateMsgCount, history);
-        if (fallback) botReply = sanitizeBotReply(fallback);
-      }
+        const botReply = sanitizeBotReply(ocReply.reply);
 
-      if (botReply) {
         await sendFbMessage(facebookUserId, botReply);
         await db.message.create({
           data: { conversationId: conversation.id, content: botReply, senderType: "BOT" },
@@ -188,6 +161,13 @@ async function handleFbMessage(facebookUserId: string, text: string, externalId:
           where: { id: conversation.id },
           data: { lastMessageAt: new Date() },
         });
+
+        if (ocReply.handoff) {
+          await db.conversation.update({
+            where: { id: conversation.id },
+            data: { botEnabled: false },
+          });
+        }
       }
     } catch (err) {
       console.error("[FB webhook] bot reply failed:", err);
