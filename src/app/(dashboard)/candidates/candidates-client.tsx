@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Plus, Search, MoreHorizontal, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -34,6 +34,7 @@ type Candidate = {
   expectedSalary: number | null;
   createdAt: Date;
   interestedPosition: { id: string; title: string } | null;
+  lineProfilePicUrl: string | null;
 };
 
 const statusColor: Record<CandidateStatus, string> = {
@@ -230,6 +231,9 @@ export function CandidatesClient({
               >
                 <div className="flex items-center gap-3 flex-1 min-w-0">
                   <Avatar className="h-9 w-9 shrink-0">
+                    {c.lineProfilePicUrl && (
+                      <AvatarImage src={c.lineProfilePicUrl} alt={getDisplayName(c)} />
+                    )}
                     <AvatarFallback className="bg-blue-50 text-blue-700 text-xs font-semibold">
                       {getInitials(c)}
                     </AvatarFallback>

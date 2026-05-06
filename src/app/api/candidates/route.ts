@@ -73,6 +73,7 @@ export async function GET(req: Request) {
         experienceStatus: true,
         expectedSalary: true,
         createdAt: true,
+        lineProfilePicUrl: true,
       },
       orderBy: { createdAt: "desc" },
       skip,
