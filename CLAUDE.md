@@ -88,10 +88,12 @@ src/app/api/
   openclaw/sync/                        — LINE→Recruit OS sync: saves candidate msg + LINE profile (displayName, pictureUrl) (POST, no auth)
   openclaw/check-paused/               — check if HR has taken over per-user via HumanTakeover records (GET, no auth, Cache-Control: no-store)
   openclaw/backfill-profiles/          — backfill LINE display names + profile pics for existing candidates (POST, no auth)
+  openclaw/config/                      — public GET, no auth; compiles openclaw.rules.* from DB into system prompt for OpenClaw to fetch (CORS *)
   webhooks/line/                        — real LINE webhook receiver (POST, no auth required)
   integrations/line/                    — manage LINE credentials in DB (GET/PUT/DELETE, SUPER_ADMIN only)
   ~~bot-config/~~                       — DELETED (superseded by /api/settings/ai/*)
   settings/ai/openclaw/                — OpenClaw config: enabled, model, temperature, max_tokens, system_prompt — stored as openclaw.* in Setting table (GET/PUT, HR_MANAGER+)
+  settings/ai/openclaw-rules/          — Bot Rules (หลิน): identity, critical_rules, positions, contact, active — stored as openclaw.rules.* in Setting table (GET/PUT, HR_MANAGER+)
   pipeline/                             — GET all candidates for Kanban board (filter: jobPositionId)
   screening-forms/                      — list all forms (GET), create form (POST) — HR_MANAGER+ only
   screening-forms/[id]/                 — get/update/delete form; DELETE SUPER_ADMIN only
@@ -152,6 +154,11 @@ npx prisma generate  # regenerate client
   - Removed duplicate /bot-config UI → redirect to /settings/ai
   - image/file forwarded to OpenClaw OCR; sticker/video/audio ack+drop with variants
   - SOUL.md: locked address, working hours, media handling rules
+- [x] Phase 12.2: Bot Rules (หลิน) UI tab *(2026-05-06, commit 794ac43)*
+  - New "Bot Rules (หลิน)" tab in /settings/ai — edit OpenClaw prompt from UI (HR_MANAGER+)
+  - /api/settings/ai/openclaw-rules — GET/PUT for openclaw.rules.* in Setting table
+  - /api/openclaw/config — public endpoint; compiles DB rules → system prompt for OpenClaw to fetch
+  - Whitelisted /api/openclaw/config in proxy.ts (no auth required)
 
 ## UI Conventions
 - Colors: blue-600 primary, slate-* neutral, green passed, red rejected, yellow waiting
@@ -273,6 +280,9 @@ SUBMIT_SCREENING_ANSWERS, SCORE_CANDIDATE, GENERATE_AI_SUMMARY
 - **`/api/bot-config` DELETED** — replaced by `/api/settings/ai/*` routes
 - OpenClaw config stored as `openclaw.*` keys in Setting table; managed via `/api/settings/ai/openclaw`
 - `src/components/ai-config/openclaw-tab.tsx` — calls `/api/settings/ai/openclaw` (NOT /api/bot-config/openclaw)
+- **Bot Rules (หลิน)** stored as `openclaw.rules.*` keys in Setting table; managed via `/api/settings/ai/openclaw-rules`
+- `src/components/ai-config/openclaw-rules-tab.tsx` — 4-section accordion (identity / critical_rules / positions / contact) + active toggle + auto-save; shows Export URL for OpenClaw to fetch
+- `GET /api/openclaw/config` — public endpoint (no auth, CORS *); compiles `openclaw.rules.*` sections into a single system prompt; returns `{ active, prompt, sections }`; Cache-Control: no-store
 
 ## Phase 11: AI Config + AI Playground Module
 Route: `/settings/ai` — accessible to SUPER_ADMIN + HR_MANAGER only (HR_STAFF redirect to /dashboard)
