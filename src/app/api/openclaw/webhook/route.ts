@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { sendToDaniel } from "@/lib/openclaw-client";
 import { getDanielReplyWithContext } from "@/lib/daniel-bot";
+import { sanitizeBotReply } from "@/lib/sanitize-bot-reply";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
@@ -78,7 +79,7 @@ export async function POST(req: Request) {
     });
 
     if (danielReply?.reply) {
-      botReplyContent = danielReply.reply;
+      botReplyContent = sanitizeBotReply(danielReply.reply);
       openclawId = danielReply.openclawId;
       handoff = danielReply.handoff ?? false;
       aiSource = openclawId ? "openclaw" : "fallback";

@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { getLineProfile } from "@/lib/line";
+import { sanitizeBotReply } from "@/lib/sanitize-bot-reply";
 import { NextResponse } from "next/server";
 
 // OpenClaw calls this endpoint after Daniel-hr sends/receives a LINE message
@@ -123,10 +124,11 @@ export async function POST(req: Request) {
 
   // save bot reply if present (skip backfill sentinel)
   if (botReply && botReply !== "__profile_backfill__") {
+    const cleanReply = sanitizeBotReply(botReply);
     await db.message.create({
       data: {
         conversationId: conversation.id,
-        content: botReply,
+        content: cleanReply,
         senderType: "BOT",
       },
     });

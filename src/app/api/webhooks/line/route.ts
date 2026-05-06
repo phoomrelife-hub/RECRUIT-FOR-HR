@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { verifyLineSignature, replyMessage, getLineProfile, type LineWebhookPayload } from "@/lib/line";
 import { getDanielReply } from "@/lib/daniel-bot";
+import { sanitizeBotReply } from "@/lib/sanitize-bot-reply";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
@@ -113,10 +114,11 @@ export async function POST(req: Request) {
       const botReply = await getDanielReply(candidateMsgCount, history);
 
       if (botReply) {
+        const cleanReply = sanitizeBotReply(botReply);
         await db.message.create({
           data: {
             conversationId: conversation.id,
-            content: botReply,
+            content: cleanReply,
             senderType: "BOT",
           },
         });
@@ -126,7 +128,7 @@ export async function POST(req: Request) {
           data: { lastMessageAt: new Date() },
         });
 
-        await replyMessage(replyToken, botReply);
+        await replyMessage(replyToken, cleanReply);
       }
     }
   }
