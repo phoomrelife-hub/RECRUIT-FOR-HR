@@ -83,6 +83,9 @@ export async function POST(req: Request) {
     });
   }
 
+  // anchor timestamp so user message always sorts before bot reply
+  const userMsgAt = new Date();
+
   // save candidate message (only when userMessage is provided)
   if (userMessage) {
     const existing = externalMessageId
@@ -96,6 +99,7 @@ export async function POST(req: Request) {
           content: userMessage,
           senderType: "CANDIDATE",
           externalId: externalMessageId ?? null,
+          createdAt: userMsgAt,
         },
       });
     }
@@ -125,11 +129,14 @@ export async function POST(req: Request) {
   // save bot reply if present (skip backfill sentinel)
   if (botReply && botReply !== "__profile_backfill__") {
     const cleanReply = sanitizeBotReply(botReply);
+    // always 2s after user message so sort order is deterministic
+    const botReplyAt = new Date(userMsgAt.getTime() + 2000);
     await db.message.create({
       data: {
         conversationId: conversation.id,
         content: cleanReply,
         senderType: "BOT",
+        createdAt: botReplyAt,
       },
     });
 

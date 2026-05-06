@@ -389,17 +389,17 @@ export function InboxClient({
     await loadConversation(id);
   }
 
-  // ── polling: active conversation (3s) + list refresh (5s) ──
+  // ── polling: active conversation (1.5s) + list refresh (2s) ──
   useEffect(() => {
     if (!activeId) return;
-    pollRef.current = setInterval(() => loadConversation(activeId), 3000);
+    pollRef.current = setInterval(() => loadConversation(activeId), 1500);
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, [activeId, loadConversation]);
 
   useEffect(() => {
-    const listPoll = setInterval(() => refreshList(), 5000);
+    const listPoll = setInterval(() => refreshList(), 2000);
     return () => clearInterval(listPoll);
   }, [refreshList]);
 
