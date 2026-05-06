@@ -79,7 +79,7 @@ export async function POST(req: Request) {
   });
   if (!conversation) {
     conversation = await db.conversation.create({
-      data: { candidateId: candidate.id, channel: "LINE", botEnabled: false },
+      data: { candidateId: candidate.id, channel: "LINE" },
     });
   }
 
