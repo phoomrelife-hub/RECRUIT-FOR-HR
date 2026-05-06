@@ -10,12 +10,15 @@ import {
   Send,
   Zap,
   X,
-  ChevronRight,
   Phone,
   ExternalLink,
   RefreshCw,
   Plus,
   Sparkles,
+  Tag as TagIcon,
+  UserCheck,
+  ArrowUpDown,
+  ChevronDown,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -63,6 +66,27 @@ interface QuickReply {
   content: string;
 }
 
+interface Tag {
+  id: string;
+  name: string;
+  color: string;
+}
+
+interface CandidateTag {
+  tagId: string;
+  tag: Tag;
+}
+
+interface HRUser {
+  id: string;
+  name: string;
+}
+
+interface Assignment {
+  assignedToId: string;
+  assignedTo: HRUser;
+}
+
 interface Props {
   initialConversations: Conversation[];
   quickReplies: QuickReply[];
@@ -74,6 +98,8 @@ interface Props {
     currentStatus: string;
   }[];
   currentUser: { id: string; name: string };
+  allTags: Tag[];
+  hrUsers: HRUser[];
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -106,13 +132,27 @@ const statusLabel: Record<string, string> = {
   CLOSED: "Closed",
 };
 
+const STATUS_ORDER = [
+  "NEW_APPLICANT",
+  "BOT_SCREENING",
+  "WAITING_HR_REVIEW",
+  "NEED_MORE_INFO",
+  "QUALIFIED",
+  "INTERVIEW_SCHEDULED",
+  "INTERVIEWED",
+  "PASSED",
+  "REJECTED",
+  "TALENT_POOL",
+  "CLOSED",
+];
+
 function candidateName(c: Candidate | null | undefined) {
   if (!c) return "Unknown";
   return c.fullName || c.lineDisplayName || c.nickname || c.phone || "ไม่ระบุชื่อ";
 }
 
-function CandidateAvatar({ c, size = "md" }: { c: Candidate | null | undefined; size?: "sm" | "md" }) {
-  const sz = size === "sm" ? "w-7 h-7 text-xs" : "w-9 h-9 text-sm";
+function CandidateAvatar({ c, size = "md" }: { c: Candidate | null | undefined; size?: "sm" | "md" | "lg" }) {
+  const sz = size === "sm" ? "w-7 h-7 text-xs" : size === "lg" ? "w-12 h-12 text-base" : "w-9 h-9 text-sm";
   const name = candidateName(c);
   if (c?.lineProfilePicUrl) {
     return (
@@ -122,7 +162,6 @@ function CandidateAvatar({ c, size = "md" }: { c: Candidate | null | undefined; 
         alt={name}
         className={`${sz} rounded-full object-cover flex-shrink-0`}
         onError={(e) => {
-          // fallback to initials if CDN link expires
           (e.target as HTMLImageElement).style.display = "none";
         }}
       />
@@ -219,7 +258,6 @@ function MessageBubble({ msg }: { msg: Message }) {
 
   return (
     <div className={`flex gap-2 mb-3 ${isHR ? "flex-row-reverse" : "flex-row"}`}>
-      {/* Avatar */}
       <div
         className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold ${
           isHR
@@ -238,7 +276,6 @@ function MessageBubble({ msg }: { msg: Message }) {
         )}
       </div>
 
-      {/* Bubble */}
       <div className={`max-w-[70%] ${isHR ? "items-end" : "items-start"} flex flex-col gap-0.5`}>
         {(isBot || (!isHR && !isBot)) && (
           <span className="text-[10px] text-slate-400 ml-1">
@@ -286,9 +323,7 @@ function ConvItem({
       }`}
     >
       <div className="flex items-start gap-3">
-        {/* Avatar */}
         <CandidateAvatar c={conv.candidate} size="md" />
-
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-1">
             <span className={`text-sm font-medium truncate ${active ? "text-blue-700" : "text-slate-800"}`}>
@@ -329,6 +364,215 @@ function ConvItem({
   );
 }
 
+// ─── Quick Actions Panel ──────────────────────────────────────────────────────
+
+function QuickActionsPanel({
+  conv,
+  candidateTags,
+  assignment,
+  allTags,
+  hrUsers,
+  changingStatus,
+  showTagMenu,
+  showAssignMenu,
+  onChangeStatus,
+  onAddTag,
+  onRemoveTag,
+  onAssign,
+  onSetShowTagMenu,
+  onSetShowAssignMenu,
+}: {
+  conv: Conversation;
+  candidateTags: CandidateTag[];
+  assignment: Assignment | null;
+  allTags: Tag[];
+  hrUsers: HRUser[];
+  changingStatus: boolean;
+  showTagMenu: boolean;
+  showAssignMenu: boolean;
+  onChangeStatus: (s: string) => void;
+  onAddTag: (tagId: string) => void;
+  onRemoveTag: (tagId: string) => void;
+  onAssign: (userId: string | null) => void;
+  onSetShowTagMenu: (v: boolean) => void;
+  onSetShowAssignMenu: (v: boolean) => void;
+}) {
+  const candidate = conv.candidate;
+  const assignedTagIds = new Set(candidateTags.map((ct) => ct.tagId));
+  const availableTags = allTags.filter((t) => !assignedTagIds.has(t.id));
+
+  return (
+    <div className="w-64 flex-shrink-0 bg-white border-l border-slate-200 flex flex-col overflow-y-auto">
+
+      {/* ── Candidate Summary ── */}
+      <div className="p-4 border-b border-slate-100 flex flex-col items-center text-center gap-2">
+        <CandidateAvatar c={candidate} size="lg" />
+        <div>
+          <p className="font-semibold text-sm text-slate-900 leading-tight">{candidateName(candidate)}</p>
+          {candidate.lineDisplayName && candidate.lineDisplayName !== candidateName(candidate) && (
+            <p className="text-[11px] text-green-600 mt-0.5">{candidate.lineDisplayName}</p>
+          )}
+        </div>
+        {candidate.interestedPosition && (
+          <p className="text-[11px] text-slate-500 -mt-1">{candidate.interestedPosition.title}</p>
+        )}
+        <Link
+          href={`/candidates/${conv.candidateId}`}
+          className="text-[11px] text-blue-600 hover:underline flex items-center gap-1"
+        >
+          ดูโปรไฟล์เต็ม <ExternalLink size={10} />
+        </Link>
+      </div>
+
+      {/* ── Status ── */}
+      <div className="p-4 border-b border-slate-100">
+        <div className="flex items-center gap-1.5 mb-2">
+          <ArrowUpDown size={12} className="text-slate-400" />
+          <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">สถานะ</p>
+        </div>
+        <div className="relative">
+          <select
+            value={candidate.currentStatus}
+            onChange={(e) => onChangeStatus(e.target.value)}
+            disabled={changingStatus}
+            className={`w-full text-xs border rounded-lg px-2.5 py-2 pr-7 focus:outline-none focus:ring-1 focus:ring-blue-500 appearance-none cursor-pointer disabled:opacity-60 ${statusColor[candidate.currentStatus] ?? "border-slate-200"} border-slate-200`}
+          >
+            {STATUS_ORDER.map((s) => (
+              <option key={s} value={s}>
+                {statusLabel[s]}
+              </option>
+            ))}
+          </select>
+          <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+        </div>
+        {changingStatus && (
+          <p className="text-[10px] text-slate-400 mt-1">กำลังบันทึก...</p>
+        )}
+      </div>
+
+      {/* ── Tags ── */}
+      <div className="p-4 border-b border-slate-100">
+        <div className="flex items-center gap-1.5 mb-2">
+          <TagIcon size={12} className="text-slate-400" />
+          <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Tags</p>
+        </div>
+
+        {candidateTags.length > 0 && (
+          <div className="flex flex-wrap gap-1 mb-2">
+            {candidateTags.map((ct) => (
+              <span
+                key={ct.tagId}
+                className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium"
+                style={{ backgroundColor: ct.tag.color + "25", color: ct.tag.color }}
+              >
+                {ct.tag.name}
+                <button
+                  onClick={() => onRemoveTag(ct.tagId)}
+                  className="hover:opacity-60 transition-opacity"
+                >
+                  <X size={9} />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div className="relative">
+          <button
+            onClick={() => onSetShowTagMenu(!showTagMenu)}
+            disabled={availableTags.length === 0}
+            className="w-full text-[11px] text-slate-500 hover:text-slate-700 flex items-center justify-center gap-1 border border-dashed border-slate-300 rounded-lg px-2 py-1.5 hover:bg-slate-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Plus size={10} />
+            {availableTags.length === 0 ? "ครบทุก tag แล้ว" : "เพิ่ม Tag"}
+          </button>
+
+          {showTagMenu && availableTags.length > 0 && (
+            <div className="absolute bottom-full left-0 right-0 mb-1 bg-white border border-slate-200 rounded-lg shadow-lg z-20 max-h-44 overflow-y-auto">
+              {availableTags.map((tag) => (
+                <button
+                  key={tag.id}
+                  onClick={() => onAddTag(tag.id)}
+                  className="w-full text-left text-xs px-3 py-2 hover:bg-slate-50 flex items-center gap-2 transition-colors"
+                >
+                  <span
+                    className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: tag.color }}
+                  />
+                  {tag.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Assign HR ── */}
+      <div className="p-4">
+        <div className="flex items-center gap-1.5 mb-2">
+          <UserCheck size={12} className="text-slate-400" />
+          <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">ผู้รับผิดชอบ</p>
+        </div>
+
+        {assignment ? (
+          <div className="flex items-center justify-between gap-2 mb-1.5">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-[10px] font-bold text-blue-700 flex-shrink-0">
+                {assignment.assignedTo.name.charAt(0).toUpperCase()}
+              </div>
+              <span className="text-xs text-slate-700 truncate">{assignment.assignedTo.name}</span>
+            </div>
+            <button
+              onClick={() => onSetShowAssignMenu(!showAssignMenu)}
+              className="text-[10px] text-blue-600 hover:underline flex-shrink-0"
+            >
+              เปลี่ยน
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => onSetShowAssignMenu(!showAssignMenu)}
+            className="w-full text-[11px] text-slate-500 hover:text-slate-700 flex items-center justify-center gap-1 border border-dashed border-slate-300 rounded-lg px-2 py-1.5 hover:bg-slate-50 transition-colors mb-1.5"
+          >
+            <Plus size={10} />
+            มอบหมาย HR
+          </button>
+        )}
+
+        {showAssignMenu && (
+          <div className="bg-white border border-slate-200 rounded-lg shadow-md overflow-hidden">
+            {assignment && (
+              <button
+                onClick={() => onAssign(null)}
+                className="w-full text-left text-xs px-3 py-2 hover:bg-red-50 text-red-500 border-b border-slate-100 transition-colors"
+              >
+                ยกเลิกการมอบหมาย
+              </button>
+            )}
+            {hrUsers.map((u) => (
+              <button
+                key={u.id}
+                onClick={() => onAssign(u.id)}
+                className={`w-full text-left text-xs px-3 py-2 hover:bg-slate-50 flex items-center gap-2 transition-colors ${
+                  assignment?.assignedToId === u.id ? "bg-blue-50" : ""
+                }`}
+              >
+                <div className="w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center text-[10px] font-bold text-blue-700 flex-shrink-0">
+                  {u.name.charAt(0).toUpperCase()}
+                </div>
+                <span className="truncate">{u.name}</span>
+                {assignment?.assignedToId === u.id && (
+                  <span className="ml-auto text-[9px] text-blue-600 font-medium">ปัจจุบัน</span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function InboxClient({
@@ -336,6 +580,8 @@ export function InboxClient({
   quickReplies,
   candidatesWithoutConversation,
   currentUser,
+  allTags,
+  hrUsers,
 }: Props) {
   const [conversations, setConversations] = useState<Conversation[]>(initialConversations);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -350,6 +596,14 @@ export function InboxClient({
   const [showNewConv, setShowNewConv] = useState(false);
   const [takingOver, setTakingOver] = useState(false);
   const [linePushError, setLinePushError] = useState<string | null>(null);
+
+  // Quick Actions state
+  const [candidateTags, setCandidateTags] = useState<CandidateTag[]>([]);
+  const [assignment, setAssignment] = useState<Assignment | null>(null);
+  const [changingStatus, setChangingStatus] = useState(false);
+  const [showTagMenu, setShowTagMenu] = useState(false);
+  const [showAssignMenu, setShowAssignMenu] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -368,10 +622,18 @@ export function InboxClient({
     const data = await res.json();
     setActiveConv(data);
     setMessages(data.messages ?? []);
-    // update unreadCount in list
     setConversations((prev) =>
       prev.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c))
     );
+  }, []);
+
+  // ── load candidate detail (tags + assignment) ──
+  const loadCandidateDetail = useCallback(async (candidateId: string) => {
+    const res = await fetch(`/api/candidates/${candidateId}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    setCandidateTags(data.tags ?? []);
+    setAssignment(data.assignments?.[0] ?? null);
   }, []);
 
   // ── refresh conversations list ──
@@ -387,10 +649,20 @@ export function InboxClient({
     setActiveId(id);
     setShowSimulate(false);
     setShowQuickReplies(false);
-    await loadConversation(id);
+    setShowTagMenu(false);
+    setShowAssignMenu(false);
+    const conv = conversations.find((c) => c.id === id);
+    if (conv) {
+      await Promise.all([
+        loadConversation(id),
+        loadCandidateDetail(conv.candidateId),
+      ]);
+    } else {
+      await loadConversation(id);
+    }
   }
 
-  // ── polling: active conversation (1.5s) + list refresh (2s) ──
+  // ── polling ──
   useEffect(() => {
     if (!activeId) return;
     pollRef.current = setInterval(() => loadConversation(activeId), 1500);
@@ -446,7 +718,7 @@ export function InboxClient({
     setTakingOver(false);
   }
 
-  // ── create conversation for candidate without one ──
+  // ── create conversation ──
   async function createConversation(candidateId: string, channel: string) {
     const res = await fetch("/api/conversations", {
       method: "POST",
@@ -461,10 +733,52 @@ export function InboxClient({
     }
   }
 
+  // ── Quick Actions ──
+  async function changeStatus(newStatus: string) {
+    if (!activeConv || changingStatus || newStatus === activeConv.candidate.currentStatus) return;
+    setChangingStatus(true);
+    await fetch(`/api/candidates/${activeConv.candidateId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ currentStatus: newStatus }),
+    });
+    await loadConversation(activeConv.id);
+    setChangingStatus(false);
+  }
+
+  async function addTag(tagId: string) {
+    if (!activeConv) return;
+    await fetch(`/api/candidates/${activeConv.candidateId}/tags/${tagId}`, { method: "POST" });
+    await loadCandidateDetail(activeConv.candidateId);
+    setShowTagMenu(false);
+  }
+
+  async function removeTag(tagId: string) {
+    if (!activeConv) return;
+    await fetch(`/api/candidates/${activeConv.candidateId}/tags/${tagId}`, { method: "DELETE" });
+    await loadCandidateDetail(activeConv.candidateId);
+  }
+
+  async function assignTo(userId: string | null) {
+    if (!activeConv) return;
+    if (userId) {
+      await fetch(`/api/candidates/${activeConv.candidateId}/assignments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assignedToId: userId }),
+      });
+    } else {
+      await fetch(`/api/candidates/${activeConv.candidateId}/assignments`, { method: "DELETE" });
+    }
+    await loadCandidateDetail(activeConv.candidateId);
+    setShowAssignMenu(false);
+  }
+
   const totalUnread = conversations.reduce((sum, c) => sum + c.unreadCount, 0);
 
   return (
     <div className="flex h-[calc(100vh-4rem-1.5rem)] -m-6 overflow-hidden bg-slate-50">
+
       {/* ── Left Panel: Conversation List ─────────────────────── */}
       <div className="w-80 flex-shrink-0 bg-white border-r border-slate-200 flex flex-col">
         {/* Header */}
@@ -496,7 +810,6 @@ export function InboxClient({
             </div>
           </div>
 
-          {/* Search */}
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -504,7 +817,6 @@ export function InboxClient({
             className="w-full text-sm border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
 
-          {/* Filter tabs */}
           <div className="flex gap-1 mt-2">
             {["ALL", "ACTIVE", "WAITING", "CLOSED"].map((s) => (
               <button
@@ -568,7 +880,7 @@ export function InboxClient({
         </div>
       </div>
 
-      {/* ── Right Panel: Chat View ─────────────────────────────── */}
+      {/* ── Middle Panel: Chat View ────────────────────────────── */}
       {!activeConv ? (
         <div className="flex-1 flex flex-col items-center justify-center text-slate-400 gap-3">
           <MessageSquare size={48} className="opacity-20" />
@@ -611,13 +923,11 @@ export function InboxClient({
             </div>
 
             <div className="flex items-center gap-2 flex-shrink-0">
-              {/* Bot status badge */}
               <div className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium ${activeConv.botEnabled ? "bg-indigo-100 text-indigo-700" : "bg-orange-100 text-orange-700"}`}>
                 <Bot size={12} />
                 {activeConv.botEnabled ? "Bot Active" : "HR Mode"}
               </div>
 
-              {/* Takeover / Release button */}
               {activeConv.botEnabled ? (
                 <button
                   onClick={() => handleTakeover("TAKE_OVER")}
@@ -638,7 +948,6 @@ export function InboxClient({
                 </button>
               )}
 
-              {/* Simulate toggle */}
               <button
                 onClick={() => setShowSimulate(!showSimulate)}
                 title="OpenClaw Mock"
@@ -647,7 +956,6 @@ export function InboxClient({
                 <Sparkles size={14} />
               </button>
 
-              {/* Link to candidate profile */}
               <Link
                 href={`/candidates/${activeConv.candidateId}`}
                 className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
@@ -674,7 +982,7 @@ export function InboxClient({
               <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2">
                 <MessageSquare size={32} className="opacity-20" />
                 <p className="text-sm">ยังไม่มีข้อความ</p>
-                {showSimulate === false && (
+                {!showSimulate && (
                   <button
                     onClick={() => setShowSimulate(true)}
                     className="text-xs text-amber-600 hover:underline flex items-center gap-1"
@@ -760,6 +1068,26 @@ export function InboxClient({
             </p>
           </div>
         </div>
+      )}
+
+      {/* ── Right Panel: Quick Actions ─────────────────────────── */}
+      {activeConv && (
+        <QuickActionsPanel
+          conv={activeConv}
+          candidateTags={candidateTags}
+          assignment={assignment}
+          allTags={allTags}
+          hrUsers={hrUsers}
+          changingStatus={changingStatus}
+          showTagMenu={showTagMenu}
+          showAssignMenu={showAssignMenu}
+          onChangeStatus={changeStatus}
+          onAddTag={addTag}
+          onRemoveTag={removeTag}
+          onAssign={assignTo}
+          onSetShowTagMenu={setShowTagMenu}
+          onSetShowAssignMenu={setShowAssignMenu}
+        />
       )}
     </div>
   );

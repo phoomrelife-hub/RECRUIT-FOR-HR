@@ -5,7 +5,7 @@ import { InboxClient } from "./inbox-client";
 export default async function InboxPage() {
   const session = await auth();
 
-  const [conversations, quickReplies, candidates] = await Promise.all([
+  const [conversations, quickReplies, candidates, allTags, hrUsers] = await Promise.all([
     db.conversation.findMany({
       include: {
         candidate: {
@@ -42,6 +42,12 @@ export default async function InboxPage() {
       orderBy: { createdAt: "desc" },
       take: 50,
     }),
+    db.tag.findMany({ orderBy: { name: "asc" } }),
+    db.user.findMany({
+      where: { status: "ACTIVE" },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
   ]);
 
   return (
@@ -50,6 +56,8 @@ export default async function InboxPage() {
       quickReplies={quickReplies}
       candidatesWithoutConversation={candidates}
       currentUser={{ id: session?.user?.id ?? "", name: session?.user?.name ?? "" }}
+      allTags={allTags}
+      hrUsers={hrUsers}
     />
   );
 }
