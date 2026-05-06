@@ -64,7 +64,7 @@ src/app/(dashboard)/                    — protected pages with sidebar layout
   interviews/                           — all interviews list (Upcoming / Past, stats)
   reports/                              — analytics & reports (SUPER_ADMIN + HR_MANAGER only)
   integrations/                         — LINE integration settings (SUPER_ADMIN only)
-  bot-config/                           — AI Config: ปรับแต่ง prompt/บุคลิก Daniel HR bot (SUPER_ADMIN + HR_MANAGER)
+  ~~bot-config/~~                       — DELETED (superseded by /settings/ai) — redirect to /settings/ai via proxy.ts
 src/app/api/
   tags/                                 — list all tags (GET), create tag (POST) — HR_MANAGER+ only create
   tags/[id]/                            — update tag (PUT), delete tag (DELETE) — HR_MANAGER+ only
@@ -79,15 +79,19 @@ src/app/api/
   candidates/[id]/score/                — get score (GET), upsert score (PUT)
   candidates/[id]/ai-summary/           — get AI summary (GET), generate with Claude (POST)
   candidates/[id]/hiring-decision/      — get decision (GET), upsert decision + change status (POST) — HR_MANAGER+ only
-  conversations/                        — list conversations (GET) + create (POST)
+  conversations/                        — list conversations (GET, sorted by lastMessageAt desc) + create (POST)
   conversations/[id]/                   — get detail + messages (GET), update status (PATCH)
-  conversations/[id]/messages/          — send HR message (POST)
+  conversations/[id]/messages/          — send HR message (POST) → pushMessage to LINE automatically
   conversations/[id]/takeover/          — HR takeover or release bot (POST, action: TAKE_OVER | RELEASE)
   quick-replies/                        — list quick replies (GET)
   openclaw/webhook/                     — mock incoming candidate message + bot auto-reply (POST)
+  openclaw/sync/                        — LINE→Recruit OS sync: saves candidate msg + LINE profile (displayName, pictureUrl) (POST, no auth)
+  openclaw/check-paused/               — check if HR has taken over per-user via HumanTakeover records (GET, no auth, Cache-Control: no-store)
+  openclaw/backfill-profiles/          — backfill LINE display names + profile pics for existing candidates (POST, no auth)
   webhooks/line/                        — real LINE webhook receiver (POST, no auth required)
   integrations/line/                    — manage LINE credentials in DB (GET/PUT/DELETE, SUPER_ADMIN only)
-  bot-config/                           — GET all bot config sections, PUT update sections (HR_MANAGER+)
+  ~~bot-config/~~                       — DELETED (superseded by /api/settings/ai/*)
+  settings/ai/openclaw/                — OpenClaw config: enabled, model, temperature, max_tokens, system_prompt — stored as openclaw.* in Setting table (GET/PUT, HR_MANAGER+)
   pipeline/                             — GET all candidates for Kanban board (filter: jobPositionId)
   screening-forms/                      — list all forms (GET), create form (POST) — HR_MANAGER+ only
   screening-forms/[id]/                 — get/update/delete form; DELETE SUPER_ADMIN only
@@ -143,6 +147,11 @@ npx prisma generate  # regenerate client
 - [x] Phase 10: Security + Audit Log
 - [x] Phase 11: AI Config + AI Playground Module *(deployed 2026-05-03, commit b83bc3a)*
 - [x] Phase 12: OpenClaw ↔ Website Integration *(2026-05-04)*
+- [x] Phase 12.1: LINE bot fixes + UI cleanup *(2026-05-06, commit c3f0aba)*
+  - Per-user HR takeover check (check-paused), LINE profile sync, inbox auto-refresh
+  - Removed duplicate /bot-config UI → redirect to /settings/ai
+  - image/file forwarded to OpenClaw OCR; sticker/video/audio ack+drop with variants
+  - SOUL.md: locked address, working hours, media handling rules
 
 ## UI Conventions
 - Colors: blue-600 primary, slate-* neutral, green passed, red rejected, yellow waiting
@@ -153,12 +162,15 @@ npx prisma generate  # regenerate client
 
 ## Chat Center Conventions
 - Inbox page uses `h-[calc(100vh-4rem-1.5rem)] -m-6` to fill the full viewport (offset layout padding)
-- Polling: conversation detail polled every 3s when open; sidebar unread count polled every 10s
+- Polling: conversation detail polled every 3s when open; sidebar unread count polled every 10s; **conversation list auto-refreshes every 5s**
+- Conversation list sorted by `lastMessageAt desc` (newest first)
 - Bot script: 6-step array in `/api/openclaw/webhook/route.ts` — index = candidateMsgCount - 1
 - Takeover creates HumanTakeover record + SYSTEM message + sets botEnabled=false on conversation
 - Release sets botEnabled=true + creates HumanTakeover record + SYSTEM message
+- HR takeover check: uses **HumanTakeover records** (not botEnabled field) — lastTakeover.action === "TAKE_OVER" = paused
 - OpenClaw Mock endpoint (`POST /api/openclaw/webhook`): accepts `{ candidateId, message, channel }` — simulates candidate message + bot reply in one call
 - When first candidate message arrives → auto-promote candidate status NEW_APPLICANT → BOT_SCREENING
+- LINE profile (displayName + pictureUrl) fetched by middleware.py and sent in sync payload → saved to candidate on every message
 
 ## Tags Conventions (Phase 4)
 - Tags are global (shared across all candidates) — managed at `/tags`
@@ -251,18 +263,18 @@ SUBMIT_SCREENING_ANSWERS, SCORE_CANDIDATE, GENERATE_AI_SUMMARY
 - Reports sections: Summary Stats → Monthly Trend + Source Donut → Recruitment Funnel (horizontal bar) → Interview Status Donut + Hiring Outcomes Bar → By Position Table
 - Reports data type exported from `reports-client.tsx` as `ReportsData`
 
-## AI Config Conventions (Bot Config)
+## AI Config Conventions
 - Bot config sections เก็บใน `Setting` table ด้วย prefix `bot.*` (ไม่ต้องมี migration ใหม่)
 - 8 sections: `objectives`, `company_info`, `conversation_flow`, `response_guidelines`, `open_positions`, `critical_rules`, `contact_info`, `custom_instructions`
 - Active toggle: `bot.active = "false"` = inactive; ค่าอื่นหรือไม่มี key = active
 - `src/lib/daniel-bot.ts` — `getSystemPrompt()` โหลดจาก DB ทุก request; ถ้า inactive return ""; ถ้าไม่มี section ใดเลย fallback to `FALLBACK_PROMPT`
-- `GET /api/bot-config` — returns all bot.* settings as `{ key: value }` object (ALLOWED_KEYS only)
-- `PUT /api/bot-config` — upserts each key to Setting table with `bot.{key}` prefix; HR_MANAGER+ only
-- UI ที่ `/bot-config` — SUPER_ADMIN + HR_MANAGER เข้าถึงได้; HR_STAFF redirect to /dashboard
-- Auto-save: 2s debounce หลัง typing; manual save button ก็มี; saving state แสดงใน button
-- `bot-config-client.tsx` — accordion per section, character count, filled counter, system prompt preview panel
+- **UI ที่ `/settings/ai`** — SUPER_ADMIN + HR_MANAGER (17-tab comprehensive AI config)
+- **`/bot-config` DELETED** — redirect → `/settings/ai` via proxy.ts
+- **`/api/bot-config` DELETED** — replaced by `/api/settings/ai/*` routes
+- OpenClaw config stored as `openclaw.*` keys in Setting table; managed via `/api/settings/ai/openclaw`
+- `src/components/ai-config/openclaw-tab.tsx` — calls `/api/settings/ai/openclaw` (NOT /api/bot-config/openclaw)
 
-## Phase 11: AI Config + AI Playground Module (Planned)
+## Phase 11: AI Config + AI Playground Module
 Route: `/settings/ai` — accessible to SUPER_ADMIN + HR_MANAGER only (HR_STAFF redirect to /dashboard)
 
 ### 17-tab layout under `/settings/ai`:
@@ -287,19 +299,36 @@ Overview · Provider & Model · Persona · System Prompt · Screening Flow · Po
 - Handoff rule trigger sets `conversation.botEnabled = false` when action includes "Pause Bot"
 - Audit log events for all config changes (see AuditAction enum — add Phase 11 actions)
 
-## OpenClaw Integration Conventions (Phase 12)
+## OpenClaw Integration Conventions (Phase 12 + 12.1)
 - `src/lib/openclaw-client.ts` — OpenClaw API client: `sendToDaniel`, `testConnection`, `getConversationMessages`
 - `POST /api/openclaw/webhook` — candidate message → tries OpenClaw first, falls back to local daniel-bot; saves bot reply; handles `handoff` flag (disables botEnabled)
-- `POST /api/openclaw/sync` — OpenClaw LINE sync (unchanged from Phase 9)
+- `POST /api/openclaw/sync` — LINE→Recruit sync: saves candidate message + LINE profile (displayName, pictureUrl) fetched by middleware; skips botReply if value is `"__profile_backfill__"`
+- `GET /api/openclaw/check-paused?lineUserId=xxx` — checks HumanTakeover records to see if HR took over (NOT botEnabled field); no auth, Cache-Control: no-store
+- `POST /api/openclaw/backfill-profiles` — backfill LINE displayName + pictureUrl for existing candidates; accepts optional `lineToken` override; no auth
 - `AIConversation` model — 1-to-1 with `Conversation`; stores `openclawId` for cross-referencing OpenClaw sessions
 - `SourceChannel` enum now includes `WEBSITE` (purple badge)
-- `/daniel` page — SUPER_ADMIN + HR_MANAGER; shows stats, live conversations, connection config + test button
+- `/daniel` page — SUPER_ADMIN + HR_MANAGER; real-time stats, live conversations, connection config + test button
 - `GET /api/daniel/stats` — activeConversations, responseRate, avgResponseSeconds, totalBotMessages
 - `GET /api/daniel/conversations` — last 20 active conversations with last message + openclawId
 - `POST /api/daniel/test-connection` — SUPER_ADMIN only; calls OpenClaw `/api/health`
-- Env vars: `OPENCLAW_API_URL` (default `http://localhost:18789`), `OPENCLAW_API_KEY`, `OPENCLAW_WEBHOOK_SECRET`
+- Env vars: `OPENCLAW_API_URL` (default `http://localhost:18789`), `OPENCLAW_API_KEY`, `OPENCLAW_WEBHOOK_SECRET`, `LINE_CHANNEL_ACCESS_TOKEN` (for pushMessage to LINE)
 - OpenClaw payload to `/api/webhook/recruit`: `{ conversationId, candidateId, message, channel, context }`
 - OpenClaw response: `{ reply, confidence?, openclawId?, handoff? }`
+
+## OpenClaw Middleware (WSL — \\wsl.localhost\Ubuntu-24.04\home\graph\.openclaw\workspace-hr\scripts\)
+- **middleware.py** (port 18788) — receives LINE webhooks from Cloudflare tunnel, 3s debounce, forwards to OpenClaw (18789)
+  - `image`, `file` → **forward to OpenClaw for OCR** (not dropped)
+  - `sticker`, `video`, `audio`, `location` → **ack + drop** with type-specific variant messages (MEDIA_ACK_MAP)
+  - Checks `is_bot_paused(userId)` before forwarding → skips OpenClaw if HR has taken over (cached 30s)
+  - Fetches LINE profile (displayName + pictureUrl) and sends in sync payload to Recruit OS
+  - Saves replyToken→userId map for outbound_dedup
+- **outbound_dedup.py** (port 19000) — outbound proxy between OpenClaw and LINE API; dedup + garbage detection
+- **session_manager.py** — per-user session state (SQLite); `get`, `update`, `log`, `should_respond` commands
+- **start-tunnel.sh** — starts middleware + outbound_dedup + Cloudflare tunnel; auto-updates LINE webhook URL via API
+- Workspace files: `SOUL.md` (bot rules/personality), `POSITIONS.md` (job positions + company info), `RULES.md`
+- **SOUL.md key rules**: กฎ 4 (OCR รูปก่อนตอบ), กฎ 5 (เวลางาน Sales Admin 06:00-22:00 ทุกวัน), กฎ 6 (ที่อยู่บริษัท locked), กฎ 7 (WFH เฉพาะ Sales Admin)
+- Company address (locked): **76/4 อาคารแพลตินัมเพลส ซอยรามคำแหง 178 เขตมีนบุรี กรุงเทพมหานคร 10510**
+- To restart: `wsl -d Ubuntu-24.04 -u graph -- sh -c 'cd /home/graph/.openclaw/workspace-hr/scripts && bash start-tunnel.sh'`
 
 ## Important Rules
 1. shadcn uses `@base-ui/react` — use `render` prop not `asChild`. Select `onValueChange` is `(value: string | null) => void`, wrap with `(v) => v && handler(v)`

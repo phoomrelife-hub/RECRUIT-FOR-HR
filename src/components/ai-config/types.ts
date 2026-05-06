@@ -8,6 +8,7 @@ export type AiTab =
   | "tagging-rules"
   | "scoring"
   | "summary-templates"
+  | "openclaw-rules"
   | "openclaw"
   | "playground"
   | "logs"
@@ -24,6 +25,7 @@ export const AI_TABS: { id: AiTab; label: string }[] = [
   { id: "tagging-rules", label: "Auto Tagging" },
   { id: "scoring", label: "Scoring" },
   { id: "summary-templates", label: "Summary Template" },
+  { id: "openclaw-rules", label: "Bot Rules (หลิน)" },
   { id: "openclaw", label: "OpenClaw AI" },
   { id: "playground", label: "Playground" },
   { id: "logs", label: "Logs" },
