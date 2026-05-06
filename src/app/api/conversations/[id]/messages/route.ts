@@ -43,11 +43,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   });
 
   // forward to real channel if connected
+  let linePushError: string | null = null;
   if (conversation.channel === "LINE" && conversation.candidate.lineUserId) {
     try {
       await pushMessage(conversation.candidate.lineUserId, parsed.data.content);
     } catch (err) {
-      console.error("[LINE push] failed:", err);
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[LINE push] failed:", msg);
+      linePushError = msg;
     }
   } else if (conversation.channel === "FACEBOOK" && conversation.candidate.facebookUserId) {
     try {
@@ -66,5 +69,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     },
   });
 
-  return NextResponse.json(message, { status: 201 });
+  return NextResponse.json(
+    { ...message, linePushError },
+    { status: 201 }
+  );
 }

@@ -59,7 +59,8 @@ export async function replyMessage(replyToken: string, text: string): Promise<vo
 
 export async function pushMessage(lineUserId: string, text: string): Promise<void> {
   const { token } = await getCredentials();
-  await fetch(`${LINE_API}/push`, {
+  if (!token) throw new Error("LINE channel access token not configured");
+  const res = await fetch(`${LINE_API}/push`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -70,6 +71,10 @@ export async function pushMessage(lineUserId: string, text: string): Promise<voi
       messages: [{ type: "text", text }],
     }),
   });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`LINE push failed: HTTP ${res.status} — ${body}`);
+  }
 }
 
 export type LineMessageEvent = {

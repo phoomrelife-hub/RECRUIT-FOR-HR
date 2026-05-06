@@ -349,6 +349,7 @@ export function InboxClient({
   const [search, setSearch] = useState("");
   const [showNewConv, setShowNewConv] = useState(false);
   const [takingOver, setTakingOver] = useState(false);
+  const [linePushError, setLinePushError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -412,14 +413,19 @@ export function InboxClient({
   async function sendMessage() {
     if (!inputMsg.trim() || !activeId || sending) return;
     setSending(true);
+    setLinePushError(null);
     const res = await fetch(`/api/conversations/${activeId}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content: inputMsg.trim() }),
     });
     if (res.ok) {
+      const data = await res.json();
       setInputMsg("");
       await loadConversation(activeId);
+      if (data.linePushError) {
+        setLinePushError("ส่งถึง LINE ไม่สำเร็จ — ตรวจสอบ LINE credentials ที่ /integrations");
+      }
     }
     setSending(false);
   }
@@ -712,6 +718,12 @@ export function InboxClient({
 
           {/* Input area */}
           <div className="bg-white border-t border-slate-200 p-3 flex-shrink-0">
+            {linePushError && (
+              <div className="mb-2 flex items-center justify-between gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-xs text-red-700">{linePushError}</p>
+                <button onClick={() => setLinePushError(null)} className="text-red-400 hover:text-red-600 text-xs shrink-0">✕</button>
+              </div>
+            )}
             <div className="flex items-end gap-2">
               <button
                 onClick={() => setShowQuickReplies(!showQuickReplies)}
