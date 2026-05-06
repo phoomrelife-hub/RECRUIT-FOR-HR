@@ -20,6 +20,7 @@ export default async function CandidatesPage() {
         expectedSalary: true,
         createdAt: true,
         interestedPosition: { select: { id: true, title: true } },
+        lineProfilePicUrl: true,
       },
       orderBy: { createdAt: "desc" },
       take: 20,

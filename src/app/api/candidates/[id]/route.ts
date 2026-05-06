@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { autoTagByPosition } from "@/lib/auto-tag";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { CandidateStatus } from "@prisma/client";
@@ -75,7 +76,10 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
   const { statusReason, currentStatus, ...rest } = parsed.data;
 
-  const current = await db.candidate.findUnique({ where: { id }, select: { currentStatus: true } });
+  const current = await db.candidate.findUnique({
+    where: { id },
+    select: { currentStatus: true, interestedPositionId: true },
+  });
   if (!current) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const candidate = await db.candidate.update({
@@ -86,6 +90,11 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       availableStartDate: rest.availableStartDate ? new Date(rest.availableStartDate) : undefined,
     },
   });
+
+  // auto-tag by position when interestedPositionId changes
+  if (rest.interestedPositionId !== undefined && rest.interestedPositionId !== current.interestedPositionId) {
+    await autoTagByPosition(id, rest.interestedPositionId, current.interestedPositionId);
+  }
 
   if (currentStatus && currentStatus !== current.currentStatus) {
     await db.candidateStatusHistory.create({

@@ -19,6 +19,8 @@ import {
   UserCheck,
   ArrowUpDown,
   ChevronDown,
+  Calendar,
+  CheckCircle2,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -375,12 +377,16 @@ function QuickActionsPanel({
   changingStatus,
   showTagMenu,
   showAssignMenu,
+  showScheduleForm,
+  scheduling,
   onChangeStatus,
   onAddTag,
   onRemoveTag,
   onAssign,
   onSetShowTagMenu,
   onSetShowAssignMenu,
+  onSetShowScheduleForm,
+  onScheduleInterview,
 }: {
   conv: Conversation;
   candidateTags: CandidateTag[];
@@ -390,16 +396,26 @@ function QuickActionsPanel({
   changingStatus: boolean;
   showTagMenu: boolean;
   showAssignMenu: boolean;
+  showScheduleForm: boolean;
+  scheduling: boolean;
   onChangeStatus: (s: string) => void;
   onAddTag: (tagId: string) => void;
   onRemoveTag: (tagId: string) => void;
   onAssign: (userId: string | null) => void;
   onSetShowTagMenu: (v: boolean) => void;
   onSetShowAssignMenu: (v: boolean) => void;
+  onSetShowScheduleForm: (v: boolean) => void;
+  onScheduleInterview: (data: { interviewType: string; interviewDate: string; startTime: string; endTime: string }) => void;
 }) {
   const candidate = conv.candidate;
   const assignedTagIds = new Set(candidateTags.map((ct) => ct.tagId));
   const availableTags = allTags.filter((t) => !assignedTagIds.has(t.id));
+
+  const today = new Date().toISOString().slice(0, 10);
+  const [schedInterviewType, setSchedInterviewType] = useState("PHONE");
+  const [schedDate, setSchedDate] = useState(today);
+  const [schedStart, setSchedStart] = useState("10:00");
+  const [schedEnd, setSchedEnd] = useState("11:00");
 
   return (
     <div className="w-64 flex-shrink-0 bg-white border-l border-slate-200 flex flex-col overflow-y-auto">
@@ -569,6 +585,81 @@ function QuickActionsPanel({
           </div>
         )}
       </div>
+
+      {/* ── Schedule Interview ── */}
+      <div className="p-4 border-t border-slate-100">
+        <button
+          onClick={() => onSetShowScheduleForm(!showScheduleForm)}
+          className="w-full flex items-center justify-between gap-1.5 mb-2"
+        >
+          <div className="flex items-center gap-1.5">
+            <Calendar size={12} className="text-slate-400" />
+            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">นัดสัมภาษณ์</p>
+          </div>
+          <ChevronDown
+            size={12}
+            className={`text-slate-400 transition-transform ${showScheduleForm ? "rotate-180" : ""}`}
+          />
+        </button>
+
+        {showScheduleForm && (
+          <div className="space-y-2">
+            <div>
+              <label className="text-[10px] text-slate-500 mb-1 block">รูปแบบ</label>
+              <select
+                value={schedInterviewType}
+                onChange={(e) => setSchedInterviewType(e.target.value)}
+                className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="PHONE">โทรศัพท์</option>
+                <option value="ONLINE">ออนไลน์</option>
+                <option value="ONSITE">ที่บริษัท</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-[10px] text-slate-500 mb-1 block">วันที่</label>
+              <input
+                type="date"
+                value={schedDate}
+                min={today}
+                onChange={(e) => setSchedDate(e.target.value)}
+                className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <label className="text-[10px] text-slate-500 mb-1 block">เริ่ม</label>
+                <input
+                  type="time"
+                  value={schedStart}
+                  onChange={(e) => setSchedStart(e.target.value)}
+                  className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="text-[10px] text-slate-500 mb-1 block">สิ้นสุด</label>
+                <input
+                  type="time"
+                  value={schedEnd}
+                  onChange={(e) => setSchedEnd(e.target.value)}
+                  className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            <button
+              onClick={() => onScheduleInterview({ interviewType: schedInterviewType, interviewDate: schedDate, startTime: schedStart, endTime: schedEnd })}
+              disabled={scheduling || !schedDate}
+              className="w-full flex items-center justify-center gap-1.5 text-xs px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors font-medium"
+            >
+              <CheckCircle2 size={12} />
+              {scheduling ? "กำลังบันทึก..." : "ยืนยันนัดสัมภาษณ์"}
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -603,6 +694,8 @@ export function InboxClient({
   const [changingStatus, setChangingStatus] = useState(false);
   const [showTagMenu, setShowTagMenu] = useState(false);
   const [showAssignMenu, setShowAssignMenu] = useState(false);
+  const [showScheduleForm, setShowScheduleForm] = useState(false);
+  const [scheduling, setScheduling] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -651,6 +744,7 @@ export function InboxClient({
     setShowQuickReplies(false);
     setShowTagMenu(false);
     setShowAssignMenu(false);
+    setShowScheduleForm(false);
     const conv = conversations.find((c) => c.id === id);
     if (conv) {
       await Promise.all([
@@ -773,6 +867,28 @@ export function InboxClient({
     }
     await loadCandidateDetail(activeConv.candidateId);
     setShowAssignMenu(false);
+  }
+
+  async function scheduleInterview(data: { interviewType: string; interviewDate: string; startTime: string; endTime: string }) {
+    if (!activeConv || scheduling) return;
+    setScheduling(true);
+    const res = await fetch("/api/interviews", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        candidateId: activeConv.candidateId,
+        jobPositionId: activeConv.candidate.interestedPosition?.id,
+        interviewType: data.interviewType,
+        interviewDate: data.interviewDate,
+        startTime: data.startTime,
+        endTime: data.endTime,
+      }),
+    });
+    if (res.ok) {
+      setShowScheduleForm(false);
+      await loadConversation(activeConv.id);
+    }
+    setScheduling(false);
   }
 
   const totalUnread = conversations.reduce((sum, c) => sum + c.unreadCount, 0);
@@ -1082,12 +1198,16 @@ export function InboxClient({
           changingStatus={changingStatus}
           showTagMenu={showTagMenu}
           showAssignMenu={showAssignMenu}
+          showScheduleForm={showScheduleForm}
+          scheduling={scheduling}
           onChangeStatus={changeStatus}
           onAddTag={addTag}
           onRemoveTag={removeTag}
           onAssign={assignTo}
           onSetShowTagMenu={setShowTagMenu}
           onSetShowAssignMenu={setShowAssignMenu}
+          onSetShowScheduleForm={setShowScheduleForm}
+          onScheduleInterview={scheduleInterview}
         />
       )}
     </div>

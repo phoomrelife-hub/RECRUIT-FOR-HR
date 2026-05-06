@@ -344,9 +344,14 @@ export default async function DashboardPage() {
               {data.recentCandidates.map((c) => (
                 <div key={c.id} className="flex items-center justify-between py-3">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600">
-                      {(c.nickname || c.fullName || "?")[0].toUpperCase()}
-                    </div>
+                    {c.lineProfilePicUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={c.lineProfilePicUrl} alt="" className="h-8 w-8 rounded-full object-cover shrink-0" />
+                    ) : (
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600 shrink-0">
+                        {(c.nickname || c.fullName || "?")[0].toUpperCase()}
+                      </div>
+                    )}
                     <div>
                       <p className="text-sm font-medium text-slate-900">
                         {c.nickname || c.fullName || "ไม่ระบุชื่อ"}
