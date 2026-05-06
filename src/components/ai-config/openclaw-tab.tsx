@@ -39,7 +39,7 @@ export function OpenClawTab() {
   async function loadConfig() {
     setLoading(true);
     try {
-      const res = await fetch("/api/bot-config/openclaw");
+      const res = await fetch("/api/settings/ai/openclaw");
       if (res.ok) {
         const data = await res.json();
         setConfig(data.config);
@@ -54,7 +54,7 @@ export function OpenClawTab() {
   async function testConnection() {
     setTesting(true);
     try {
-      const res = await fetch("/api/bot-config/openclaw");
+      const res = await fetch("/api/settings/ai/openclaw");
       if (res.ok) {
         const data = await res.json();
         setConnection(data.connection);
@@ -67,7 +67,7 @@ export function OpenClawTab() {
   async function save() {
     setSaving(true);
     try {
-      await fetch("/api/bot-config/openclaw", {
+      await fetch("/api/settings/ai/openclaw", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(config),

@@ -52,7 +52,7 @@ export async function GET(req: Request) {
         },
       },
     },
-    orderBy: [{ unreadCount: "desc" }, { lastMessageAt: "desc" }],
+    orderBy: { lastMessageAt: "desc" },
   });
 
   return NextResponse.json({ conversations });

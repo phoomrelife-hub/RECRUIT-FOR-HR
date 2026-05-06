@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { getLineProfile } from "@/lib/line";
 import { NextResponse } from "next/server";
 
 // OpenClaw calls this endpoint after Daniel-hr sends/receives a LINE message
@@ -22,7 +23,7 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json();
-  const { lineUserId, displayName, userMessage, botReply, externalMessageId } = body;
+  const { lineUserId, displayName, pictureUrl, userMessage, botReply, externalMessageId } = body;
 
   // Allow either userMessage OR botReply (or both) — at least one is required
   if (!lineUserId || (!userMessage && !botReply)) {
@@ -32,21 +33,42 @@ export async function POST(req: Request) {
     );
   }
 
+  // ใช้ profile ที่ middleware ส่งมา (ดึงจาก LINE API แล้ว) — fallback getLineProfile ถ้าไม่มี
+  let resolvedDisplayName = displayName ?? null;
+  let resolvedPictureUrl = pictureUrl ?? null;
+
+  if (!resolvedDisplayName || !resolvedPictureUrl) {
+    const lineProfile = await getLineProfile(lineUserId);
+    resolvedDisplayName = resolvedDisplayName ?? lineProfile?.displayName ?? null;
+    resolvedPictureUrl = resolvedPictureUrl ?? lineProfile?.pictureUrl ?? null;
+  }
+
+  const finalDisplayName = resolvedDisplayName ?? "LINE User";
+
   // find or create candidate by lineUserId
   let candidate = await db.candidate.findUnique({ where: { lineUserId } });
   if (!candidate) {
     candidate = await db.candidate.create({
       data: {
-        nickname: displayName ?? "LINE User",
+        nickname: finalDisplayName,
         lineUserId,
+        lineDisplayName: resolvedDisplayName,
+        lineProfilePicUrl: resolvedPictureUrl,
         sourceChannel: "LINE",
         currentStatus: "NEW_APPLICANT",
       },
     });
-  } else if (displayName && candidate.nickname === "LINE User") {
-    await db.candidate.update({
+  } else {
+    // refresh profile ทุกครั้งที่มี message เข้า (keeps pic URL alive)
+    candidate = await db.candidate.update({
       where: { id: candidate.id },
-      data: { nickname: displayName },
+      data: {
+        ...(resolvedDisplayName ? { lineDisplayName: resolvedDisplayName } : {}),
+        ...(resolvedPictureUrl ? { lineProfilePicUrl: resolvedPictureUrl } : {}),
+        ...(candidate.nickname === "LINE User" && finalDisplayName !== "LINE User"
+          ? { nickname: finalDisplayName }
+          : {}),
+      },
     });
   }
 
@@ -99,8 +121,8 @@ export async function POST(req: Request) {
     });
   }
 
-  // save bot reply if present
-  if (botReply) {
+  // save bot reply if present (skip backfill sentinel)
+  if (botReply && botReply !== "__profile_backfill__") {
     await db.message.create({
       data: {
         conversationId: conversation.id,

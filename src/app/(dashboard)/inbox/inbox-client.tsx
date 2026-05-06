@@ -389,7 +389,7 @@ export function InboxClient({
     await loadConversation(id);
   }
 
-  // ── polling ──
+  // ── polling: active conversation (3s) + list refresh (5s) ──
   useEffect(() => {
     if (!activeId) return;
     pollRef.current = setInterval(() => loadConversation(activeId), 3000);
@@ -397,6 +397,11 @@ export function InboxClient({
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, [activeId, loadConversation]);
+
+  useEffect(() => {
+    const listPoll = setInterval(() => refreshList(), 5000);
+    return () => clearInterval(listPoll);
+  }, [refreshList]);
 
   // ── scroll to bottom on new messages ──
   useEffect(() => {
