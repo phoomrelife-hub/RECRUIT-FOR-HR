@@ -119,17 +119,17 @@ const statusColor: Record<string, string> = {
 };
 
 const statusLabel: Record<string, string> = {
-  NEW_APPLICANT: "New",
-  BOT_SCREENING: "Bot Screening",
-  WAITING_HR_REVIEW: "Waiting HR",
-  NEED_MORE_INFO: "Need Info",
-  QUALIFIED: "Qualified",
-  INTERVIEW_SCHEDULED: "Interview Set",
-  INTERVIEWED: "Interviewed",
-  PASSED: "Passed",
-  REJECTED: "Rejected",
+  NEW_APPLICANT: "ผู้สมัครใหม่",
+  BOT_SCREENING: "บอทคัดกรอง",
+  WAITING_HR_REVIEW: "รอ HR พิจารณา",
+  NEED_MORE_INFO: "ขอข้อมูลเพิ่ม",
+  QUALIFIED: "ผ่านเกณฑ์",
+  INTERVIEW_SCHEDULED: "นัดสัมภาษณ์",
+  INTERVIEWED: "สัมภาษณ์แล้ว",
+  PASSED: "ผ่านการคัดเลือก",
+  REJECTED: "ไม่ผ่าน",
   TALENT_POOL: "Talent Pool",
-  CLOSED: "Closed",
+  CLOSED: "ปิด",
 };
 
 const STATUS_ORDER = [
@@ -925,7 +925,7 @@ export function InboxClient({
             <div className="flex items-center gap-2 flex-shrink-0">
               <div className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium ${activeConv.botEnabled ? "bg-indigo-100 text-indigo-700" : "bg-orange-100 text-orange-700"}`}>
                 <Bot size={12} />
-                {activeConv.botEnabled ? "Bot Active" : "HR Mode"}
+                {activeConv.botEnabled ? "บอทดูแลอยู่" : "HR รับแชท"}
               </div>
 
               {activeConv.botEnabled ? (
@@ -935,7 +935,7 @@ export function InboxClient({
                   className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50 transition-colors font-medium"
                 >
                   <User size={12} />
-                  Takeover
+                  รับแชท
                 </button>
               ) : (
                 <button
@@ -944,7 +944,7 @@ export function InboxClient({
                   className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 disabled:opacity-50 transition-colors font-medium"
                 >
                   <Bot size={12} />
-                  Release Bot
+                  คืนให้บอท
                 </button>
               )}
 
@@ -1064,7 +1064,7 @@ export function InboxClient({
               </button>
             </div>
             <p className="text-[10px] text-slate-400 mt-1.5 ml-9">
-              {activeConv.botEnabled ? "🤖 บอทกำลังทำงาน — Takeover เพื่อส่งข้อความเอง" : "✅ HR Mode — ข้อความจากคุณ"}
+              {activeConv.botEnabled ? "🤖 บอทกำลังทำงาน — กด รับแชท เพื่อส่งข้อความเอง" : "✅ HR รับแชทอยู่ — ข้อความจากคุณ"}
             </p>
           </div>
         </div>

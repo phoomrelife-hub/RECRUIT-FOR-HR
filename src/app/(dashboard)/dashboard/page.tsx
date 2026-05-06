@@ -122,17 +122,17 @@ const statusColors: Record<CandidateStatus, string> = {
 };
 
 const statusLabels: Record<CandidateStatus, string> = {
-  NEW_APPLICANT: "New",
-  BOT_SCREENING: "Bot Screening",
-  WAITING_HR_REVIEW: "Waiting HR",
-  NEED_MORE_INFO: "Need Info",
-  QUALIFIED: "Qualified",
-  INTERVIEW_SCHEDULED: "Interview",
-  INTERVIEWED: "Interviewed",
-  PASSED: "Passed",
-  REJECTED: "Rejected",
+  NEW_APPLICANT: "ผู้สมัครใหม่",
+  BOT_SCREENING: "บอทคัดกรอง",
+  WAITING_HR_REVIEW: "รอ HR พิจารณา",
+  NEED_MORE_INFO: "ขอข้อมูลเพิ่ม",
+  QUALIFIED: "ผ่านเกณฑ์",
+  INTERVIEW_SCHEDULED: "นัดสัมภาษณ์",
+  INTERVIEWED: "สัมภาษณ์แล้ว",
+  PASSED: "ผ่านการคัดเลือก",
+  REJECTED: "ไม่ผ่าน",
   TALENT_POOL: "Talent Pool",
-  CLOSED: "Closed",
+  CLOSED: "ปิด",
 };
 
 export default async function DashboardPage() {
@@ -151,38 +151,38 @@ export default async function DashboardPage() {
       {/* Top Stats */}
       <div className="grid grid-cols-4 gap-4">
         <StatCard
-          title="Total Candidates"
+          title="ผู้สมัครทั้งหมด"
           value={data.totalCandidates}
-          subtitle="All time"
+          subtitle="ตลอดเวลา"
           icon={Users}
           iconColor="text-blue-600"
           iconBg="bg-blue-50"
         />
         <StatCard
-          title="This Month"
+          title="เดือนนี้"
           value={data.thisMonthCandidates}
-          subtitle={`Last month: ${data.lastMonthCandidates}`}
+          subtitle={`เดือนที่แล้ว: ${data.lastMonthCandidates}`}
           icon={TrendingUp}
           iconColor="text-indigo-600"
           iconBg="bg-indigo-50"
           trend={
             data.lastMonthCandidates > 0
-              ? { value: data.monthChange, label: "vs last month" }
+              ? { value: data.monthChange, label: "เทียบเดือนที่แล้ว" }
               : undefined
           }
         />
         <StatCard
-          title="Waiting HR Review"
+          title="รอ HR พิจารณา"
           value={data.waitingHR}
-          subtitle="Pending review"
+          subtitle="รอตรวจสอบ"
           icon={Clock}
           iconColor="text-yellow-600"
           iconBg="bg-yellow-50"
         />
         <StatCard
-          title="Interview Scheduled"
+          title="นัดสัมภาษณ์"
           value={data.interviewScheduled}
-          subtitle="Upcoming interviews"
+          subtitle="รอสัมภาษณ์"
           icon={Calendar}
           iconColor="text-purple-600"
           iconBg="bg-purple-50"
@@ -191,21 +191,21 @@ export default async function DashboardPage() {
 
       <div className="grid grid-cols-4 gap-4">
         <StatCard
-          title="Qualified"
+          title="ผ่านเกณฑ์"
           value={data.qualified}
           icon={CheckCircle2}
           iconColor="text-blue-600"
           iconBg="bg-blue-50"
         />
         <StatCard
-          title="Passed"
+          title="ผ่านการคัดเลือก"
           value={data.passed}
           icon={CheckCircle2}
           iconColor="text-green-600"
           iconBg="bg-green-50"
         />
         <StatCard
-          title="Rejected"
+          title="ไม่ผ่าน"
           value={data.rejected}
           icon={XCircle}
           iconColor="text-red-500"
@@ -225,7 +225,7 @@ export default async function DashboardPage() {
         <CardHeader className="pb-3">
           <div className="flex items-center gap-2">
             <BarChart3 className="h-4 w-4 text-blue-600" />
-            <CardTitle className="text-base font-semibold">Monthly Trend (6 เดือนล่าสุด)</CardTitle>
+            <CardTitle className="text-base font-semibold">ผู้สมัครรายเดือน (6 เดือนล่าสุด)</CardTitle>
           </div>
         </CardHeader>
         <CardContent>
@@ -237,7 +237,7 @@ export default async function DashboardPage() {
         {/* Source Channel */}
         <Card className="border-slate-200">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold">Source Channel</CardTitle>
+            <CardTitle className="text-base font-semibold">ช่องทางรับสมัคร</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex items-center justify-between rounded-lg bg-green-50 p-3">
@@ -260,7 +260,7 @@ export default async function DashboardPage() {
         {/* Alerts */}
         <Card className="border-slate-200">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold">Alerts</CardTitle>
+            <CardTitle className="text-base font-semibold">แจ้งเตือน</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             {data.waitingHR > 0 && (
@@ -288,7 +288,7 @@ export default async function DashboardPage() {
         {/* Pipeline Overview */}
         <Card className="border-slate-200">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold">Pipeline Overview</CardTitle>
+            <CardTitle className="text-base font-semibold">ภาพรวม Pipeline</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             {data.totalCandidates === 0 ? (
@@ -296,7 +296,7 @@ export default async function DashboardPage() {
             ) : (
               <>
                 <div className="flex justify-between text-xs text-slate-500">
-                  <span>Qualified</span>
+                  <span>ผ่านเกณฑ์</span>
                   <span>{data.qualified} / {data.totalCandidates}</span>
                 </div>
                 <div className="h-2 rounded-full bg-slate-100">
@@ -306,7 +306,7 @@ export default async function DashboardPage() {
                   />
                 </div>
                 <div className="flex justify-between text-xs text-slate-500">
-                  <span>Passed</span>
+                  <span>ผ่านการคัดเลือก</span>
                   <span>{data.passed} / {data.totalCandidates}</span>
                 </div>
                 <div className="h-2 rounded-full bg-slate-100">
@@ -316,7 +316,7 @@ export default async function DashboardPage() {
                   />
                 </div>
                 <div className="flex justify-between text-xs text-slate-500">
-                  <span>Rejected</span>
+                  <span>ไม่ผ่าน</span>
                   <span>{data.rejected} / {data.totalCandidates}</span>
                 </div>
                 <div className="h-2 rounded-full bg-slate-100">
@@ -334,7 +334,7 @@ export default async function DashboardPage() {
       {/* Recent Candidates */}
       <Card className="border-slate-200">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base font-semibold">Recent Candidates</CardTitle>
+          <CardTitle className="text-base font-semibold">ผู้สมัครล่าสุด</CardTitle>
         </CardHeader>
         <CardContent>
           {data.recentCandidates.length === 0 ? (

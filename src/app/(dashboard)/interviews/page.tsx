@@ -14,9 +14,9 @@ const typeIcon: Record<InterviewType, React.ReactNode> = {
 };
 
 const typeLabel: Record<InterviewType, string> = {
-  PHONE: "Phone",
-  ONLINE: "Online",
-  ONSITE: "On-site",
+  PHONE: "โทรศัพท์",
+  ONLINE: "ออนไลน์",
+  ONSITE: "ที่บริษัท",
 };
 
 const statusColor: Record<InterviewStatus, string> = {
@@ -87,7 +87,7 @@ export default async function InterviewsPage() {
 
               {/* Status */}
               <Badge className={`text-xs px-2 py-0.5 shrink-0 ${statusColor[iv.status]}`}>
-                {iv.status}
+                {{ SCHEDULED: "นัดแล้ว", COMPLETED: "เสร็จแล้ว", NO_SHOW: "ไม่มา", CANCELLED: "ยกเลิก" }[iv.status] ?? iv.status}
               </Badge>
 
               {/* Feedback indicator */}
@@ -110,7 +110,7 @@ export default async function InterviewsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Interviews</h1>
+        <h1 className="text-2xl font-bold text-slate-900">การสัมภาษณ์</h1>
         <p className="mt-1 text-sm text-slate-500">รายการนัดสัมภาษณ์ทั้งหมด</p>
       </div>
 
@@ -118,8 +118,8 @@ export default async function InterviewsPage() {
       <div className="grid grid-cols-4 gap-4">
         {[
           { label: "ทั้งหมด", value: interviews.length, color: "text-slate-700" },
-          { label: "Scheduled", value: upcoming.length, color: "text-purple-600" },
-          { label: "Completed", value: past.filter((iv) => iv.status === InterviewStatus.COMPLETED).length, color: "text-green-600" },
+          { label: "กำลังจะมา", value: upcoming.length, color: "text-purple-600" },
+          { label: "เสร็จแล้ว", value: past.filter((iv) => iv.status === InterviewStatus.COMPLETED).length, color: "text-green-600" },
           { label: "รอ Feedback", value: past.filter((iv) => iv.status === InterviewStatus.COMPLETED && !iv.feedback).length, color: "text-amber-600" },
         ].map((s) => (
           <Card key={s.label} className="border-slate-200">
@@ -135,7 +135,7 @@ export default async function InterviewsPage() {
       <div>
         <h2 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
           <Calendar className="h-4 w-4 text-purple-500" />
-          Upcoming ({upcoming.length})
+          กำลังจะมา ({upcoming.length})
         </h2>
         <Card className="border-slate-200 overflow-hidden">
           {renderList(upcoming)}

@@ -51,17 +51,17 @@ const statusColor: Record<CandidateStatus, string> = {
 };
 
 const statusLabel: Record<CandidateStatus, string> = {
-  NEW_APPLICANT: "New Applicant",
-  BOT_SCREENING: "Bot Screening",
-  WAITING_HR_REVIEW: "Waiting Review",
-  NEED_MORE_INFO: "Need Info",
-  QUALIFIED: "Qualified",
-  INTERVIEW_SCHEDULED: "Interview Set",
-  INTERVIEWED: "Interviewed",
-  PASSED: "Passed",
-  REJECTED: "Rejected",
+  NEW_APPLICANT: "ผู้สมัครใหม่",
+  BOT_SCREENING: "บอทคัดกรอง",
+  WAITING_HR_REVIEW: "รอ HR พิจารณา",
+  NEED_MORE_INFO: "ขอข้อมูลเพิ่ม",
+  QUALIFIED: "ผ่านเกณฑ์",
+  INTERVIEW_SCHEDULED: "นัดสัมภาษณ์",
+  INTERVIEWED: "สัมภาษณ์แล้ว",
+  PASSED: "ผ่านการคัดเลือก",
+  REJECTED: "ไม่ผ่าน",
   TALENT_POOL: "Talent Pool",
-  CLOSED: "Closed",
+  CLOSED: "ปิด",
 };
 
 const sourceLabel: Record<SourceChannel, string> = {
