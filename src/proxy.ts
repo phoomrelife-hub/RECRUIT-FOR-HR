@@ -24,6 +24,8 @@ export const proxy = auth((req) => {
   if (req.nextUrl.pathname === "/api/openclaw/backfill-profiles") return NextResponse.next();
   if (req.nextUrl.pathname === "/api/openclaw/check-paused") return NextResponse.next();
   if (req.nextUrl.pathname === "/api/openclaw/config") return NextResponse.next();
+  // Workspace sync — middleware.py pushes file contents (GET/POST public; PUT auth handled in route)
+  if (req.nextUrl.pathname === "/api/openclaw/workspace") return NextResponse.next();
 
   // Telegram webhook — called from Telegram servers, no session
   if (req.nextUrl.pathname === "/api/telegram/webhook") return NextResponse.next();
