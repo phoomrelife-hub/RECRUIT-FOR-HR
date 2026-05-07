@@ -89,6 +89,7 @@ src/app/api/
   openclaw/check-paused/               — check if HR has taken over per-user via HumanTakeover records (GET, no auth, Cache-Control: no-store)
   openclaw/backfill-profiles/          — backfill LINE display names + profile pics for existing candidates (POST, no auth)
   openclaw/config/                      — public GET, no auth; compiles openclaw.rules.* from DB into system prompt for OpenClaw to fetch (CORS *)
+  openclaw/workspace/                   — GET (public): file contents; POST (public, middleware.py): push files / clear dirty; PUT (HR_MANAGER+): save edited files + set dirty flag
   webhooks/line/                        — real LINE webhook receiver (POST, no auth required)
   integrations/line/                    — manage LINE credentials in DB (GET/PUT/DELETE, SUPER_ADMIN only)
   ~~bot-config/~~                       — DELETED (superseded by /api/settings/ai/*)
@@ -159,6 +160,12 @@ npx prisma generate  # regenerate client
   - /api/settings/ai/openclaw-rules — GET/PUT for openclaw.rules.* in Setting table
   - /api/openclaw/config — public endpoint; compiles DB rules → system prompt for OpenClaw to fetch
   - Whitelisted /api/openclaw/config in proxy.ts (no auth required)
+- [x] Phase 12.3: Workspace File Bidirectional Sync *(2026-05-07, commit 9ff4b17)*
+  - UI Bot Rules tab: added "Sections | Raw Files" view mode switcher
+  - Raw Files view: edit SOUL.md / POSITIONS.md / RULES.md / EXAMPLES.md directly from browser
+  - /api/openclaw/workspace — GET/POST/PUT endpoint; stores file content in DB as openclaw.file.*
+  - middleware.py: background sync thread — pushes files on startup, polls for UI changes every 5 min
+  - Dirty flag: UI edit sets openclaw.file.dirty → middleware.py detects + writes to filesystem + clears
 
 ## UI Conventions
 - Colors: blue-600 primary, slate-* neutral, green passed, red rejected, yellow waiting
