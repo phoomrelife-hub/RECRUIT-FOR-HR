@@ -781,6 +781,20 @@ export function InboxClient({
     if (!inputMsg.trim() || !activeId || sending) return;
     setSending(true);
     setLinePushError(null);
+
+    // Auto-takeover if bot is still active
+    if (activeConv?.botEnabled) {
+      const takeoverRes = await fetch(`/api/conversations/${activeId}/takeover`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "TAKE_OVER" }),
+      });
+      if (!takeoverRes.ok) {
+        setSending(false);
+        return;
+      }
+    }
+
     const res = await fetch(`/api/conversations/${activeId}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -791,7 +805,7 @@ export function InboxClient({
       setInputMsg("");
       await loadConversation(activeId);
       if (data.linePushError) {
-        setLinePushError("ส่งถึง LINE ไม่สำเร็จ — ตรวจสอบ LINE credentials ที่ /integrations");
+        setLinePushError(`ส่งถึง LINE ไม่สำเร็จ: ${data.linePushError}`);
       }
     }
     setSending(false);
@@ -1181,7 +1195,7 @@ export function InboxClient({
               </button>
             </div>
             <p className="text-[10px] text-slate-400 mt-1.5 ml-9">
-              {activeConv.botEnabled ? "🤖 บอทกำลังทำงาน — กด รับแชท เพื่อส่งข้อความเอง" : "✅ HR รับแชทอยู่ — ข้อความจากคุณ"}
+              {activeConv.botEnabled ? "🤖 บอทกำลังทำงาน — พิมพ์แล้วส่งได้เลย ระบบจะรับแชทให้อัตโนมัติ" : "✅ HR รับแชทอยู่ — ข้อความจากคุณ"}
             </p>
           </div>
         </div>
