@@ -30,8 +30,11 @@ export const proxy = auth((req) => {
   // Telegram webhook — called from Telegram servers, no session
   if (req.nextUrl.pathname === "/api/telegram/webhook") return NextResponse.next();
 
-  // Redirect legacy /bot-config → /settings/ai
+  // Redirect legacy paths
   if (req.nextUrl.pathname.startsWith("/bot-config")) {
+    return NextResponse.redirect(new URL("/settings/ai", req.url));
+  }
+  if (req.nextUrl.pathname === "/settings") {
     return NextResponse.redirect(new URL("/settings/ai", req.url));
   }
 
