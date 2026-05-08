@@ -3,9 +3,6 @@
 import { useState } from "react";
 import { AI_TABS, type AiTab } from "@/components/ai-config/types";
 import { OverviewTab } from "@/components/ai-config/overview-tab";
-import { ScreeningFlowTab } from "@/components/ai-config/screening-flow-tab";
-import { PositionRulesTab } from "@/components/ai-config/position-rules-tab";
-import { HandoffRulesTab } from "@/components/ai-config/handoff-rules-tab";
 import { TaggingRulesTab } from "@/components/ai-config/tagging-rules-tab";
 import { ScoringTab } from "@/components/ai-config/scoring-tab";
 import { SummaryTemplatesTab } from "@/components/ai-config/summary-templates-tab";
@@ -19,9 +16,6 @@ function TabContent({ tab }: { tab: AiTab }) {
   switch (tab) {
     case "overview": return <OverviewTab />;
     case "openclaw-rules": return <OpenClawRulesTab />;
-    case "screening-flow": return <ScreeningFlowTab />;
-    case "position-rules": return <PositionRulesTab />;
-    case "handoff-rules": return <HandoffRulesTab />;
     case "tagging-rules": return <TaggingRulesTab />;
     case "scoring": return <ScoringTab />;
     case "summary-templates": return <SummaryTemplatesTab />;
