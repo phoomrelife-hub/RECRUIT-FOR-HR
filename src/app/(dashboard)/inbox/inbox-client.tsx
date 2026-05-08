@@ -21,6 +21,9 @@ import {
   ChevronDown,
   Calendar,
   CheckCircle2,
+  Search,
+  SlidersHorizontal,
+  Circle,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -683,6 +686,10 @@ export function InboxClient({
   const [showQuickReplies, setShowQuickReplies] = useState(false);
   const [showSimulate, setShowSimulate] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>("ALL");
+  const [filterChannel, setFilterChannel] = useState<string>("ALL");
+  const [filterBot, setFilterBot] = useState<string>("ALL"); // ALL | BOT | HR
+  const [filterUnread, setFilterUnread] = useState(false);
+  const [sortBy, setSortBy] = useState<"LATEST" | "UNREAD_FIRST">("LATEST");
   const [search, setSearch] = useState("");
   const [showNewConv, setShowNewConv] = useState(false);
   const [takingOver, setTakingOver] = useState(false);
@@ -704,13 +711,37 @@ export function InboxClient({
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ── filtered conversations ──
-  const filtered = conversations.filter((c) => {
-    const matchStatus = filterStatus === "ALL" || c.status === filterStatus;
-    const name = candidateName(c.candidate).toLowerCase();
-    const matchSearch = !search || name.includes(search.toLowerCase());
-    return matchStatus && matchSearch;
-  });
+  // ── filtered + sorted conversations ──
+  const filtered = (() => {
+    let result = conversations.filter((c) => {
+      if (filterStatus !== "ALL" && c.status !== filterStatus) return false;
+      if (filterChannel !== "ALL" && c.channel !== filterChannel) return false;
+      if (filterBot === "BOT" && !c.botEnabled) return false;
+      if (filterBot === "HR" && c.botEnabled) return false;
+      if (filterUnread && c.unreadCount === 0) return false;
+      if (search) {
+        const q = search.toLowerCase();
+        const cand = c.candidate;
+        const fields = [
+          candidateName(cand),
+          cand.phone ?? "",
+          cand.lineDisplayName ?? "",
+          cand.interestedPosition?.title ?? "",
+          (c.messages as { content: string }[])?.[0]?.content ?? "",
+        ].map((f) => f.toLowerCase());
+        if (!fields.some((f) => f.includes(q))) return false;
+      }
+      return true;
+    });
+    if (sortBy === "UNREAD_FIRST") {
+      result = [...result].sort(
+        (a, b) =>
+          b.unreadCount - a.unreadCount ||
+          new Date(b.lastMessageAt ?? 0).getTime() - new Date(a.lastMessageAt ?? 0).getTime()
+      );
+    }
+    return result;
+  })();
 
   // ── load conversation detail ──
   const loadConversation = useCallback(async (id: string) => {
@@ -946,12 +977,13 @@ export function InboxClient({
       {/* ── Left Panel: Conversation List ─────────────────────── */}
       <div className="w-80 flex-shrink-0 bg-white border-r border-slate-200 flex flex-col">
         {/* Header */}
-        <div className="p-4 border-b border-slate-200">
-          <div className="flex items-center justify-between mb-3">
+        <div className="p-3 border-b border-slate-200 space-y-2">
+          {/* Title row */}
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <h1 className="text-lg font-bold text-slate-900">Inbox</h1>
+              <h1 className="text-base font-bold text-slate-900">Inbox</h1>
               {totalUnread > 0 && (
-                <span className="bg-red-500 text-white text-xs font-bold rounded-full px-1.5 py-0.5">
+                <span className="bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none">
                   {totalUnread}
                 </span>
               )}
@@ -962,31 +994,44 @@ export function InboxClient({
                 title="Refresh"
                 className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-colors"
               >
-                <RefreshCw size={14} />
+                <RefreshCw size={13} />
               </button>
               <button
                 onClick={() => setShowNewConv(!showNewConv)}
                 title="New conversation"
                 className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-colors"
               >
-                <Plus size={14} />
+                <Plus size={13} />
               </button>
             </div>
           </div>
 
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="ค้นหา candidate..."
-            className="w-full text-sm border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
+          {/* Search */}
+          <div className="relative">
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="ชื่อ, เบอร์, ตำแหน่ง, ข้อความ..."
+              className="w-full text-xs border border-slate-200 rounded-lg pl-7 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
 
-          <div className="flex gap-1 mt-2">
-            {["ALL", "ACTIVE", "WAITING", "CLOSED"].map((s) => (
+          {/* Status tabs */}
+          <div className="flex gap-1">
+            {(["ALL", "ACTIVE", "WAITING", "CLOSED"] as const).map((s) => (
               <button
                 key={s}
                 onClick={() => setFilterStatus(s)}
-                className={`text-xs px-2 py-1 rounded font-medium transition-colors ${
+                className={`flex-1 text-[11px] py-1 rounded font-medium transition-colors ${
                   filterStatus === s
                     ? "bg-blue-600 text-white"
                     : "text-slate-500 hover:bg-slate-100"
@@ -996,6 +1041,95 @@ export function InboxClient({
               </button>
             ))}
           </div>
+
+          {/* Advanced filters row */}
+          <div className="flex flex-wrap gap-1 items-center">
+            {/* Channel chips */}
+            {(["ALL", "LINE", "FACEBOOK"] as const).map((ch) => (
+              <button
+                key={ch}
+                onClick={() => setFilterChannel(ch)}
+                className={`text-[10px] px-2 py-0.5 rounded-full font-medium border transition-colors ${
+                  filterChannel === ch
+                    ? ch === "LINE"
+                      ? "bg-green-500 text-white border-green-500"
+                      : ch === "FACEBOOK"
+                      ? "bg-blue-600 text-white border-blue-600"
+                      : "bg-slate-700 text-white border-slate-700"
+                    : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
+                }`}
+              >
+                {ch === "ALL" ? "ทุก channel" : ch === "FACEBOOK" ? "FB" : ch}
+              </button>
+            ))}
+
+            {/* Divider */}
+            <span className="text-slate-200">|</span>
+
+            {/* Bot status */}
+            <button
+              onClick={() => setFilterBot(filterBot === "BOT" ? "ALL" : "BOT")}
+              className={`text-[10px] px-2 py-0.5 rounded-full font-medium border transition-colors flex items-center gap-1 ${
+                filterBot === "BOT"
+                  ? "bg-amber-500 text-white border-amber-500"
+                  : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
+              }`}
+            >
+              <Bot size={10} /> บอท
+            </button>
+            <button
+              onClick={() => setFilterBot(filterBot === "HR" ? "ALL" : "HR")}
+              className={`text-[10px] px-2 py-0.5 rounded-full font-medium border transition-colors flex items-center gap-1 ${
+                filterBot === "HR"
+                  ? "bg-purple-600 text-white border-purple-600"
+                  : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
+              }`}
+            >
+              <User size={10} /> HR
+            </button>
+
+            {/* Unread toggle */}
+            <button
+              onClick={() => setFilterUnread(!filterUnread)}
+              className={`text-[10px] px-2 py-0.5 rounded-full font-medium border transition-colors flex items-center gap-1 ${
+                filterUnread
+                  ? "bg-red-500 text-white border-red-500"
+                  : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
+              }`}
+            >
+              <Circle size={8} className={filterUnread ? "fill-white" : "fill-slate-400"} />
+              ยังไม่อ่าน
+            </button>
+
+            {/* Sort button */}
+            <button
+              onClick={() => setSortBy(sortBy === "LATEST" ? "UNREAD_FIRST" : "LATEST")}
+              className={`ml-auto text-[10px] px-2 py-0.5 rounded-full font-medium border transition-colors flex items-center gap-1 ${
+                sortBy === "UNREAD_FIRST"
+                  ? "bg-slate-700 text-white border-slate-700"
+                  : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
+              }`}
+              title={sortBy === "LATEST" ? "เรียงตามเวลา" : "เรียงยังไม่อ่านก่อน"}
+            >
+              <ArrowUpDown size={10} />
+              {sortBy === "UNREAD_FIRST" ? "ยังไม่อ่านก่อน" : "ล่าสุด"}
+            </button>
+          </div>
+
+          {/* Active filter count badge */}
+          {(filterChannel !== "ALL" || filterBot !== "ALL" || filterUnread || search) && (
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-slate-400">
+                แสดง {filtered.length} จาก {conversations.length} การสนทนา
+              </span>
+              <button
+                onClick={() => { setFilterChannel("ALL"); setFilterBot("ALL"); setFilterUnread(false); setSearch(""); setFilterStatus("ALL"); setSortBy("LATEST"); }}
+                className="text-[10px] text-blue-500 hover:text-blue-700 font-medium"
+              >
+                ล้างทั้งหมด
+              </button>
+            </div>
+          )}
         </div>
 
         {/* New conversation panel */}

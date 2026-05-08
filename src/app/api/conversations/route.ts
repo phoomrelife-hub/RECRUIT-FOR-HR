@@ -18,6 +18,7 @@ export async function GET(req: Request) {
             OR: [
               { fullName: { contains: search, mode: "insensitive" as const } },
               { nickname: { contains: search, mode: "insensitive" as const } },
+              { lineDisplayName: { contains: search, mode: "insensitive" as const } },
               { phone: { contains: search } },
             ],
           },
