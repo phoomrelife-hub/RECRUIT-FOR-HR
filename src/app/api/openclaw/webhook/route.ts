@@ -1,9 +1,10 @@
 import { db } from "@/lib/db";
 import { sendToDaniel } from "@/lib/openclaw-client";
-import { getDanielReplyWithContext } from "@/lib/daniel-bot";
 import { sanitizeBotReply } from "@/lib/sanitize-bot-reply";
 import { NextResponse } from "next/server";
 
+// Mock/test endpoint — saves candidate message + returns OpenClaw reply if available
+// Real production flow: LINE → Cloudflare tunnel → middleware.py → OpenClaw → openclaw/sync
 export async function POST(req: Request) {
   const body = await req.json();
   const { candidateId, message, channel = "LINE" } = body;
@@ -51,10 +52,8 @@ export async function POST(req: Request) {
   let botReplyContent: string | null = null;
   let openclawId: string | undefined;
   let handoff = false;
-  let aiSource = "none";
 
   if (conversation.botEnabled) {
-    // === PRIMARY: Try OpenClaw AI ===
     const recentMsgs = await db.message.findMany({
       where: { conversationId: conversation.id, senderType: { in: ["CANDIDATE", "BOT"] } },
       orderBy: { createdAt: "asc" },
@@ -65,7 +64,8 @@ export async function POST(req: Request) {
       content: m.content,
     }));
 
-    const danielReply = await getDanielReplyWithContext({
+    // Try OpenClaw directly (works when running locally; no-op on Vercel)
+    const openclawReply = await sendToDaniel({
       conversationId: conversation.id,
       candidateId,
       message,
@@ -75,40 +75,25 @@ export async function POST(req: Request) {
         position: candidate.interestedPosition?.title ?? null,
         status: candidate.currentStatus,
       },
-      recentMessages: history,
     });
 
-    if (danielReply?.reply) {
-      botReplyContent = sanitizeBotReply(danielReply.reply);
-      openclawId = danielReply.openclawId;
-      handoff = danielReply.handoff ?? false;
-      aiSource = openclawId ? "openclaw" : "fallback";
+    if (openclawReply?.reply) {
+      botReplyContent = sanitizeBotReply(openclawReply.reply);
+      openclawId = openclawReply.openclawId;
+      handoff = openclawReply.handoff ?? false;
 
-      // sync AIConversation record with openclawId
       if (openclawId) {
         await db.aIConversation.upsert({
           where: { conversationId: conversation.id },
           update: { openclawId },
-          create: {
-            conversationId: conversation.id,
-            openclawId,
-            status: "ACTIVE",
-          },
+          create: { conversationId: conversation.id, openclawId, status: "ACTIVE" },
         });
       }
 
-      // if OpenClaw signals handoff → disable bot and log takeover system message
       if (handoff) {
-        await db.conversation.update({
-          where: { id: conversation.id },
-          data: { botEnabled: false },
-        });
+        await db.conversation.update({ where: { id: conversation.id }, data: { botEnabled: false } });
         await db.message.create({
-          data: {
-            conversationId: conversation.id,
-            content: "Daniel ส่งต่อให้ HR รับช่วง",
-            senderType: "SYSTEM",
-          },
+          data: { conversationId: conversation.id, content: "บอทส่งต่อให้ HR รับช่วง", senderType: "SYSTEM" },
         });
       }
     }
@@ -129,6 +114,6 @@ export async function POST(req: Request) {
     conversationId: conversation.id,
     botEnabled: conversation.botEnabled,
     reply: botReplyContent,
-    source: aiSource,
+    source: openclawId ? "openclaw" : "none",
   });
 }

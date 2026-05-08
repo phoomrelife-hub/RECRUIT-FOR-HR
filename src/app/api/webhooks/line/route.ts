@@ -1,9 +1,11 @@
 import { db } from "@/lib/db";
-import { verifyLineSignature, replyMessage, getLineProfile, type LineWebhookPayload } from "@/lib/line";
-import { getDanielReply } from "@/lib/daniel-bot";
-import { sanitizeBotReply } from "@/lib/sanitize-bot-reply";
+import { verifyLineSignature, getLineProfile, type LineWebhookPayload } from "@/lib/line";
 import { NextResponse } from "next/server";
 
+// Direct LINE webhook receiver (fallback path)
+// Production flow: LINE → Cloudflare tunnel → middleware.py → OpenClaw → openclaw/sync
+// This route handles LINE messages if the webhook is pointed directly at Vercel.
+// Bot replies are handled by OpenClaw (via middleware.py), NOT from here.
 export async function POST(req: Request) {
   const rawBody = await req.text();
   const signature = req.headers.get("x-line-signature") ?? "";
@@ -20,13 +22,11 @@ export async function POST(req: Request) {
 
     const lineUserId = event.source.userId;
     const messageText = event.message.text;
-    const replyToken = event.replyToken;
     const externalId = event.message.id;
 
-    // fetch LINE profile (fire in background-friendly way — don't block)
     const lineProfile = await getLineProfile(lineUserId);
 
-    // find or create candidate by lineUserId
+    // find or create candidate
     let candidate = await db.candidate.findUnique({ where: { lineUserId } });
     if (!candidate) {
       candidate = await db.candidate.create({
@@ -40,7 +40,6 @@ export async function POST(req: Request) {
         },
       });
     } else if (lineProfile) {
-      // refresh profile on every message (keeps pic URL alive)
       candidate = await db.candidate.update({
         where: { id: candidate.id },
         data: {
@@ -62,20 +61,12 @@ export async function POST(req: Request) {
 
     // save candidate message
     await db.message.create({
-      data: {
-        conversationId: conversation.id,
-        content: messageText,
-        senderType: "CANDIDATE",
-        externalId,
-      },
+      data: { conversationId: conversation.id, content: messageText, senderType: "CANDIDATE", externalId },
     });
 
     // auto-promote NEW_APPLICANT → BOT_SCREENING
     if (candidate.currentStatus === "NEW_APPLICANT") {
-      await db.candidate.update({
-        where: { id: candidate.id },
-        data: { currentStatus: "BOT_SCREENING" },
-      });
+      await db.candidate.update({ where: { id: candidate.id }, data: { currentStatus: "BOT_SCREENING" } });
       await db.candidateStatusHistory.create({
         data: {
           candidateId: candidate.id,
@@ -91,46 +82,7 @@ export async function POST(req: Request) {
       data: { lastMessageAt: new Date(), status: "ACTIVE", unreadCount: { increment: 1 } },
     });
 
-    // bot reply if enabled
-    if (conversation.botEnabled) {
-      const candidateMsgCount = await db.message.count({
-        where: { conversationId: conversation.id, senderType: "CANDIDATE" },
-      });
-
-      const recentMessages = await db.message.findMany({
-        where: {
-          conversationId: conversation.id,
-          senderType: { in: ["CANDIDATE", "BOT"] },
-        },
-        orderBy: { createdAt: "asc" },
-        take: 20,
-      });
-
-      const history = recentMessages.map((m) => ({
-        role: (m.senderType === "CANDIDATE" ? "user" : "assistant") as "user" | "assistant",
-        content: m.content,
-      }));
-
-      const botReply = await getDanielReply(candidateMsgCount, history);
-
-      if (botReply) {
-        const cleanReply = sanitizeBotReply(botReply);
-        await db.message.create({
-          data: {
-            conversationId: conversation.id,
-            content: cleanReply,
-            senderType: "BOT",
-          },
-        });
-
-        await db.conversation.update({
-          where: { id: conversation.id },
-          data: { lastMessageAt: new Date() },
-        });
-
-        await replyMessage(replyToken, cleanReply);
-      }
-    }
+    // Note: bot reply is handled by OpenClaw via middleware.py, not here
   }
 
   return NextResponse.json({ ok: true });
