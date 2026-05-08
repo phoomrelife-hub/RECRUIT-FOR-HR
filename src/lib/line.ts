@@ -21,11 +21,34 @@ export type LineProfile = {
   statusMessage?: string;
 };
 
+export type LineBotInfo = {
+  userId: string;
+  basicId: string;
+  displayName: string;
+  pictureUrl?: string;
+  chatMode: string;
+  markAsReadMode: string;
+};
+
 export async function getLineProfile(lineUserId: string): Promise<LineProfile | null> {
   const { token } = await getCredentials();
   if (!token) return null;
   try {
     const res = await fetch(`${LINE_API_ROOT}/profile/${lineUserId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
+
+export async function getBotInfo(): Promise<LineBotInfo | null> {
+  const { token } = await getCredentials();
+  if (!token) return null;
+  try {
+    const res = await fetch(`${LINE_API_ROOT}/info`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) return null;
@@ -60,6 +83,15 @@ export async function replyMessage(replyToken: string, text: string): Promise<vo
 export async function pushMessage(lineUserId: string, text: string): Promise<void> {
   const { token } = await getCredentials();
   if (!token) throw new Error("LINE channel access token not configured");
+
+  // Pre-check: verify user is reachable with this token before pushing
+  const profile = await getLineProfile(lineUserId);
+  if (!profile) {
+    throw new Error(
+      "ผู้ใช้บล็อก OA หรือ lineUserId ไม่ตรงกับ OA ที่ใช้ token นี้ — ตรวจสอบ Channel Access Token ที่ /integrations"
+    );
+  }
+
   const res = await fetch(`${LINE_API}/push`, {
     method: "POST",
     headers: {
@@ -73,7 +105,7 @@ export async function pushMessage(lineUserId: string, text: string): Promise<voi
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(`LINE push failed: HTTP ${res.status} — ${body}`);
+    throw new Error(`HTTP ${res.status} — ${body}`);
   }
 }
 

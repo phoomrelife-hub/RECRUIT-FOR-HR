@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle, XCircle, Copy, Check, Eye, EyeOff, Trash2 } from "lucide-react";
+import { CheckCircle, XCircle, Copy, Check, Eye, EyeOff, Trash2, FlaskConical } from "lucide-react";
 
 type Props = {
   isLineConfigured: boolean;
@@ -26,6 +26,8 @@ export default function IntegrationsClient({
   const [lineSaving, setLineSaving] = useState(false);
   const [lineError, setLineError] = useState("");
   const [lineCopied, setLineCopied] = useState(false);
+  const [lineTesting, setLineTesting] = useState(false);
+  const [lineTestResult, setLineTestResult] = useState<{ ok: boolean; displayName?: string; basicId?: string; error?: string } | null>(null);
 
   // ── Facebook state ──
   const [fbConfigured, setFbConfigured] = useState(isFacebookConfigured);
@@ -65,6 +67,19 @@ export default function IntegrationsClient({
     await navigator.clipboard.writeText(webhookUrl);
     setLineCopied(true);
     setTimeout(() => setLineCopied(false), 2000);
+  }
+
+  async function testLineConnection() {
+    setLineTesting(true);
+    setLineTestResult(null);
+    try {
+      const res = await fetch("/api/integrations/line/test");
+      const data = await res.json();
+      setLineTestResult(data);
+    } catch {
+      setLineTestResult({ ok: false, error: "ไม่สามารถเชื่อมต่อได้" });
+    }
+    setLineTesting(false);
   }
 
   // ── Facebook handlers ──
@@ -141,15 +156,54 @@ export default function IntegrationsClient({
           </button>
         )}
         {!lineEditing && lineConfigured && (
-          <div className="flex gap-2">
-            <button onClick={() => setLineEditing(true)}
-              className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
-              แก้ไข Credentials
-            </button>
-            <button onClick={handleLineDisconnect}
-              className="flex items-center gap-1.5 px-4 py-2.5 border border-red-200 text-red-500 hover:bg-red-50 text-sm font-medium rounded-lg transition-colors">
-              <Trash2 className="w-4 h-4" /> ยกเลิก
-            </button>
+          <div className="space-y-2">
+            <div className="flex gap-2">
+              <button onClick={() => setLineEditing(true)}
+                className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
+                แก้ไข Credentials
+              </button>
+              <button
+                onClick={testLineConnection}
+                disabled={lineTesting}
+                className="flex items-center gap-1.5 px-4 py-2.5 border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+              >
+                <FlaskConical className="w-4 h-4" />
+                {lineTesting ? "กำลังทดสอบ..." : "ทดสอบ"}
+              </button>
+              <button onClick={handleLineDisconnect}
+                className="flex items-center gap-1.5 px-4 py-2.5 border border-red-200 text-red-500 hover:bg-red-50 text-sm font-medium rounded-lg transition-colors">
+                <Trash2 className="w-4 h-4" /> ยกเลิก
+              </button>
+            </div>
+
+            {lineTestResult && (
+              <div className={`flex items-start gap-2 px-3 py-2.5 rounded-lg text-sm ${
+                lineTestResult.ok
+                  ? "bg-green-50 border border-green-200 text-green-700"
+                  : "bg-red-50 border border-red-200 text-red-700"
+              }`}>
+                {lineTestResult.ok ? (
+                  <>
+                    <CheckCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="font-medium">Token ถูกต้อง ✓</p>
+                      <p className="text-xs mt-0.5">
+                        OA: <b>{lineTestResult.displayName}</b>
+                        {lineTestResult.basicId && <span className="ml-1.5 opacity-70">(@{lineTestResult.basicId})</span>}
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="font-medium">Token ไม่ถูกต้อง</p>
+                      <p className="text-xs mt-0.5">{lineTestResult.error}</p>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         )}
         {lineEditing && (

@@ -838,7 +838,7 @@ export function InboxClient({
       isAtBottomRef.current = true; // force scroll after HR sends
       await loadConversation(activeId);
       if (data.linePushError) {
-        setLinePushError(`ส่งถึง LINE ไม่สำเร็จ: ${data.linePushError}`);
+        setLinePushError(data.linePushError);
       }
     }
     setSending(false);
@@ -1205,9 +1205,19 @@ export function InboxClient({
           {/* Input area */}
           <div className="bg-white border-t border-slate-200 p-3 flex-shrink-0">
             {linePushError && (
-              <div className="mb-2 flex items-center justify-between gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg">
-                <p className="text-xs text-red-700">{linePushError}</p>
-                <button onClick={() => setLinePushError(null)} className="text-red-400 hover:text-red-600 text-xs shrink-0">✕</button>
+              <div className="mb-2 flex items-start justify-between gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg">
+                <div className="text-xs text-red-700 space-y-0.5">
+                  <p className="font-medium">⚠️ ส่งถึง LINE ไม่สำเร็จ</p>
+                  <p className="text-red-600 leading-relaxed">{linePushError}</p>
+                  <p className="text-red-500">
+                    แนะนำ: ไป{" "}
+                    <a href="/integrations" className="underline font-medium hover:text-red-700">
+                      /integrations
+                    </a>{" "}
+                    → กด "ทดสอบ" เพื่อตรวจสอบ Channel Access Token
+                  </p>
+                </div>
+                <button onClick={() => setLinePushError(null)} className="text-red-400 hover:text-red-600 text-xs shrink-0 mt-0.5">✕</button>
               </div>
             )}
             <div className="flex items-end gap-2">
