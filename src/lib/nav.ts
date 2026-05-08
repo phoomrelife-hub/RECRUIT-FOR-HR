@@ -133,8 +133,8 @@ export const navSections: NavSection[] = [
         roles: ["SUPER_ADMIN"],
       },
       {
-        title: "ตั้งค่า",
-        href: "/settings",
+        title: "ตั้งค่า AI",
+        href: "/settings/ai",
         icon: Settings,
         roles: ["SUPER_ADMIN", "HR_MANAGER"],
       },
