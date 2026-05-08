@@ -698,6 +698,10 @@ export function InboxClient({
   const [scheduling, setScheduling] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesAreaRef = useRef<HTMLDivElement>(null);
+  const isAtBottomRef = useRef(true);
+  const prevMessageCountRef = useRef(0);
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── filtered conversations ──
@@ -740,6 +744,9 @@ export function InboxClient({
   // ── select conversation ──
   async function selectConv(id: string) {
     setActiveId(id);
+    isAtBottomRef.current = true;
+    prevMessageCountRef.current = 0;
+    setShowScrollBtn(false);
     setShowSimulate(false);
     setShowQuickReplies(false);
     setShowTagMenu(false);
@@ -771,10 +778,35 @@ export function InboxClient({
     return () => clearInterval(listPoll);
   }, [refreshList]);
 
-  // ── scroll to bottom on new messages ──
+  // ── smart scroll: only auto-scroll when user is near bottom ──
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const newCount = messages.length;
+    const hadNewMessages = newCount > prevMessageCountRef.current;
+    prevMessageCountRef.current = newCount;
+
+    if (isAtBottomRef.current) {
+      // user is at bottom → always follow new messages
+      messagesEndRef.current?.scrollIntoView({ behavior: hadNewMessages ? "smooth" : "instant" });
+      setShowScrollBtn(false);
+    } else if (hadNewMessages) {
+      // user scrolled up but new messages arrived → show button
+      setShowScrollBtn(true);
+    }
   }, [messages]);
+
+  function scrollToBottom() {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    setShowScrollBtn(false);
+    isAtBottomRef.current = true;
+  }
+
+  function handleMessagesScroll() {
+    const el = messagesAreaRef.current;
+    if (!el) return;
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    isAtBottomRef.current = distFromBottom < 80;
+    if (isAtBottomRef.current) setShowScrollBtn(false);
+  }
 
   // ── send HR message ──
   async function sendMessage() {
@@ -803,6 +835,7 @@ export function InboxClient({
     if (res.ok) {
       const data = await res.json();
       setInputMsg("");
+      isAtBottomRef.current = true; // force scroll after HR sends
       await loadConversation(activeId);
       if (data.linePushError) {
         setLinePushError(`ส่งถึง LINE ไม่สำเร็จ: ${data.linePushError}`);
@@ -1108,7 +1141,21 @@ export function InboxClient({
           )}
 
           {/* Messages area */}
-          <div className="flex-1 overflow-y-auto p-4 bg-slate-50">
+          <div
+            ref={messagesAreaRef}
+            onScroll={handleMessagesScroll}
+            className="flex-1 overflow-y-auto p-4 bg-slate-50 relative"
+          >
+            {/* Scroll to bottom button */}
+            {showScrollBtn && (
+              <button
+                onClick={scrollToBottom}
+                className="sticky bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-full shadow-lg hover:bg-blue-700 transition-all z-10 w-fit mx-auto"
+              >
+                <ChevronDown size={13} />
+                ข้อความใหม่
+              </button>
+            )}
             {messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2">
                 <MessageSquare size={32} className="opacity-20" />
