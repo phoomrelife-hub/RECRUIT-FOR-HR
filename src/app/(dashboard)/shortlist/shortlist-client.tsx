@@ -13,10 +13,12 @@ import {
   ChevronRight,
   Loader2,
   MessageCircle,
+  MapPin,
   Phone,
   Send,
   Trophy,
   UserCheck,
+  Video,
 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -70,6 +72,8 @@ function Avatar({ c }: { c: ShortlistCandidate }) {
 
 // ── Schedule Interview Dialog ─────────────────────────────────────────────────
 
+type InterviewType = "onsite" | "online";
+
 function ScheduleDialog({
   candidate,
   open,
@@ -81,26 +85,45 @@ function ScheduleDialog({
   onOpenChange: (v: boolean) => void;
   onScheduled: (id: string) => void;
 }) {
+  const [type, setType] = useState<InterviewType>("onsite");
   const [date, setDate] = useState("");
   const [startTime, setStartTime] = useState("09:00");
   const [location, setLocation] = useState("");
+  const [meetingLink, setMeetingLink] = useState("");
+  const [interviewer, setInterviewer] = useState("");
+  const [positionLabel, setPositionLabel] = useState("");
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // pre-fill position when candidate changes
+  const name = candidate ? getName(candidate) : "";
+  const candidatePosition = candidate?.interestedPosition?.title ?? "";
+
+  function resetForm() {
+    setType("onsite");
+    setDate("");
+    setStartTime("09:00");
+    setLocation("");
+    setMeetingLink("");
+    setInterviewer("");
+    setPositionLabel("");
+    setNote("");
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!candidate) return;
     setLoading(true);
     try {
+      const body =
+        type === "online"
+          ? { type, date, startTime, meetingLink, interviewer: interviewer || undefined, positionLabel: positionLabel || candidatePosition || undefined, note: note || undefined }
+          : { type, date, startTime, location: location || undefined, note: note || undefined };
+
       const res = await fetch(`/api/candidates/${candidate.id}/schedule-interview`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          date,
-          startTime,
-          location: location || undefined,
-          note: note || undefined,
-        }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "เกิดข้อผิดพลาด");
@@ -111,18 +134,13 @@ function ScheduleDialog({
       );
       onScheduled(candidate.id);
       onOpenChange(false);
-      setDate("");
-      setStartTime("09:00");
-      setLocation("");
-      setNote("");
+      resetForm();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "เกิดข้อผิดพลาด");
     } finally {
       setLoading(false);
     }
   }
-
-  const name = candidate ? getName(candidate) : "";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -133,47 +151,127 @@ function ScheduleDialog({
             นัดสัมภาษณ์{name ? ` · ${name}` : ""}
           </DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 pt-2">
-          <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1">
-              วันที่ <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="date"
-              required
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+
+        <form onSubmit={handleSubmit} className="space-y-4 pt-1">
+          {/* ── Type toggle ── */}
+          <div className="flex rounded-lg border border-slate-200 p-1 gap-1 bg-slate-50">
+            <button
+              type="button"
+              onClick={() => setType("onsite")}
+              className={`flex-1 flex items-center justify-center gap-1.5 rounded-md py-1.5 text-sm font-medium transition-colors ${
+                type === "onsite"
+                  ? "bg-white shadow-sm text-slate-900"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              <MapPin className="h-3.5 w-3.5" />
+              On-site
+            </button>
+            <button
+              type="button"
+              onClick={() => setType("online")}
+              className={`flex-1 flex items-center justify-center gap-1.5 rounded-md py-1.5 text-sm font-medium transition-colors ${
+                type === "online"
+                  ? "bg-white shadow-sm text-slate-900"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              <Video className="h-3.5 w-3.5" />
+              Online
+            </button>
           </div>
 
-          <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1">
-              เวลา <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="time"
-              required
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+          {/* ── Online-only fields ── */}
+          {type === "online" && (
+            <>
+              <div>
+                <label className="text-sm font-medium text-slate-700 block mb-1">
+                  ตำแหน่งที่สัมภาษณ์
+                </label>
+                <input
+                  type="text"
+                  value={positionLabel}
+                  onChange={(e) => setPositionLabel(e.target.value)}
+                  placeholder={candidatePosition || "เช่น Sales Admin"}
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-slate-700 block mb-1">
+                  ผู้สัมภาษณ์
+                </label>
+                <input
+                  type="text"
+                  value={interviewer}
+                  onChange={(e) => setInterviewer(e.target.value)}
+                  placeholder="เช่น คุณสมชาย / HR Manager"
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </>
+          )}
+
+          {/* ── Date & Time (shared) ── */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-sm font-medium text-slate-700 block mb-1">
+                วันที่ <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="date"
+                required
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700 block mb-1">
+                เวลา <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="time"
+                required
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
           </div>
 
-          <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1">
-              สถานที่{" "}
-              <span className="text-xs text-slate-400">(ว่างไว้ = ใช้ที่อยู่บริษัท)</span>
-            </label>
-            <input
-              type="text"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              placeholder="76/4 อาคารแพลตินัมเพลส ซอยรามคำแหง 178..."
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
+          {/* ── Onsite: location / Online: meeting link ── */}
+          {type === "onsite" ? (
+            <div>
+              <label className="text-sm font-medium text-slate-700 block mb-1">
+                สถานที่{" "}
+                <span className="text-xs text-slate-400">(ว่างไว้ = ใช้ที่อยู่บริษัท)</span>
+              </label>
+              <input
+                type="text"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                placeholder="76/4 อาคารแพลตินัมเพลส ซอยรามคำแหง 178..."
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          ) : (
+            <div>
+              <label className="text-sm font-medium text-slate-700 block mb-1">
+                ลิงก์ประชุม <span className="text-red-500">*</span>
+                <span className="text-xs text-slate-400 ml-1">(Google Meet, Zoom, Teams ฯลฯ)</span>
+              </label>
+              <input
+                type="url"
+                required
+                value={meetingLink}
+                onChange={(e) => setMeetingLink(e.target.value)}
+                placeholder="https://meet.google.com/..."
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          )}
 
+          {/* ── Note (shared) ── */}
           <div>
             <label className="text-sm font-medium text-slate-700 block mb-1">
               หมายเหตุ
@@ -182,11 +280,16 @@ function ScheduleDialog({
               rows={2}
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="เช่น ให้เตรียมเอกสาร, แต่งกายสุภาพ..."
+              placeholder={
+                type === "online"
+                  ? "เช่น กรุณาเปิดกล้องระหว่างสัมภาษณ์..."
+                  : "เช่น ให้เตรียมเอกสาร, แต่งกายสุภาพ..."
+              }
               className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
             />
           </div>
 
+          {/* LINE notice */}
           {candidate?.lineUserId && (
             <p className="text-xs text-green-600 flex items-center gap-1">
               <MessageCircle className="h-3.5 w-3.5" />
@@ -195,7 +298,7 @@ function ScheduleDialog({
             </p>
           )}
 
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="flex justify-end gap-2 pt-1">
             <Button
               type="button"
               variant="outline"
