@@ -50,22 +50,18 @@ function getName(c: ShortlistCandidate) {
 
 // ── Avatar ────────────────────────────────────────────────────────────────────
 
-function Avatar({ c, size = "sm" }: { c: ShortlistCandidate; size?: "sm" | "md" }) {
+function Avatar({ c }: { c: ShortlistCandidate }) {
   const name = getName(c);
-  const dim = size === "md" ? "h-10 w-10" : "h-8 w-8";
-  const text = size === "md" ? "text-sm" : "text-xs";
   return c.lineProfilePicUrl ? (
     // eslint-disable-next-line @next/next/no-img-element
     <img
       src={c.lineProfilePicUrl}
       alt={name}
-      className={`${dim} rounded-full object-cover border border-slate-200 shrink-0`}
+      className="h-8 w-8 rounded-full object-cover border border-slate-200 shrink-0"
     />
   ) : (
-    <div
-      className={`${dim} rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0`}
-    >
-      <span className={`${text} font-semibold text-slate-500`}>
+    <div className="h-8 w-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0">
+      <span className="text-xs font-semibold text-slate-500">
         {name.charAt(0).toUpperCase()}
       </span>
     </div>
@@ -99,7 +95,12 @@ function ScheduleDialog({
       const res = await fetch(`/api/candidates/${candidate.id}/schedule-interview`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date, startTime, location: location || undefined, note: note || undefined }),
+        body: JSON.stringify({
+          date,
+          startTime,
+          location: location || undefined,
+          note: note || undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "เกิดข้อผิดพลาด");
@@ -110,7 +111,6 @@ function ScheduleDialog({
       );
       onScheduled(candidate.id);
       onOpenChange(false);
-      // reset
       setDate("");
       setStartTime("09:00");
       setLocation("");
@@ -134,7 +134,6 @@ function ScheduleDialog({
           </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 pt-2">
-          {/* Date */}
           <div>
             <label className="text-sm font-medium text-slate-700 block mb-1">
               วันที่ <span className="text-red-500">*</span>
@@ -148,7 +147,6 @@ function ScheduleDialog({
             />
           </div>
 
-          {/* Time */}
           <div>
             <label className="text-sm font-medium text-slate-700 block mb-1">
               เวลา <span className="text-red-500">*</span>
@@ -162,7 +160,6 @@ function ScheduleDialog({
             />
           </div>
 
-          {/* Location */}
           <div>
             <label className="text-sm font-medium text-slate-700 block mb-1">
               สถานที่{" "}
@@ -177,7 +174,6 @@ function ScheduleDialog({
             />
           </div>
 
-          {/* Note */}
           <div>
             <label className="text-sm font-medium text-slate-700 block mb-1">
               หมายเหตุ
@@ -191,7 +187,6 @@ function ScheduleDialog({
             />
           </div>
 
-          {/* LINE notice */}
           {candidate?.lineUserId && (
             <p className="text-xs text-green-600 flex items-center gap-1">
               <MessageCircle className="h-3.5 w-3.5" />
@@ -251,7 +246,6 @@ function CandidateCard({
         </div>
       </div>
 
-      {/* Contact chips */}
       <div className="flex gap-1.5 flex-wrap">
         {c.phone && (
           <span className="inline-flex items-center gap-1 text-[10px] bg-slate-50 text-slate-500 rounded px-1.5 py-0.5 border border-slate-100">
@@ -289,7 +283,6 @@ function Column({
 }) {
   return (
     <div className="flex-1 min-w-0">
-      {/* Column header */}
       <div className={`rounded-t-lg px-3 py-2.5 flex items-center gap-2 ${color}`}>
         {icon}
         <span className="font-semibold text-sm">{title}</span>
@@ -297,13 +290,11 @@ function Column({
           {count}
         </span>
       </div>
-
-      {/* Cards */}
       <div className="bg-slate-50 rounded-b-lg border border-t-0 border-slate-200 p-2 space-y-2 min-h-[120px]">
         {children}
         {count === 0 && (
-          <div className="flex items-center justify-center h-16 text-xs text-slate-400">
-            ไม่มีรายการ
+          <div className="flex items-center justify-center h-20 text-xs text-slate-400">
+            ยังไม่มีรายการ
           </div>
         )}
       </div>
@@ -322,7 +313,6 @@ export function ShortlistClient({ qualified, scheduled, interviewed, passed }: P
   const [scheduleTarget, setScheduleTarget] = useState<ShortlistCandidate | null>(null);
   const [scheduleOpen, setScheduleOpen] = useState(false);
 
-  // Moving a candidate to a new status
   async function moveStatus(id: string, newStatus: string) {
     try {
       const res = await fetch(`/api/candidates/${id}`, {
@@ -338,7 +328,6 @@ export function ShortlistClient({ qualified, scheduled, interviewed, passed }: P
     }
   }
 
-  // Called after scheduling → move candidate from qualified → scheduled
   function handleScheduled(id: string) {
     const c = qualifiedList.find((x) => x.id === id);
     if (!c) return;
@@ -346,16 +335,6 @@ export function ShortlistClient({ qualified, scheduled, interviewed, passed }: P
     setScheduledList((prev) => [{ ...c, currentStatus: "INTERVIEW_SCHEDULED" }, ...prev]);
   }
 
-  // INTERVIEWED → PASSED
-  async function handleMarkPassed(c: ShortlistCandidate) {
-    const ok = await moveStatus(c.id, "PASSED");
-    if (!ok) return;
-    setInterviewedList((prev) => prev.filter((x) => x.id !== c.id));
-    setPassedList((prev) => [{ ...c, currentStatus: "PASSED" }, ...prev]);
-    toast.success(`${getName(c)} ย้ายไปรอคอนเฟิร์มแล้ว`);
-  }
-
-  // INTERVIEW_SCHEDULED → INTERVIEWED
   async function handleMarkInterviewed(c: ShortlistCandidate) {
     const ok = await moveStatus(c.id, "INTERVIEWED");
     if (!ok) return;
@@ -364,22 +343,37 @@ export function ShortlistClient({ qualified, scheduled, interviewed, passed }: P
     toast.success(`${getName(c)} มาร์กสัมภาษณ์แล้ว`);
   }
 
+  async function handleMarkPassed(c: ShortlistCandidate) {
+    const ok = await moveStatus(c.id, "PASSED");
+    if (!ok) return;
+    setInterviewedList((prev) => prev.filter((x) => x.id !== c.id));
+    setPassedList((prev) => [{ ...c, currentStatus: "PASSED" }, ...prev]);
+    toast.success(`${getName(c)} ย้ายไปรอคอนเฟิร์มแล้ว`);
+  }
+
+  const total = qualifiedList.length + scheduledList.length + interviewedList.length + passedList.length;
+
   return (
-    <section className="space-y-3">
-      {/* Section header */}
+    <div className="space-y-6">
+      {/* Header */}
       <div>
-        <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-          <Trophy className="h-5 w-5 text-amber-500" />
-          Shortlist
-        </h2>
-        <p className="text-sm text-slate-500 mt-0.5">
-          ผู้สมัครที่ผ่านการพิจารณาเบื้องต้น · {qualifiedList.length + scheduledList.length + interviewedList.length + passedList.length} คน
+        <div className="flex items-center gap-2">
+          <Trophy className="h-6 w-6 text-amber-500" />
+          <h1 className="text-2xl font-bold text-slate-900">Shortlist</h1>
+          {total > 0 && (
+            <span className="ml-1 rounded-full bg-amber-100 text-amber-700 text-xs font-semibold px-2.5 py-0.5">
+              {total} คน
+            </span>
+          )}
+        </div>
+        <p className="mt-1 text-sm text-slate-500">
+          ติดตามผู้สมัครที่ผ่านการพิจารณา ตั้งแต่นัดสัมภาษณ์จนถึงรอเริ่มงาน
         </p>
       </div>
 
       {/* 4 Columns */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-        {/* ── ผ่าน (QUALIFIED) ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        {/* ผ่านการพิจารณา */}
         <Column
           title="ผ่านการพิจารณา"
           color="bg-emerald-500 text-white"
@@ -407,7 +401,7 @@ export function ShortlistClient({ qualified, scheduled, interviewed, passed }: P
           ))}
         </Column>
 
-        {/* ── นัดแล้ว (INTERVIEW_SCHEDULED) ── */}
+        {/* นัดแล้ว */}
         <Column
           title="นัดแล้ว"
           color="bg-blue-500 text-white"
@@ -433,7 +427,7 @@ export function ShortlistClient({ qualified, scheduled, interviewed, passed }: P
           ))}
         </Column>
 
-        {/* ── สัมภาษณ์แล้ว (INTERVIEWED) ── */}
+        {/* สัมภาษณ์แล้ว */}
         <Column
           title="สัมภาษณ์แล้ว"
           color="bg-violet-500 text-white"
@@ -459,7 +453,7 @@ export function ShortlistClient({ qualified, scheduled, interviewed, passed }: P
           ))}
         </Column>
 
-        {/* ── รอคอนเฟิร์มเริ่มงาน (PASSED) ── */}
+        {/* รอคอนเฟิร์มเริ่มงาน */}
         <Column
           title="รอคอนเฟิร์มเริ่มงาน"
           color="bg-amber-500 text-white"
@@ -472,13 +466,12 @@ export function ShortlistClient({ qualified, scheduled, interviewed, passed }: P
         </Column>
       </div>
 
-      {/* Schedule dialog */}
       <ScheduleDialog
         candidate={scheduleTarget}
         open={scheduleOpen}
         onOpenChange={setScheduleOpen}
         onScheduled={handleScheduled}
       />
-    </section>
+    </div>
   );
 }

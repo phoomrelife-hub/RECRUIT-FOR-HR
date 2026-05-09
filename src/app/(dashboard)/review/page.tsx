@@ -1,13 +1,12 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ReviewClient } from "./review-client";
-import { ShortlistClient } from "./shortlist-client";
 import { ClipboardCheck } from "lucide-react";
 
 export default async function ReviewQueuePage() {
   await auth();
 
-  const [queue, positions, shortlist] = await Promise.all([
+  const [queue, positions] = await Promise.all([
     db.candidate.findMany({
       where: {
         currentStatus: {
@@ -28,75 +27,36 @@ export default async function ReviewQueuePage() {
         createdAt: true,
         interestedPosition: { select: { title: true } },
       },
-      orderBy: { createdAt: "asc" }, // เก่าสุดขึ้นก่อน (FIFO)
+      orderBy: { createdAt: "asc" },
     }),
 
     db.jobPosition.findMany({
       select: { id: true, title: true },
       orderBy: { createdAt: "asc" },
     }),
-
-    db.candidate.findMany({
-      where: {
-        currentStatus: {
-          in: ["QUALIFIED", "INTERVIEW_SCHEDULED", "INTERVIEWED", "PASSED"],
-        },
-      },
-      select: {
-        id: true,
-        fullName: true,
-        nickname: true,
-        lineDisplayName: true,
-        lineProfilePicUrl: true,
-        lineUserId: true,
-        phone: true,
-        currentStatus: true,
-        interestedPosition: { select: { title: true } },
-      },
-      orderBy: { updatedAt: "desc" },
-    }),
   ]);
 
   const waitingCount = queue.filter((c) => c.currentStatus === "WAITING_HR_REVIEW").length;
 
-  const qualified   = shortlist.filter((c) => c.currentStatus === "QUALIFIED");
-  const scheduled   = shortlist.filter((c) => c.currentStatus === "INTERVIEW_SCHEDULED");
-  const interviewed = shortlist.filter((c) => c.currentStatus === "INTERVIEWED");
-  const passed      = shortlist.filter((c) => c.currentStatus === "PASSED");
-
   return (
-    <div className="space-y-10">
-      {/* ── Review Queue ───────────────────────────────────────────────────── */}
-      <section className="space-y-6">
-        <div>
-          <div className="flex items-center gap-2">
-            <ClipboardCheck className="h-6 w-6 text-yellow-600" />
-            <h1 className="text-2xl font-bold text-slate-900">คิวพิจารณาใบสมัคร</h1>
-            {queue.length > 0 && (
-              <span className="ml-1 rounded-full bg-yellow-100 text-yellow-700 text-xs font-semibold px-2.5 py-0.5">
-                {queue.length} รายการ
-              </span>
-            )}
-          </div>
-          <p className="mt-1 text-sm text-slate-500">
-            กด ✅ ผ่าน หรือ ❌ ไม่ผ่าน เพื่อแจ้งผลและส่ง LINE ทันที
-            {waitingCount > 0 && ` · ${waitingCount} รายรอพิจารณา`}
-          </p>
+    <div className="space-y-6">
+      <div>
+        <div className="flex items-center gap-2">
+          <ClipboardCheck className="h-6 w-6 text-yellow-600" />
+          <h1 className="text-2xl font-bold text-slate-900">คิวพิจารณาใบสมัคร</h1>
+          {queue.length > 0 && (
+            <span className="ml-1 rounded-full bg-yellow-100 text-yellow-700 text-xs font-semibold px-2.5 py-0.5">
+              {queue.length} รายการ
+            </span>
+          )}
         </div>
+        <p className="mt-1 text-sm text-slate-500">
+          กด ✅ ผ่าน หรือ ❌ ไม่ผ่าน เพื่อแจ้งผลและส่ง LINE ทันที
+          {waitingCount > 0 && ` · ${waitingCount} รายรอพิจารณา`}
+        </p>
+      </div>
 
-        <ReviewClient initial={queue as any} positions={positions} />
-      </section>
-
-      {/* ── Divider ────────────────────────────────────────────────────────── */}
-      <hr className="border-slate-200" />
-
-      {/* ── Shortlist ──────────────────────────────────────────────────────── */}
-      <ShortlistClient
-        qualified={qualified as any}
-        scheduled={scheduled as any}
-        interviewed={interviewed as any}
-        passed={passed as any}
-      />
+      <ReviewClient initial={queue as any} positions={positions} />
     </div>
   );
 }
