@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -11,7 +11,6 @@ import {
   MessageCircle,
   ExternalLink,
   Inbox,
-  Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -34,65 +33,46 @@ interface Props {
   initial: QueueCandidate[];
 }
 
-// ── Fixed position color palette ─────────────────────────────────────────────
-const POSITION_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  default: { bg: "bg-slate-100", text: "text-slate-700", border: "border-slate-200" },
+// ── Sales Admin tier — keyword matching ──────────────────────────────────────
+// Parse experience years from status string (เช่น "3 ปี", "6 เดือน", "ไม่มี")
+// For now we use currentStatus as a proxy until form answers are wired up.
+// Replace `getExperienceText` with real field when available.
+type Tier = "high" | "mid" | "low" | "none";
+
+const TIER_CONFIG: Record<Tier, { label: string; color: string; order: number }> = {
+  high: { label: "ประสบการณ์สูง",   color: "bg-emerald-100 text-emerald-700 border-emerald-300", order: 0 },
+  mid:  { label: "ประสบการณ์ปานกลาง", color: "bg-blue-100 text-blue-700 border-blue-300",       order: 1 },
+  low:  { label: "ประสบการณ์น้อย",   color: "bg-amber-100 text-amber-700 border-amber-300",     order: 2 },
+  none: { label: "ไม่มีประสบการณ์",   color: "bg-slate-100 text-slate-500 border-slate-300",    order: 3 },
 };
 
-const PALETTE = [
-  { bg: "bg-blue-50",   text: "text-blue-700",   border: "border-blue-200"   },
-  { bg: "bg-violet-50", text: "text-violet-700",  border: "border-violet-200" },
-  { bg: "bg-emerald-50",text: "text-emerald-700", border: "border-emerald-200"},
-  { bg: "bg-amber-50",  text: "text-amber-700",   border: "border-amber-200"  },
-  { bg: "bg-rose-50",   text: "text-rose-700",    border: "border-rose-200"   },
-  { bg: "bg-cyan-50",   text: "text-cyan-700",    border: "border-cyan-200"   },
-  { bg: "bg-orange-50", text: "text-orange-700",  border: "border-orange-200" },
-  { bg: "bg-pink-50",   text: "text-pink-700",    border: "border-pink-200"   },
-];
-
-function getPositionColor(title: string, index: number) {
-  return PALETTE[index % PALETTE.length];
+// Placeholder — returns "none" until experience field is available.
+// TODO: replace with real experience parsing from form answers.
+function getTier(_c: QueueCandidate): Tier {
+  return "none";
 }
 
-// ── Group candidates by position ─────────────────────────────────────────────
-function groupByPosition(queue: QueueCandidate[]) {
-  const map = new Map<string, QueueCandidate[]>();
-
-  for (const c of queue) {
-    const key = c.interestedPosition?.title ?? "__none__";
-    if (!map.has(key)) map.set(key, []);
-    map.get(key)!.push(c);
-  }
-
-  // Sort groups: named positions first (by count desc), then "ไม่ระบุ" last
-  const named = [...map.entries()]
-    .filter(([k]) => k !== "__none__")
-    .sort((a, b) => b[1].length - a[1].length);
-  const none = map.get("__none__");
-
-  const result: { title: string; candidates: QueueCandidate[] }[] = named.map(
-    ([title, candidates]) => ({ title, candidates })
-  );
-  if (none?.length) result.push({ title: "ไม่ระบุตำแหน่ง", candidates: none });
-
-  return result;
-}
+// ── Tab definitions ───────────────────────────────────────────────────────────
+const ALL_TAB = "__all__";
 
 // ── Candidate Row ─────────────────────────────────────────────────────────────
 function CandidateRow({
   c,
+  showTier,
   loading,
   onQualify,
 }: {
   c: QueueCandidate;
+  showTier: boolean;
   loading: Record<string, "pass" | "fail">;
   onQualify: (c: QueueCandidate, result: "pass" | "fail") => void;
 }) {
   const name = c.fullName ?? c.nickname ?? c.lineDisplayName ?? "ไม่ระบุชื่อ";
   const isLoading = !!loading[c.id];
+  const tier = showTier ? getTier(c) : null;
 
   return (
-    <div className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm hover:border-slate-300 transition-colors">
+    <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm hover:border-slate-300 transition-colors">
       {/* Avatar */}
       <div className="shrink-0">
         {c.lineProfilePicUrl ? (
@@ -103,7 +83,7 @@ function CandidateRow({
             className="h-10 w-10 rounded-full object-cover border-2 border-green-200"
           />
         ) : (
-          <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center border-2 border-slate-200">
+          <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center border-2 border-slate-200 shrink-0">
             <span className="text-slate-500 font-semibold text-sm">
               {name.charAt(0).toUpperCase()}
             </span>
@@ -116,9 +96,17 @@ function CandidateRow({
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-semibold text-slate-900 text-sm">{name}</span>
           {c.lineUserId && (
-            <Badge className="bg-green-100 text-green-700 text-[10px] px-1.5 py-0 flex items-center gap-1">
+            <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 text-[10px] font-semibold px-1.5 py-0.5">
               <MessageCircle className="h-2.5 w-2.5" /> LINE
-            </Badge>
+            </span>
+          )}
+          {/* Tier badge — only for Sales Admin */}
+          {tier && (
+            <span
+              className={`inline-flex items-center rounded-full border text-[10px] font-semibold px-2 py-0.5 ${TIER_CONFIG[tier].color}`}
+            >
+              {TIER_CONFIG[tier].label}
+            </span>
           )}
         </div>
         <div className="flex items-center gap-3 mt-0.5 text-xs text-slate-500">
@@ -128,13 +116,20 @@ function CandidateRow({
               {c.phone}
             </span>
           )}
+          {!showTier && c.interestedPosition && (
+            <span className="text-slate-400">{c.interestedPosition.title}</span>
+          )}
         </div>
       </div>
 
       {/* Actions */}
       <div className="flex items-center gap-2 shrink-0">
         <Link href={`/candidates/${c.id}`} target="_blank">
-          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-slate-600">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-slate-400 hover:text-slate-600"
+          >
             <ExternalLink className="h-3.5 w-3.5" />
           </Button>
         </Link>
@@ -147,7 +142,10 @@ function CandidateRow({
           {loading[c.id] === "pass" ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
           ) : (
-            <><CheckCircle className="h-3.5 w-3.5 mr-1" />ผ่าน</>
+            <>
+              <CheckCircle className="h-3.5 w-3.5 mr-1" />
+              ผ่าน
+            </>
           )}
         </Button>
         <Button
@@ -160,7 +158,10 @@ function CandidateRow({
           {loading[c.id] === "fail" ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
           ) : (
-            <><XCircle className="h-3.5 w-3.5 mr-1" />ไม่ผ่าน</>
+            <>
+              <XCircle className="h-3.5 w-3.5 mr-1" />
+              ไม่ผ่าน
+            </>
           )}
         </Button>
       </div>
@@ -172,6 +173,39 @@ function CandidateRow({
 export function ReviewClient({ initial }: Props) {
   const [queue, setQueue] = useState<QueueCandidate[]>(initial);
   const [loading, setLoading] = useState<Record<string, "pass" | "fail">>({});
+  const [activeTab, setActiveTab] = useState<string>(ALL_TAB);
+
+  // Build tab list from unique positions in queue
+  const tabs = useMemo(() => {
+    const posMap = new Map<string, number>();
+    for (const c of queue) {
+      const key = c.interestedPosition?.title ?? "ไม่ระบุตำแหน่ง";
+      posMap.set(key, (posMap.get(key) ?? 0) + 1);
+    }
+    // Sort: named positions by count desc, "ไม่ระบุ" last
+    const named = [...posMap.entries()]
+      .filter(([k]) => k !== "ไม่ระบุตำแหน่ง")
+      .sort((a, b) => b[1] - a[1]);
+    const none = posMap.get("ไม่ระบุตำแหน่ง");
+    const ordered = [
+      ...named,
+      ...(none ? [["ไม่ระบุตำแหน่ง", none] as [string, number]] : []),
+    ];
+    return ordered;
+  }, [queue]);
+
+  // Filtered list for active tab
+  const filtered = useMemo(() => {
+    if (activeTab === ALL_TAB) return queue;
+    return queue.filter(
+      (c) =>
+        (c.interestedPosition?.title ?? "ไม่ระบุตำแหน่ง") === activeTab
+    );
+  }, [queue, activeTab]);
+
+  // Is the active tab Sales Admin? (for tier display)
+  const isSalesAdmin =
+    activeTab !== ALL_TAB && activeTab.toLowerCase().includes("sales admin");
 
   async function handleQualify(candidate: QueueCandidate, result: "pass" | "fail") {
     setLoading((prev) => ({ ...prev, [candidate.id]: result }));
@@ -186,8 +220,17 @@ export function ReviewClient({ initial }: Props) {
 
       setQueue((prev) => prev.filter((c) => c.id !== candidate.id));
 
+      // If the active tab becomes empty after removal, fall back to "All"
+      const remaining = queue.filter(
+        (c) =>
+          c.id !== candidate.id &&
+          (c.interestedPosition?.title ?? "ไม่ระบุตำแหน่ง") === activeTab
+      );
+      if (remaining.length === 0 && activeTab !== ALL_TAB) setActiveTab(ALL_TAB);
+
       const label = result === "pass" ? "✅ ผ่าน" : "❌ ไม่ผ่าน";
-      const name = candidate.fullName ?? candidate.nickname ?? candidate.lineDisplayName ?? "ไม่ระบุ";
+      const name =
+        candidate.fullName ?? candidate.nickname ?? candidate.lineDisplayName ?? "ไม่ระบุ";
       const msgs: string[] = [];
       if (data.lineSent) msgs.push("ส่ง LINE แล้ว");
       if (data.notionPatched) msgs.push("อัปเดต Notion แล้ว");
@@ -216,40 +259,91 @@ export function ReviewClient({ initial }: Props) {
     );
   }
 
-  const groups = groupByPosition(queue);
-
   return (
-    <div className="space-y-6">
-      {groups.map(({ title, candidates }, groupIndex) => {
-        const color = getPositionColor(title, groupIndex);
+    <div className="space-y-4">
+      {/* ── Tab bar ─────────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {/* All tab */}
+        <button
+          onClick={() => setActiveTab(ALL_TAB)}
+          className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium border transition-colors ${
+            activeTab === ALL_TAB
+              ? "bg-slate-800 text-white border-slate-800"
+              : "bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:text-slate-800"
+          }`}
+        >
+          ทั้งหมด
+          <span
+            className={`rounded-full px-1.5 py-0 text-[10px] font-bold ${
+              activeTab === ALL_TAB ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600"
+            }`}
+          >
+            {queue.length}
+          </span>
+        </button>
 
-        return (
-          <div key={title}>
-            {/* Section header */}
-            <div className={`flex items-center gap-2 mb-3 pb-2 border-b ${color.border}`}>
-              <div className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${color.bg} ${color.text}`}>
-                <Users className="h-3 w-3" />
-                {title}
-              </div>
-              <span className={`text-xs font-medium ${color.text}`}>
-                {candidates.length} คน
+        {/* Position tabs */}
+        {tabs.map(([title, count]) => {
+          const isActive = activeTab === title;
+          const isSA = title.toLowerCase().includes("sales admin");
+          return (
+            <button
+              key={title}
+              onClick={() => setActiveTab(title)}
+              className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium border transition-colors ${
+                isActive
+                  ? isSA
+                    ? "bg-blue-600 text-white border-blue-600"
+                    : "bg-slate-800 text-white border-slate-800"
+                  : "bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:text-slate-800"
+              }`}
+            >
+              {title}
+              <span
+                className={`rounded-full px-1.5 py-0 text-[10px] font-bold ${
+                  isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600"
+                }`}
+              >
+                {count}
               </span>
-            </div>
+            </button>
+          );
+        })}
+      </div>
 
-            {/* Candidate rows */}
-            <div className="space-y-2">
-              {candidates.map((c) => (
-                <CandidateRow
-                  key={c.id}
-                  c={c}
-                  loading={loading}
-                  onQualify={handleQualify}
-                />
-              ))}
-            </div>
-          </div>
-        );
-      })}
+      {/* ── Sales Admin tier legend ──────────────────────────────────────── */}
+      {isSalesAdmin && (
+        <div className="flex items-center gap-2 flex-wrap p-3 rounded-xl bg-blue-50 border border-blue-100">
+          <span className="text-xs font-medium text-blue-700 mr-1">ระดับประสบการณ์ :</span>
+          {(Object.entries(TIER_CONFIG) as [Tier, (typeof TIER_CONFIG)[Tier]][]).map(
+            ([key, cfg]) => (
+              <span
+                key={key}
+                className={`inline-flex items-center rounded-full border text-[10px] font-semibold px-2 py-0.5 ${cfg.color}`}
+              >
+                {cfg.label}
+              </span>
+            )
+          )}
+        </div>
+      )}
+
+      {/* ── Candidate list ───────────────────────────────────────────────── */}
+      <div className="space-y-2">
+        {filtered.length === 0 ? (
+          <div className="py-12 text-center text-slate-400 text-sm">ไม่มีรายการในตำแหน่งนี้</div>
+        ) : (
+          filtered.map((c) => (
+            <CandidateRow
+              key={c.id}
+              c={c}
+              showTier={isSalesAdmin}
+              loading={loading}
+              onQualify={handleQualify}
+            />
+          ))
+        )}
+      </div>
     </div>
   );
 }
