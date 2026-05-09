@@ -1,375 +1,383 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { StatCard } from "@/components/dashboard/stat-card";
 import { TrendChart } from "@/components/dashboard/trend-chart";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import {
   Users,
   MessageSquare,
+  Clock,
+  CalendarDays,
+  TrendingUp,
   CheckCircle2,
   XCircle,
-  Clock,
-  Calendar,
-  TrendingUp,
-  AlertCircle,
-  BarChart3,
+  Video,
+  MapPin,
+  ArrowRight,
 } from "lucide-react";
 import { CandidateStatus, SourceChannel } from "@prisma/client";
+import Link from "next/link";
 
-async function getDashboardData() {
+// ── Thai helpers ──────────────────────────────────────────────────────────────
+const MONTH_NAMES = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+const MONTH_FULL  = ["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
+const DOW_THAI   = ["อาทิตย์","จันทร์","อังคาร","พุธ","พฤหัสบดี","ศุกร์","เสาร์"];
+
+const statusColors: Partial<Record<CandidateStatus, string>> = {
+  NEW_APPLICANT:       "bg-slate-100 text-slate-600",
+  BOT_SCREENING:       "bg-purple-100 text-purple-700",
+  WAITING_HR_REVIEW:   "bg-amber-100 text-amber-700",
+  NEED_MORE_INFO:      "bg-orange-100 text-orange-700",
+  QUALIFIED:           "bg-blue-100 text-blue-700",
+  INTERVIEW_SCHEDULED: "bg-indigo-100 text-indigo-700",
+  INTERVIEWED:         "bg-cyan-100 text-cyan-700",
+  PASSED:              "bg-emerald-100 text-emerald-700",
+  REJECTED:            "bg-red-100 text-red-600",
+  TALENT_POOL:         "bg-teal-100 text-teal-700",
+  CLOSED:              "bg-slate-100 text-slate-400",
+};
+const statusLabels: Partial<Record<CandidateStatus, string>> = {
+  NEW_APPLICANT:       "ผู้สมัครใหม่",
+  BOT_SCREENING:       "บอทคัดกรอง",
+  WAITING_HR_REVIEW:   "รอ HR พิจารณา",
+  NEED_MORE_INFO:      "ขอข้อมูลเพิ่ม",
+  QUALIFIED:           "ผ่านเกณฑ์",
+  INTERVIEW_SCHEDULED: "นัดสัมภาษณ์",
+  INTERVIEWED:         "สัมภาษณ์แล้ว",
+  PASSED:              "ผ่านการคัดเลือก",
+  REJECTED:            "ไม่ผ่าน",
+  TALENT_POOL:         "Talent Pool",
+  CLOSED:              "ปิด",
+};
+
+async function getData() {
   const now = new Date();
-  const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
-  const sixMonthsAgoStart = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+  const startOfMonth    = new Date(now.getFullYear(), now.getMonth(), 1);
+  const startLastMonth  = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const endLastMonth    = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+  const sixMonthsAgo    = new Date(now.getFullYear(), now.getMonth() - 5, 1);
 
-  const MONTH_NAMES = [
-    "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.",
-    "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค.",
-  ];
+  // Bangkok today range
+  const bkkNow   = new Date(now.getTime() + 7 * 3600000);
+  const y = bkkNow.getUTCFullYear(), m = bkkNow.getUTCMonth(), d = bkkNow.getUTCDate();
+  const todayStart = new Date(Date.UTC(y, m, d) - 7 * 3600000);
+  const todayEnd   = new Date(Date.UTC(y, m, d + 1) - 7 * 3600000);
 
   const [
     totalCandidates,
-    thisMonthCandidates,
-    lastMonthCandidates,
+    thisMonth,
+    lastMonth,
     waitingHR,
     qualified,
     passed,
     rejected,
-    talentPool,
     interviewScheduled,
     lineCount,
-    fbCount,
     recentCandidates,
-    recentForTrend,
+    trendRaw,
+    todayInterviews,
   ] = await Promise.all([
     db.candidate.count(),
-    db.candidate.count({ where: { createdAt: { gte: startOfThisMonth } } }),
-    db.candidate.count({ where: { createdAt: { gte: startOfLastMonth, lte: endOfLastMonth } } }),
-    db.candidate.count({ where: { currentStatus: CandidateStatus.WAITING_HR_REVIEW } }),
-    db.candidate.count({ where: { currentStatus: CandidateStatus.QUALIFIED } }),
-    db.candidate.count({ where: { currentStatus: CandidateStatus.PASSED } }),
-    db.candidate.count({ where: { currentStatus: CandidateStatus.REJECTED } }),
-    db.candidate.count({ where: { currentStatus: CandidateStatus.TALENT_POOL } }),
-    db.candidate.count({ where: { currentStatus: CandidateStatus.INTERVIEW_SCHEDULED } }),
+    db.candidate.count({ where: { createdAt: { gte: startOfMonth } } }),
+    db.candidate.count({ where: { createdAt: { gte: startLastMonth, lte: endLastMonth } } }),
+    db.candidate.count({ where: { currentStatus: { in: ["WAITING_HR_REVIEW","BOT_SCREENING","NEW_APPLICANT","NEED_MORE_INFO"] } } }),
+    db.candidate.count({ where: { currentStatus: "QUALIFIED" } }),
+    db.candidate.count({ where: { currentStatus: "PASSED" } }),
+    db.candidate.count({ where: { currentStatus: "REJECTED" } }),
+    db.candidate.count({ where: { currentStatus: "INTERVIEW_SCHEDULED" } }),
     db.candidate.count({ where: { sourceChannel: SourceChannel.LINE } }),
-    db.candidate.count({ where: { sourceChannel: SourceChannel.FACEBOOK } }),
     db.candidate.findMany({
-      take: 8,
+      take: 6,
       orderBy: { createdAt: "desc" },
-      include: { interestedPosition: { select: { title: true } } },
+      select: {
+        id: true, nickname: true, fullName: true, lineDisplayName: true,
+        lineProfilePicUrl: true, currentStatus: true, createdAt: true,
+        interestedPosition: { select: { title: true } },
+      },
     }),
     db.candidate.findMany({
-      where: { createdAt: { gte: sixMonthsAgoStart } },
+      where: { createdAt: { gte: sixMonthsAgo } },
       select: { createdAt: true },
+    }),
+    db.interview.findMany({
+      where: { status: "SCHEDULED", interviewDate: { gte: todayStart, lt: todayEnd } },
+      select: {
+        id: true, startTime: true, interviewType: true, location: true,
+        meetingLink: true, candidateResponse: true,
+        candidate: {
+          select: {
+            id: true, fullName: true, nickname: true, lineDisplayName: true,
+            lineProfilePicUrl: true, interestedPosition: { select: { title: true } },
+          },
+        },
+      },
+      orderBy: { startTime: "asc" },
     }),
   ]);
 
-  // Build monthly trend (last 6 months)
-  const monthlyMap = new Map<string, number>();
+  // Monthly trend
+  const monthMap = new Map<string, number>();
   for (let i = 5; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    monthlyMap.set(key, 0);
+    const d2 = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    monthMap.set(`${d2.getFullYear()}-${String(d2.getMonth()+1).padStart(2,"0")}`, 0);
   }
-  for (const c of recentForTrend) {
-    const key = `${c.createdAt.getFullYear()}-${String(c.createdAt.getMonth() + 1).padStart(2, "0")}`;
-    if (monthlyMap.has(key)) {
-      monthlyMap.set(key, (monthlyMap.get(key) ?? 0) + 1);
-    }
+  for (const c of trendRaw) {
+    const key = `${c.createdAt.getFullYear()}-${String(c.createdAt.getMonth()+1).padStart(2,"0")}`;
+    if (monthMap.has(key)) monthMap.set(key, (monthMap.get(key) ?? 0) + 1);
   }
-  const monthlyTrend = Array.from(monthlyMap.entries()).map(([key, count]) => {
-    const monthNum = parseInt(key.split("-")[1]) - 1;
-    return { month: MONTH_NAMES[monthNum], count };
-  });
+  const monthlyTrend = Array.from(monthMap.entries()).map(([key, count]) => ({
+    month: MONTH_NAMES[parseInt(key.split("-")[1]) - 1],
+    count,
+  }));
 
-  const monthChange =
-    lastMonthCandidates > 0
-      ? Math.round(((thisMonthCandidates - lastMonthCandidates) / lastMonthCandidates) * 100)
-      : 0;
+  const monthChange = lastMonth > 0
+    ? Math.round(((thisMonth - lastMonth) / lastMonth) * 100)
+    : 0;
 
   return {
-    totalCandidates,
-    thisMonthCandidates,
-    lastMonthCandidates,
-    monthChange,
-    waitingHR,
-    qualified,
-    passed,
-    rejected,
-    talentPool,
-    interviewScheduled,
-    lineCount,
-    fbCount,
-    recentCandidates,
-    monthlyTrend,
+    totalCandidates, thisMonth, lastMonth, monthChange,
+    waitingHR, qualified, passed, rejected, interviewScheduled,
+    lineCount, recentCandidates, monthlyTrend, todayInterviews,
+    todayLabel: `วัน${DOW_THAI[now.getDay()]}ที่ ${now.getDate()} ${MONTH_FULL[now.getMonth()]} ${now.getFullYear() + 543}`,
   };
 }
 
-const statusColors: Record<CandidateStatus, string> = {
-  NEW_APPLICANT: "bg-slate-100 text-slate-700",
-  BOT_SCREENING: "bg-purple-100 text-purple-700",
-  WAITING_HR_REVIEW: "bg-yellow-100 text-yellow-700",
-  NEED_MORE_INFO: "bg-orange-100 text-orange-700",
-  QUALIFIED: "bg-blue-100 text-blue-700",
-  INTERVIEW_SCHEDULED: "bg-indigo-100 text-indigo-700",
-  INTERVIEWED: "bg-cyan-100 text-cyan-700",
-  PASSED: "bg-green-100 text-green-700",
-  REJECTED: "bg-red-100 text-red-700",
-  TALENT_POOL: "bg-teal-100 text-teal-700",
-  CLOSED: "bg-slate-100 text-slate-500",
-};
-
-const statusLabels: Record<CandidateStatus, string> = {
-  NEW_APPLICANT: "ผู้สมัครใหม่",
-  BOT_SCREENING: "บอทคัดกรอง",
-  WAITING_HR_REVIEW: "รอ HR พิจารณา",
-  NEED_MORE_INFO: "ขอข้อมูลเพิ่ม",
-  QUALIFIED: "ผ่านเกณฑ์",
-  INTERVIEW_SCHEDULED: "นัดสัมภาษณ์",
-  INTERVIEWED: "สัมภาษณ์แล้ว",
-  PASSED: "ผ่านการคัดเลือก",
-  REJECTED: "ไม่ผ่าน",
-  TALENT_POOL: "Talent Pool",
-  CLOSED: "ปิด",
-};
-
 export default async function DashboardPage() {
   const session = await auth();
-  const data = await getDashboardData();
+  const data = await getData();
+
+  const firstName = session?.user?.name?.split(" ")[0] ?? session?.user?.name ?? "";
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          สวัสดี, {session?.user?.name} — ภาพรวมการรับสมัครงาน
-        </p>
+
+      {/* ── Header ── */}
+      <div className="flex items-end justify-between">
+        <div>
+          <p className="text-sm text-slate-400">{data.todayLabel}</p>
+          <h1 className="text-2xl font-bold text-slate-900 mt-0.5">
+            สวัสดี{firstName ? `, ${firstName}` : ""} 👋
+          </h1>
+        </div>
+        <Link href="/review" className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-800 transition-colors">
+          ดูคิวพิจารณา <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
       </div>
 
-      {/* Top Stats */}
-      <div className="grid grid-cols-4 gap-4">
-        <StatCard
-          title="ผู้สมัครทั้งหมด"
-          value={data.totalCandidates}
-          subtitle="ตลอดเวลา"
-          icon={Users}
-          iconColor="text-blue-600"
-          iconBg="bg-blue-50"
-        />
-        <StatCard
-          title="เดือนนี้"
-          value={data.thisMonthCandidates}
-          subtitle={`เดือนที่แล้ว: ${data.lastMonthCandidates}`}
-          icon={TrendingUp}
-          iconColor="text-indigo-600"
-          iconBg="bg-indigo-50"
-          trend={
-            data.lastMonthCandidates > 0
-              ? { value: data.monthChange, label: "เทียบเดือนที่แล้ว" }
-              : undefined
-          }
-        />
-        <StatCard
-          title="รอ HR พิจารณา"
-          value={data.waitingHR}
-          subtitle="รอตรวจสอบ"
-          icon={Clock}
-          iconColor="text-yellow-600"
-          iconBg="bg-yellow-50"
-        />
-        <StatCard
-          title="นัดสัมภาษณ์"
-          value={data.interviewScheduled}
-          subtitle="รอสัมภาษณ์"
-          icon={Calendar}
-          iconColor="text-purple-600"
-          iconBg="bg-purple-50"
-        />
-      </div>
-
-      <div className="grid grid-cols-4 gap-4">
-        <StatCard
-          title="ผ่านเกณฑ์"
-          value={data.qualified}
-          icon={CheckCircle2}
-          iconColor="text-blue-600"
-          iconBg="bg-blue-50"
-        />
-        <StatCard
-          title="ผ่านการคัดเลือก"
-          value={data.passed}
-          icon={CheckCircle2}
-          iconColor="text-green-600"
-          iconBg="bg-green-50"
-        />
-        <StatCard
-          title="ไม่ผ่าน"
-          value={data.rejected}
-          icon={XCircle}
-          iconColor="text-red-500"
-          iconBg="bg-red-50"
-        />
-        <StatCard
-          title="Talent Pool"
-          value={data.talentPool}
-          icon={Users}
-          iconColor="text-teal-600"
-          iconBg="bg-teal-50"
-        />
-      </div>
-
-      {/* Monthly Trend */}
-      <Card className="border-slate-200">
-        <CardHeader className="pb-3">
-          <div className="flex items-center gap-2">
-            <BarChart3 className="h-4 w-4 text-blue-600" />
-            <CardTitle className="text-base font-semibold">ผู้สมัครรายเดือน (6 เดือนล่าสุด)</CardTitle>
+      {/* ── Hero Stats ── */}
+      <div className="grid grid-cols-3 gap-4">
+        {/* This month */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-600 to-blue-700 p-5 text-white shadow-md">
+          <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-white/10" />
+          <div className="absolute -right-1 bottom-2 h-16 w-16 rounded-full bg-white/5" />
+          <p className="text-sm font-medium text-blue-100">ผู้สมัครเดือนนี้</p>
+          <p className="mt-1 text-4xl font-bold">{data.thisMonth}</p>
+          <p className={`mt-1.5 text-xs font-medium ${data.monthChange >= 0 ? "text-blue-200" : "text-red-300"}`}>
+            {data.monthChange >= 0 ? "↑" : "↓"} {Math.abs(data.monthChange)}% จากเดือนที่แล้ว ({data.lastMonth} คน)
+          </p>
+          <div className="absolute right-4 top-4 rounded-xl bg-white/15 p-2.5">
+            <TrendingUp className="h-5 w-5 text-white" />
           </div>
-        </CardHeader>
-        <CardContent>
-          <TrendChart data={data.monthlyTrend} />
-        </CardContent>
-      </Card>
+        </div>
 
-      <div className="grid grid-cols-3 gap-6">
-        {/* Source Channel */}
-        <Card className="border-slate-200">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold">ช่องทางรับสมัคร</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex items-center justify-between rounded-lg bg-green-50 p-3">
-              <div className="flex items-center gap-2">
-                <MessageSquare className="h-4 w-4 text-green-600" />
-                <span className="text-sm font-medium text-slate-700">LINE OA</span>
-              </div>
-              <span className="text-lg font-bold text-slate-900">{data.lineCount}</span>
-            </div>
-            <div className="flex items-center justify-between rounded-lg bg-blue-50 p-3">
-              <div className="flex items-center gap-2">
-                <MessageSquare className="h-4 w-4 text-blue-600" />
-                <span className="text-sm font-medium text-slate-700">Facebook</span>
-              </div>
-              <span className="text-lg font-bold text-slate-900">{data.fbCount}</span>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Waiting HR */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500 to-orange-500 p-5 text-white shadow-md">
+          <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-white/10" />
+          <div className="absolute -right-1 bottom-2 h-16 w-16 rounded-full bg-white/5" />
+          <p className="text-sm font-medium text-amber-100">คิวรอพิจารณา</p>
+          <p className="mt-1 text-4xl font-bold">{data.waitingHR}</p>
+          <p className="mt-1.5 text-xs text-amber-100">
+            {data.waitingHR === 0 ? "ไม่มีรายการค้าง ✅" : "รอ HR ตรวจสอบ"}
+          </p>
+          <div className="absolute right-4 top-4 rounded-xl bg-white/15 p-2.5">
+            <Clock className="h-5 w-5 text-white" />
+          </div>
+        </div>
 
-        {/* Alerts */}
-        <Card className="border-slate-200">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold">แจ้งเตือน</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {data.waitingHR > 0 && (
-              <div className="flex items-center gap-2 rounded-lg bg-yellow-50 p-3">
-                <AlertCircle className="h-4 w-4 text-yellow-600 shrink-0" />
-                <p className="text-sm text-slate-700">
-                  <span className="font-semibold">{data.waitingHR}</span> คนรอ HR ตรวจ
-                </p>
-              </div>
-            )}
-            {data.interviewScheduled > 0 && (
-              <div className="flex items-center gap-2 rounded-lg bg-purple-50 p-3">
-                <Calendar className="h-4 w-4 text-purple-600 shrink-0" />
-                <p className="text-sm text-slate-700">
-                  <span className="font-semibold">{data.interviewScheduled}</span> นัดสัมภาษณ์
-                </p>
-              </div>
-            )}
-            {data.waitingHR === 0 && data.interviewScheduled === 0 && (
-              <p className="text-sm text-slate-400 py-2">ไม่มีแจ้งเตือน</p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Pipeline Overview */}
-        <Card className="border-slate-200">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold">ภาพรวม Pipeline</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {data.totalCandidates === 0 ? (
-              <p className="text-sm text-slate-400 py-2">ยังไม่มีผู้สมัคร</p>
-            ) : (
-              <>
-                <div className="flex justify-between text-xs text-slate-500">
-                  <span>ผ่านเกณฑ์</span>
-                  <span>{data.qualified} / {data.totalCandidates}</span>
-                </div>
-                <div className="h-2 rounded-full bg-slate-100">
-                  <div
-                    className="h-2 rounded-full bg-blue-500"
-                    style={{ width: `${(data.qualified / data.totalCandidates) * 100}%` }}
-                  />
-                </div>
-                <div className="flex justify-between text-xs text-slate-500">
-                  <span>ผ่านการคัดเลือก</span>
-                  <span>{data.passed} / {data.totalCandidates}</span>
-                </div>
-                <div className="h-2 rounded-full bg-slate-100">
-                  <div
-                    className="h-2 rounded-full bg-green-500"
-                    style={{ width: `${(data.passed / data.totalCandidates) * 100}%` }}
-                  />
-                </div>
-                <div className="flex justify-between text-xs text-slate-500">
-                  <span>ไม่ผ่าน</span>
-                  <span>{data.rejected} / {data.totalCandidates}</span>
-                </div>
-                <div className="h-2 rounded-full bg-slate-100">
-                  <div
-                    className="h-2 rounded-full bg-red-400"
-                    style={{ width: `${(data.rejected / data.totalCandidates) * 100}%` }}
-                  />
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
+        {/* Today interviews */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 p-5 text-white shadow-md">
+          <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-white/10" />
+          <div className="absolute -right-1 bottom-2 h-16 w-16 rounded-full bg-white/5" />
+          <p className="text-sm font-medium text-emerald-100">นัดวันนี้</p>
+          <p className="mt-1 text-4xl font-bold">{data.todayInterviews.length}</p>
+          <p className="mt-1.5 text-xs text-emerald-100">
+            {data.todayInterviews.length === 0 ? "ไม่มีนัดวันนี้" : `${data.interviewScheduled} นัดรวมทั้งหมด`}
+          </p>
+          <div className="absolute right-4 top-4 rounded-xl bg-white/15 p-2.5">
+            <CalendarDays className="h-5 w-5 text-white" />
+          </div>
+        </div>
       </div>
 
-      {/* Recent Candidates */}
-      <Card className="border-slate-200">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base font-semibold">ผู้สมัครล่าสุด</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {data.recentCandidates.length === 0 ? (
-            <p className="py-8 text-center text-sm text-slate-400">ยังไม่มีผู้สมัคร</p>
-          ) : (
-            <div className="divide-y divide-slate-100">
-              {data.recentCandidates.map((c) => (
-                <div key={c.id} className="flex items-center justify-between py-3">
-                  <div className="flex items-center gap-3">
-                    {c.lineProfilePicUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={c.lineProfilePicUrl} alt="" className="h-8 w-8 rounded-full object-cover shrink-0" />
-                    ) : (
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600 shrink-0">
-                        {(c.nickname || c.fullName || "?")[0].toUpperCase()}
-                      </div>
-                    )}
-                    <div>
-                      <p className="text-sm font-medium text-slate-900">
-                        {c.nickname || c.fullName || "ไม่ระบุชื่อ"}
-                      </p>
-                      <p className="text-xs text-slate-400">
-                        {c.interestedPosition?.title ?? "ไม่ระบุตำแหน่ง"} · {c.sourceChannel}
-                      </p>
-                    </div>
-                  </div>
-                  <Badge className={statusColors[c.currentStatus]}>
-                    {statusLabels[c.currentStatus]}
-                  </Badge>
+      {/* ── Middle row: Chart + Funnel ── */}
+      <div className="grid grid-cols-3 gap-4">
+        {/* Trend chart */}
+        <div className="col-span-2 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-800">ผู้สมัครรายเดือน</h3>
+              <p className="text-xs text-slate-400 mt-0.5">6 เดือนล่าสุด</p>
+            </div>
+            <span className="rounded-full bg-blue-50 text-blue-600 text-xs font-semibold px-3 py-1">
+              รวม {data.totalCandidates} คน
+            </span>
+          </div>
+          <TrendChart data={data.monthlyTrend} />
+        </div>
+
+        {/* Funnel */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-slate-800 mb-4">Conversion Funnel</h3>
+          <div className="space-y-3">
+            {[
+              { label: "ผู้สมัครทั้งหมด", value: data.totalCandidates, color: "bg-slate-400", pct: 100 },
+              { label: "ผ่านเกณฑ์", value: data.qualified, color: "bg-blue-500",
+                pct: data.totalCandidates ? Math.round((data.qualified / data.totalCandidates) * 100) : 0 },
+              { label: "นัดสัมภาษณ์", value: data.interviewScheduled, color: "bg-violet-500",
+                pct: data.totalCandidates ? Math.round((data.interviewScheduled / data.totalCandidates) * 100) : 0 },
+              { label: "ผ่านการคัดเลือก", value: data.passed, color: "bg-emerald-500",
+                pct: data.totalCandidates ? Math.round((data.passed / data.totalCandidates) * 100) : 0 },
+              { label: "ไม่ผ่าน", value: data.rejected, color: "bg-red-400",
+                pct: data.totalCandidates ? Math.round((data.rejected / data.totalCandidates) * 100) : 0 },
+            ].map((row) => (
+              <div key={row.label}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-slate-600">{row.label}</span>
+                  <span className="text-xs font-semibold text-slate-800">{row.value}</span>
                 </div>
-              ))}
+                <div className="h-1.5 rounded-full bg-slate-100">
+                  <div
+                    className={`h-1.5 rounded-full ${row.color} transition-all`}
+                    style={{ width: `${row.pct}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Channel mini */}
+          <div className="mt-5 pt-4 border-t border-slate-100">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">ช่องทาง</p>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 rounded-xl bg-green-50 border border-green-100 px-3 py-2 flex items-center justify-between">
+                <span className="text-xs text-green-700 font-medium flex items-center gap-1">
+                  <MessageSquare className="h-3 w-3" /> LINE
+                </span>
+                <span className="text-sm font-bold text-green-800">{data.lineCount}</span>
+              </div>
+              <div className="flex-1 rounded-xl bg-blue-50 border border-blue-100 px-3 py-2 flex items-center justify-between">
+                <span className="text-xs text-blue-700 font-medium flex items-center gap-1">
+                  <Users className="h-3 w-3" /> อื่นๆ
+                </span>
+                <span className="text-sm font-bold text-blue-800">{data.totalCandidates - data.lineCount}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Bottom row: Today interviews + Recent candidates ── */}
+      <div className="grid grid-cols-2 gap-4">
+
+        {/* Today's interviews */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-slate-800">นัดสัมภาษณ์วันนี้</h3>
+            <Link href="/calendar" className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1">
+              ปฏิทินเต็ม <ArrowRight className="h-3 w-3" />
+            </Link>
+          </div>
+
+          {data.todayInterviews.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-slate-400">
+              <CalendarDays className="h-8 w-8 text-slate-200 mb-2" />
+              <p className="text-sm">ไม่มีนัดวันนี้</p>
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {data.todayInterviews.map((iv) => {
+                const c = iv.candidate;
+                const name = c.fullName ?? c.nickname ?? c.lineDisplayName ?? "ไม่ระบุ";
+                const isOnline = iv.interviewType === "ONLINE";
+                const resp = iv.candidateResponse;
+                return (
+                  <Link key={iv.id} href={`/candidates/${c.id}`}>
+                    <div className="flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5 hover:border-slate-300 hover:bg-white transition-colors">
+                      {/* Avatar */}
+                      {c.lineProfilePicUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={c.lineProfilePicUrl} alt={name} className="h-8 w-8 rounded-full object-cover border border-green-200 shrink-0" />
+                      ) : (
+                        <div className="h-8 w-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-semibold text-slate-600 shrink-0">
+                          {name.charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-slate-800 truncate">{name}</p>
+                        <p className="text-xs text-slate-400">{iv.startTime} น. · {c.interestedPosition?.title ?? "-"}</p>
+                      </div>
+                      {/* Badges */}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className={`inline-flex items-center gap-1 rounded-full text-[10px] font-semibold px-2 py-0.5 ${isOnline ? "bg-blue-50 text-blue-600" : "bg-orange-50 text-orange-600"}`}>
+                          {isOnline ? <Video className="h-2.5 w-2.5" /> : <MapPin className="h-2.5 w-2.5" />}
+                          {isOnline ? "ออนไลน์" : "On-site"}
+                        </span>
+                        {resp === "confirmed" && <span className="text-emerald-500 text-xs">✅</span>}
+                        {resp === "declined"  && <span className="text-red-400 text-xs">❌</span>}
+                        {!resp               && <span className="text-slate-300 text-xs">⏳</span>}
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+
+        {/* Recent candidates */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-slate-800">ผู้สมัครล่าสุด</h3>
+            <Link href="/candidates" className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1">
+              ดูทั้งหมด <ArrowRight className="h-3 w-3" />
+            </Link>
+          </div>
+
+          {data.recentCandidates.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-slate-400">
+              <Users className="h-8 w-8 text-slate-200 mb-2" />
+              <p className="text-sm">ยังไม่มีผู้สมัคร</p>
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {data.recentCandidates.map((c) => {
+                const name = c.fullName ?? c.nickname ?? c.lineDisplayName ?? "ไม่ระบุ";
+                return (
+                  <Link key={c.id} href={`/candidates/${c.id}`}>
+                    <div className="flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5 hover:border-slate-300 hover:bg-white transition-colors">
+                      {c.lineProfilePicUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={c.lineProfilePicUrl} alt={name} className="h-8 w-8 rounded-full object-cover border border-green-200 shrink-0" />
+                      ) : (
+                        <div className="h-8 w-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-semibold text-slate-600 shrink-0">
+                          {name.charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-slate-800 truncate">{name}</p>
+                        <p className="text-xs text-slate-400 truncate">{c.interestedPosition?.title ?? "ไม่ระบุตำแหน่ง"}</p>
+                      </div>
+                      <span className={`shrink-0 rounded-full text-[10px] font-semibold px-2 py-0.5 ${statusColors[c.currentStatus] ?? "bg-slate-100 text-slate-500"}`}>
+                        {statusLabels[c.currentStatus] ?? c.currentStatus}
+                      </span>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
     </div>
   );
 }
