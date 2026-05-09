@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -441,6 +441,28 @@ export function ShortlistClient({ qualified, scheduled, interviewed, passed }: P
 
   const [scheduleTarget, setScheduleTarget] = useState<ShortlistCandidate | null>(null);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+
+  // ── Poll for interview responses every 10s ────────────────────────────────
+  const pollResponses = useCallback(async () => {
+    try {
+      const res = await fetch("/api/shortlist/responses", { cache: "no-store" });
+      if (!res.ok) return;
+      const map: Record<string, string | null> = await res.json();
+
+      setScheduledList((prev) =>
+        prev.map((c) =>
+          map[c.id] !== undefined && map[c.id] !== c.latestResponse
+            ? { ...c, latestResponse: map[c.id] }
+            : c
+        )
+      );
+    } catch { /* non-critical */ }
+  }, []);
+
+  useEffect(() => {
+    const id = setInterval(pollResponses, 10_000);
+    return () => clearInterval(id);
+  }, [pollResponses]);
 
   async function moveStatus(id: string, newStatus: string) {
     try {

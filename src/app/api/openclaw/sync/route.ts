@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { getLineProfile } from "@/lib/line";
+import { getLineProfile, pushMessage } from "@/lib/line";
 import { sanitizeBotReply } from "@/lib/sanitize-bot-reply";
 import { NextResponse } from "next/server";
 
@@ -134,6 +134,20 @@ export async function POST(req: Request) {
       });
     }
 
+    // ── Quick Reply: interview confirmation ────────────────────────────────
+    const trimmed = userMessage.trim();
+    if (
+      (trimmed === "สะดวก" || trimmed === "ไม่สะดวก") &&
+      candidate.currentStatus === "INTERVIEW_SCHEDULED"
+    ) {
+      await handleInterviewResponse(
+        candidate.id,
+        lineUserId,
+        candidate.fullName ?? candidate.nickname ?? candidate.lineDisplayName ?? "คุณ",
+        trimmed as "สะดวก" | "ไม่สะดวก"
+      );
+    }
+
     // auto-promote NEW_APPLICANT → BOT_SCREENING
     if (candidate.currentStatus === "NEW_APPLICANT") {
       await db.candidate.update({
@@ -177,4 +191,40 @@ export async function POST(req: Request) {
   }
 
   return NextResponse.json({ ok: true, conversationId: conversation.id });
+}
+
+// ── Interview Quick Reply handler ─────────────────────────────────────────────
+
+async function handleInterviewResponse(
+  candidateId: string,
+  lineUserId: string,
+  name: string,
+  response: "สะดวก" | "ไม่สะดวก"
+) {
+  try {
+    const interview = await db.interview.findFirst({
+      where: { candidateId, status: "SCHEDULED" },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!interview || interview.candidateResponse) return; // already answered
+
+    await db.interview.update({
+      where: { id: interview.id },
+      data: {
+        candidateResponse: response === "สะดวก" ? "confirmed" : "declined",
+        respondedAt: new Date(),
+      },
+    });
+
+    if (response === "ไม่สะดวก") {
+      try {
+        await pushMessage(
+          lineUserId,
+          `ขอบคุณที่แจ้งให้ทราบนะคะ ${name} 🙏\n\nทางทีมจะติดต่อเพื่อนัดวันและเวลาใหม่ที่สะดวกกว่านี้ให้ค่ะ 📅`
+        );
+      } catch { /* non-critical */ }
+    }
+  } catch (err) {
+    console.error("handleInterviewResponse error:", err);
+  }
 }
