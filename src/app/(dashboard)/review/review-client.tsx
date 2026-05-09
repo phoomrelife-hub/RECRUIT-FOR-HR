@@ -27,10 +27,255 @@ import {
   Settings2,
   Trash2,
   CheckSquare,
+  Zap,
+  SlidersHorizontal,
 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 import { parseTier, TIER_CONFIG, type Tier } from "@/lib/experience-tier";
+
+// ── Auto-Qualify Settings Dialog ──────────────────────────────────────────────
+const ALL_TIERS: Tier[] = ["high", "mid", "low", "unspecified", "none"];
+
+function AutoQualifySettingsDialog({
+  open,
+  onOpenChange,
+  onSaved,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onSaved: () => void;
+}) {
+  const [expPassTiers, setExpPassTiers] = useState<Tier[]>([]);
+  const [salaryMax, setSalaryMax] = useState("");
+  const [salesMin, setSalesMin] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    fetch("/api/settings/auto-qualify")
+      .then((r) => r.json())
+      .then((d) => {
+        setExpPassTiers(d.expPassTiers ?? []);
+        setSalaryMax(d.salaryMax != null ? String(d.salaryMax) : "");
+        setSalesMin(d.salesMin != null ? String(d.salesMin) : "");
+      })
+      .catch(() => toast.error("โหลดการตั้งค่าไม่สำเร็จ"))
+      .finally(() => setLoading(false));
+  }, [open]);
+
+  function toggleTier(tier: Tier) {
+    setExpPassTiers((prev) =>
+      prev.includes(tier) ? prev.filter((t) => t !== tier) : [...prev, tier]
+    );
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/settings/auto-qualify", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          expPassTiers,
+          salaryMax: salaryMax ? parseInt(salaryMax) : null,
+          salesMin: salesMin ? parseInt(salesMin) : null,
+        }),
+      });
+      if (!res.ok) throw new Error("บันทึกไม่สำเร็จ");
+      toast.success("บันทึกกฎ Auto-Qualify แล้ว");
+      onSaved();
+      onOpenChange(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "เกิดข้อผิดพลาด");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={() => onOpenChange(false)} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <div>
+            <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <SlidersHorizontal className="h-4 w-4 text-violet-600" /> กฎ Auto-Qualify
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">ระบบจะใช้กฎนี้เมื่อกดปุ่ม ⚡ Auto-Qualify</p>
+          </div>
+          <button onClick={() => onOpenChange(false)} className="h-8 w-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100">✕</button>
+        </div>
+
+        <div className="px-6 py-5 space-y-5">
+          {loading ? (
+            <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
+          ) : (
+            <>
+              {/* Experience tiers */}
+              <div>
+                <label className="text-sm font-semibold text-slate-700 block mb-2">ระดับประสบการณ์ที่ ✅ ผ่าน</label>
+                <p className="text-xs text-slate-400 mb-3">ที่ไม่ได้ติ๊ก = ❌ ไม่ผ่านอัตโนมัติ (ถ้าตั้งกฎนี้)</p>
+                <div className="space-y-2">
+                  {ALL_TIERS.map((tier) => (
+                    <label key={tier} className="flex items-center gap-3 cursor-pointer group">
+                      <button
+                        onClick={() => toggleTier(tier)}
+                        className={`h-5 w-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
+                          expPassTiers.includes(tier) ? "bg-violet-600 border-violet-600" : "border-slate-300 group-hover:border-violet-400"
+                        }`}
+                      >
+                        {expPassTiers.includes(tier) && (
+                          <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </button>
+                      <span className={`inline-flex items-center rounded-full border text-xs font-semibold px-2.5 py-0.5 ${TIER_CONFIG[tier].color}`}>
+                        {TIER_CONFIG[tier].label}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Salary max */}
+              <div>
+                <label className="text-sm font-semibold text-slate-700 block mb-1">เงินเดือนสูงสุดที่รับได้ (บาท)</label>
+                <p className="text-xs text-slate-400 mb-2">เว้นว่าง = ไม่เช็คเกณฑ์นี้</p>
+                <input
+                  type="number"
+                  value={salaryMax}
+                  onChange={(e) => setSalaryMax(e.target.value)}
+                  placeholder="เช่น 25000"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
+                />
+              </div>
+
+              {/* Sales min */}
+              <div>
+                <label className="text-sm font-semibold text-slate-700 block mb-1">ยอดขายสูงสุดขั้นต่ำ (บาท/เดือน)</label>
+                <p className="text-xs text-slate-400 mb-2">เว้นว่าง = ไม่เช็คเกณฑ์นี้</p>
+                <input
+                  type="number"
+                  value={salesMin}
+                  onChange={(e) => setSalesMin(e.target.value)}
+                  placeholder="เช่น 50000"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
+                />
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100">
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>ยกเลิก</Button>
+          <Button size="sm" className="bg-violet-600 hover:bg-violet-700 text-white" onClick={handleSave} disabled={saving || loading}>
+            {saving && <Loader2 className="h-4 w-4 animate-spin mr-1" />} บันทึกกฎ
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Auto-Qualify Preview Modal ────────────────────────────────────────────────
+type PreviewData = {
+  autoQualify: { id: string; name: string; tier: Tier; reason: string }[];
+  autoReject:  { id: string; name: string; tier: Tier; reason: string }[];
+  hrReview:    { id: string; name: string; tier: Tier; reason: string }[];
+};
+
+function AutoQualifyPreviewModal({
+  preview,
+  onClose,
+  onConfirm,
+  confirming,
+}: {
+  preview: PreviewData;
+  onClose: () => void;
+  onConfirm: () => void;
+  confirming: boolean;
+}) {
+  const total = preview.autoQualify.length + preview.autoReject.length + preview.hrReview.length;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[85vh]">
+        <div className="px-6 py-4 border-b border-slate-100">
+          <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+            <Zap className="h-4 w-4 text-amber-500" /> Preview Auto-Qualify
+          </h2>
+          <p className="text-xs text-slate-500 mt-0.5">ตรวจสอบก่อนดำเนินการ — {total} คนในคิว</p>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+          {/* Summary */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="rounded-xl bg-emerald-50 border border-emerald-100 p-3 text-center">
+              <p className="text-2xl font-bold text-emerald-700">{preview.autoQualify.length}</p>
+              <p className="text-xs text-emerald-600 mt-0.5">✅ ผ่านอัตโนมัติ</p>
+            </div>
+            <div className="rounded-xl bg-red-50 border border-red-100 p-3 text-center">
+              <p className="text-2xl font-bold text-red-600">{preview.autoReject.length}</p>
+              <p className="text-xs text-red-500 mt-0.5">❌ ไม่ผ่านอัตโนมัติ</p>
+            </div>
+            <div className="rounded-xl bg-amber-50 border border-amber-100 p-3 text-center">
+              <p className="text-2xl font-bold text-amber-700">{preview.hrReview.length}</p>
+              <p className="text-xs text-amber-600 mt-0.5">👀 เหลือ HR ดู</p>
+            </div>
+          </div>
+
+          {/* Reject list */}
+          {preview.autoReject.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-red-600 mb-2">❌ จะไม่ผ่าน ({preview.autoReject.length} คน)</p>
+              <div className="space-y-1.5">
+                {preview.autoReject.map((e) => (
+                  <div key={e.id} className="flex items-center justify-between rounded-lg bg-red-50 px-3 py-2">
+                    <span className="text-sm text-slate-700">{e.name}</span>
+                    <span className="text-xs text-red-500">{e.reason}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Qualify list */}
+          {preview.autoQualify.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-emerald-700 mb-2">✅ จะผ่าน ({preview.autoQualify.length} คน)</p>
+              <div className="space-y-1.5">
+                {preview.autoQualify.map((e) => (
+                  <div key={e.id} className="flex items-center justify-between rounded-lg bg-emerald-50 px-3 py-2">
+                    <span className="text-sm text-slate-700">{e.name}</span>
+                    <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 border ${TIER_CONFIG[e.tier].color}`}>{TIER_CONFIG[e.tier].label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100">
+          <Button variant="outline" size="sm" onClick={onClose}>ยกเลิก</Button>
+          <Button
+            size="sm"
+            className="bg-amber-500 hover:bg-amber-600 text-white gap-1.5"
+            onClick={onConfirm}
+            disabled={confirming || (preview.autoQualify.length === 0 && preview.autoReject.length === 0)}
+          >
+            {confirming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+            ยืนยัน — ดำเนินการเลย
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 type QueueCandidate = {
   id: string;
@@ -591,6 +836,10 @@ export function ReviewClient({ initial, positions }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
   const [templateOpen, setTemplateOpen] = useState(false);
+  const [aqSettingsOpen, setAqSettingsOpen] = useState(false);
+  const [aqPreview, setAqPreview] = useState<PreviewData | null>(null);
+  const [aqRunning, setAqRunning] = useState(false);
+  const [aqLoading, setAqLoading] = useState(false);
 
   // Build tabs: all job positions (always shown) + "ไม่ระบุตำแหน่ง" if any
   const tabs = useMemo(() => {
@@ -702,6 +951,54 @@ export function ReviewClient({ initial, positions }: Props) {
     }
   }
 
+  async function handleAutoQualifyPreview() {
+    setAqLoading(true);
+    try {
+      const res = await fetch("/api/candidates/auto-qualify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dryRun: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "เกิดข้อผิดพลาด");
+      setAqPreview(data);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "เกิดข้อผิดพลาด");
+    } finally {
+      setAqLoading(false);
+    }
+  }
+
+  async function handleAutoQualifyRun() {
+    setAqRunning(true);
+    try {
+      const res = await fetch("/api/candidates/auto-qualify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dryRun: false }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "เกิดข้อผิดพลาด");
+
+      // Remove processed candidates from queue
+      const processedIds = new Set([
+        ...(aqPreview?.autoQualify.map((e) => e.id) ?? []),
+        ...(aqPreview?.autoReject.map((e) => e.id) ?? []),
+      ]);
+      setQueue((prev) => prev.filter((c) => !processedIds.has(c.id)));
+      setSelected(new Set());
+      setAqPreview(null);
+
+      toast.success(`Auto-Qualify เสร็จสิ้น`, {
+        description: `✅ ผ่าน ${data.qualifyDone} · ❌ ไม่ผ่าน ${data.rejectDone} · 👀 HR ดูต่อ ${data.hrReview}`,
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "เกิดข้อผิดพลาด");
+    } finally {
+      setAqRunning(false);
+    }
+  }
+
   async function handleBulkQualify(result: "pass" | "fail") {
     const ids = Array.from(selected);
     if (!ids.length) return;
@@ -781,15 +1078,34 @@ export function ReviewClient({ initial, positions }: Props) {
             );
           })}
 
-          {/* Gear button */}
-          <button
-            onClick={() => setTemplateOpen(true)}
-            className="ml-auto inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium border border-slate-200 bg-white text-slate-500 hover:text-slate-700 hover:border-slate-400 transition-colors"
-            title="ตั้งค่าข้อความแจ้งผล"
-          >
-            <Settings2 className="h-4 w-4" />
-            ข้อความ LINE
-          </button>
+          {/* Right-side buttons */}
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={handleAutoQualifyPreview}
+              disabled={aqLoading}
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors disabled:opacity-50"
+              title="Auto-Qualify"
+            >
+              {aqLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+              Auto-Qualify
+            </button>
+            <button
+              onClick={() => setAqSettingsOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium border border-slate-200 bg-white text-slate-500 hover:text-slate-700 hover:border-slate-400 transition-colors"
+              title="ตั้งกฎ Auto-Qualify"
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+              กฎ
+            </button>
+            <button
+              onClick={() => setTemplateOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium border border-slate-200 bg-white text-slate-500 hover:text-slate-700 hover:border-slate-400 transition-colors"
+              title="ตั้งค่าข้อความแจ้งผล"
+            >
+              <Settings2 className="h-4 w-4" />
+              ข้อความ LINE
+            </button>
+          </div>
         </div>
 
         {/* ── Sales Admin tier legend + select-all ── */}
@@ -905,6 +1221,23 @@ export function ReviewClient({ initial, positions }: Props) {
 
       {/* ── Message template dialog ── */}
       <MessageTemplateDialog open={templateOpen} onOpenChange={setTemplateOpen} />
+
+      {/* ── Auto-Qualify settings dialog ── */}
+      <AutoQualifySettingsDialog
+        open={aqSettingsOpen}
+        onOpenChange={setAqSettingsOpen}
+        onSaved={() => {}}
+      />
+
+      {/* ── Auto-Qualify preview modal ── */}
+      {aqPreview && (
+        <AutoQualifyPreviewModal
+          preview={aqPreview}
+          onClose={() => setAqPreview(null)}
+          onConfirm={handleAutoQualifyRun}
+          confirming={aqRunning}
+        />
+      )}
     </>
   );
 }
