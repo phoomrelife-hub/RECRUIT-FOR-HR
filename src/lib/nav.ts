@@ -12,6 +12,7 @@ import {
   Plug,
   ShieldCheck,
   Brain,
+  ClipboardCheck,
   type LucideIcon,
 } from "lucide-react";
 import { UserRole } from "@prisma/client";
@@ -48,6 +49,12 @@ export const navSections: NavSection[] = [
         title: "กล่องข้อความ",
         href: "/inbox",
         icon: MessageSquare,
+        roles: ["SUPER_ADMIN", "HR_MANAGER", "HR_STAFF"],
+      },
+      {
+        title: "คิวพิจารณา",
+        href: "/review",
+        icon: ClipboardCheck,
         roles: ["SUPER_ADMIN", "HR_MANAGER", "HR_STAFF"],
       },
       {
