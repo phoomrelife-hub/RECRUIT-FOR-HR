@@ -39,6 +39,7 @@ interface Message {
   content: string;
   messageType?: string | null; // text | image | file | sticker | video | audio
   mediaUrl?: string | null;
+  externalId?: string | null;  // LINE message ID — fallback for constructing mediaUrl
   senderType: SenderType;
   senderId?: string | null;
   sender?: { id: string; name: string; avatar?: string | null } | null;
@@ -251,23 +252,46 @@ function SimulatePanel({
 
 // ─── Message Bubble ───────────────────────────────────────────────────────────
 
-function MessageMedia({ msg, isHR }: { msg: Message; isHR: boolean }) {
+function MessageMedia({ msg, isRight }: { msg: Message; isRight: boolean }) {
   const [imgOpen, setImgOpen] = useState(false);
 
-  if (msg.messageType === "image" && msg.mediaUrl) {
+  const rawContent = msg.content ?? "";
+
+  // ── Classify message type by messageType field OR content pattern ──────────
+  const isImage =
+    msg.messageType === "image" ||
+    rawContent === "[ส่ง image]" ||
+    rawContent === "[📷 รูปภาพ]";
+  const isFile =
+    msg.messageType === "file" ||
+    rawContent === "[ส่ง file]" ||
+    /^\[📎/.test(rawContent);
+
+  // ── Effective media URL: stored URL → derived from LINE message ID ─────────
+  // Messages saved before the race-condition fix may lack mediaUrl but still
+  // have externalId (the LINE message ID). Derive the proxy URL from it so
+  // images/files sent within the last 7 days still load.
+  const effectiveMediaUrl =
+    msg.mediaUrl ||
+    ((isImage || isFile) && msg.externalId
+      ? `/api/media/line/${msg.externalId}`
+      : null);
+
+  // ── Image ──────────────────────────────────────────────────────────────────
+  if (isImage && effectiveMediaUrl) {
     return (
       <>
         {/* Thumbnail */}
         <div
           className={`rounded-xl overflow-hidden border cursor-pointer hover:opacity-90 transition-opacity ${
-            isHR ? "border-blue-400" : "border-slate-200"
+            isRight ? "border-blue-400" : "border-slate-200"
           }`}
           onClick={() => setImgOpen(true)}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={msg.mediaUrl}
-            alt="รูปภาพจาก candidate"
+            src={effectiveMediaUrl}
+            alt="รูปภาพ"
             className="max-w-[200px] max-h-[200px] object-cover block"
             onError={(e) => {
               (e.target as HTMLImageElement).style.display = "none";
@@ -285,7 +309,7 @@ function MessageMedia({ msg, isHR }: { msg: Message; isHR: boolean }) {
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={msg.mediaUrl}
+              src={effectiveMediaUrl}
               alt="รูปภาพ"
               className="max-w-full max-h-full object-contain rounded-lg"
               onClick={(e) => e.stopPropagation()}
@@ -302,15 +326,35 @@ function MessageMedia({ msg, isHR }: { msg: Message; isHR: boolean }) {
     );
   }
 
-  if (msg.messageType === "file" && msg.mediaUrl) {
-    const fileName = msg.content.replace(/^\[📎 /, "").replace(/\]$/, "");
+  // ── Image — no URL at all (truly expired or before feature existed) ────────
+  if (isImage) {
+    return (
+      <div
+        className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm ${
+          isRight
+            ? "bg-blue-500/20 border-blue-400 text-blue-200"
+            : "bg-slate-50 border-slate-200 text-slate-400"
+        }`}
+      >
+        <ImageIcon size={14} className="shrink-0" />
+        <span>รูปภาพ (หมดอายุแล้ว)</span>
+      </div>
+    );
+  }
+
+  // ── File ───────────────────────────────────────────────────────────────────
+  if (isFile && effectiveMediaUrl) {
+    const fileName =
+      rawContent.replace(/^\[📎 /, "").replace(/\]$/, "") ||
+      rawContent.replace("[ส่ง file]", "ไฟล์แนบ") ||
+      "ไฟล์แนบ";
     return (
       <a
-        href={msg.mediaUrl}
+        href={effectiveMediaUrl}
         target="_blank"
         rel="noopener noreferrer"
         className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-medium transition-colors ${
-          isHR
+          isRight
             ? "bg-blue-500 border-blue-400 text-white hover:bg-blue-400"
             : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
         }`}
@@ -321,56 +365,31 @@ function MessageMedia({ msg, isHR }: { msg: Message; isHR: boolean }) {
     );
   }
 
-  // ── Content-pattern fallback for messages saved without messageType/mediaUrl ──
-  // Handles: old "[ส่ง image]"/"[ส่ง file]" format AND new "[📷 รูปภาพ]"/"[📎 ...]"
-  // format when mediaUrl is missing (e.g. synced before fix was deployed).
-  const rawContent = msg.content ?? "";
-  const isImageContent =
-    msg.messageType === "image" ||
-    rawContent === "[ส่ง image]" ||
-    rawContent === "[📷 รูปภาพ]";
-  const isFileContent =
-    msg.messageType === "file" ||
-    rawContent === "[ส่ง file]" ||
-    /^\[📎/.test(rawContent);
-
-  if (isImageContent && !msg.mediaUrl) {
+  // ── File — no URL at all ───────────────────────────────────────────────────
+  if (isFile) {
+    const fileName =
+      /^\[📎/.test(rawContent)
+        ? rawContent.replace(/^\[📎 /, "").replace(/\]$/, "")
+        : "ไฟล์แนบ";
     return (
       <div
         className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm ${
-          isHR
-            ? "bg-blue-500/30 border-blue-400 text-blue-100"
-            : "bg-slate-50 border-slate-200 text-slate-400"
-        }`}
-      >
-        <ImageIcon size={14} className="shrink-0" />
-        <span>รูปภาพ (หมดอายุแล้ว)</span>
-      </div>
-    );
-  }
-
-  if (isFileContent && !msg.mediaUrl) {
-    const fileName = rawContent.replace(/^\[📎 /, "").replace(/\]$/, "") || "ไฟล์แนบ";
-    const displayName = fileName === "[ส่ง file]" ? "ไฟล์แนบ" : fileName;
-    return (
-      <div
-        className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm ${
-          isHR
-            ? "bg-blue-500/30 border-blue-400 text-blue-100"
+          isRight
+            ? "bg-blue-500/20 border-blue-400 text-blue-200"
             : "bg-slate-50 border-slate-200 text-slate-400"
         }`}
       >
         <Paperclip size={14} className="shrink-0" />
-        <span className="truncate max-w-[160px]">{displayName} (หมดอายุแล้ว)</span>
+        <span className="truncate max-w-[160px]">{fileName} (หมดอายุแล้ว)</span>
       </div>
     );
   }
 
-  // Default: text
+  // ── Text (default) ─────────────────────────────────────────────────────────
   return (
     <div
       className={`rounded-2xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap ${
-        isHR
+        isRight
           ? "bg-blue-600 text-white rounded-tr-sm"
           : msg.senderType === "BOT"
           ? "bg-indigo-50 text-slate-800 border border-indigo-100 rounded-tl-sm"
@@ -393,33 +412,39 @@ function MessageBubble({ msg }: { msg: Message }) {
     );
   }
 
+  // HR and BOT messages appear on the right (outgoing from this app's perspective)
+  // Candidate messages appear on the left
+  const isRight = msg.senderType === "HR" || msg.senderType === "BOT";
   const isHR = msg.senderType === "HR";
   const isBot = msg.senderType === "BOT";
 
   return (
-    <div className={`flex gap-2 mb-3 ${isHR ? "flex-row-reverse" : "flex-row"}`}>
+    <div className={`flex gap-2 mb-3 ${isRight ? "flex-row-reverse" : "flex-row"}`}>
       <div
         className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold ${
           isHR
             ? "bg-blue-600 text-white"
             : isBot
-            ? "bg-indigo-100 text-indigo-700"
+            ? "bg-indigo-500 text-white"
             : "bg-slate-200 text-slate-600"
         }`}
       >
         {isHR ? <User size={14} /> : isBot ? <Bot size={14} /> : <MessageSquare size={14} />}
       </div>
 
-      <div className={`max-w-[70%] ${isHR ? "items-end" : "items-start"} flex flex-col gap-0.5`}>
-        {(isBot || (!isHR && !isBot)) && (
+      <div className={`max-w-[70%] ${isRight ? "items-end" : "items-start"} flex flex-col gap-0.5`}>
+        {!isRight && (
           <span className="text-[10px] text-slate-400 ml-1">
-            {isBot ? "Claw Bot" : msg.sender?.name ?? "Candidate"}
+            {msg.sender?.name ?? "Candidate"}
           </span>
         )}
+        {isBot && (
+          <span className="text-[10px] text-slate-400 mr-1 text-right">Claw Bot</span>
+        )}
 
-        <MessageMedia msg={msg} isHR={isHR} />
+        <MessageMedia msg={msg} isRight={isRight} />
 
-        <span className="text-[10px] text-slate-400 mx-1">
+        <span className={`text-[10px] text-slate-400 mx-1 ${isRight ? "text-right" : ""}`}>
           {formatDistanceToNow(new Date(msg.createdAt), { addSuffix: true, locale: th })}
         </span>
       </div>
