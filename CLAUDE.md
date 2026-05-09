@@ -32,6 +32,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 AUTH_SECRET=...
 NEXTAUTH_URL=https://recruit-for-hr.vercel.app  ← production (localhost:3000 for local dev)
 ANTHROPIC_API_KEY=sk-ant-...   ← required for AI Summary (Phase 6)
+WEBHOOK_FORM_SECRET=...        ← shared secret for /api/webhooks/form (Apps Script sends in x-webhook-secret)
+WEBHOOK_QUALIFY_SECRET=...     ← shared secret for /api/webhooks/qualify (Make.com sends in x-webhook-secret)
 ```
 
 ## Roles
@@ -91,6 +93,8 @@ src/app/api/
   openclaw/config/                      — public GET, no auth; compiles openclaw.rules.* from DB into system prompt for OpenClaw to fetch (CORS *)
   openclaw/workspace/                   — GET (public): file contents; POST (public, middleware.py): push files / clear dirty; PUT (HR_MANAGER+): save edited files + set dirty flag
   webhooks/line/                        — real LINE webhook receiver (POST, no auth required)
+  webhooks/form/                        — Google Form → Recruit OS (POST, x-webhook-secret, no session auth)
+  webhooks/qualify/                     — Make.com qualify result → update status + LINE push + inbox (POST, x-webhook-secret, no session auth)
   integrations/line/                    — manage LINE credentials in DB (GET/PUT/DELETE, SUPER_ADMIN only)
   ~~bot-config/~~                       — DELETED (superseded by /api/settings/ai/*)
   settings/ai/openclaw/                — OpenClaw config: enabled, model, temperature, max_tokens, system_prompt — stored as openclaw.* in Setting table (GET/PUT, HR_MANAGER+)
