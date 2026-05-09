@@ -189,6 +189,7 @@ model Candidate {
   resumeUrl            String?           @map("resume_url")
   portfolioUrl         String?           @map("portfolio_url")
   notionPageId         String?           @map("notion_page_id")
+  experienceText       String?           @map("experience_text")  // raw answer: "3 ปีขายเครื่องสำอาง"
   currentStatus        CandidateStatus   @default(NEW_APPLICANT) @map("current_status")
   ownerId              String?           @map("owner_id")
   createdAt            DateTime          @default(now()) @map("created_at")

@@ -39,6 +39,7 @@ export async function POST(req: Request) {
   const resumeUrl = typeof body.resumeUrl === "string" ? body.resumeUrl.trim() : undefined;
   const portfolioUrl = typeof body.portfolioUrl === "string" ? body.portfolioUrl.trim() : undefined;
   const notionPageId = typeof body.notionPageId === "string" ? body.notionPageId.trim() : undefined;
+  const experienceText = typeof body.experienceText === "string" ? body.experienceText.trim() : undefined;
 
   if (!lineUserId) {
     return NextResponse.json({ error: "lineUserId is required" }, { status: 400 });
@@ -75,6 +76,7 @@ export async function POST(req: Request) {
         resumeUrl: resumeUrl ?? null,
         portfolioUrl: portfolioUrl ?? null,
         notionPageId: notionPageId ?? null,
+        experienceText: experienceText ?? null,
       },
     });
 
@@ -101,6 +103,7 @@ export async function POST(req: Request) {
         ...(resumeUrl ? { resumeUrl } : {}),
         ...(portfolioUrl ? { portfolioUrl } : {}),
         ...(notionPageId ? { notionPageId } : {}),
+        ...(experienceText ? { experienceText } : {}),
         ...(shouldPromote ? { currentStatus: "WAITING_HR_REVIEW" } : {}),
       },
     });
@@ -137,6 +140,7 @@ export async function POST(req: Request) {
     if (name) parts.push(`ชื่อ: ${name}`);
     if (phone) parts.push(`เบอร์: ${phone}`);
     if (positionTitle) parts.push(`ตำแหน่ง: ${positionTitle}`);
+    if (experienceText) parts.push(`ประสบการณ์: ${experienceText}`);
     if (resumeUrl) parts.push(`Resume: ${resumeUrl}`);
     if (portfolioUrl) parts.push(`Portfolio: ${portfolioUrl}`);
 

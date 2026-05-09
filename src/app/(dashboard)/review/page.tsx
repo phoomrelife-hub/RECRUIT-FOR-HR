@@ -21,6 +21,7 @@ export default async function ReviewQueuePage() {
       lineUserId: true,
       phone: true,
       notionPageId: true,
+      experienceText: true,
       currentStatus: true,
       createdAt: true,
       interestedPosition: { select: { title: true } },

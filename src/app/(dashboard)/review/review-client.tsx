@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
+import { parseTier, TIER_CONFIG, type Tier } from "@/lib/experience-tier";
 
 type QueueCandidate = {
   id: string;
@@ -24,6 +25,7 @@ type QueueCandidate = {
   lineUserId: string | null;
   phone: string | null;
   notionPageId: string | null;
+  experienceText: string | null;
   currentStatus: string;
   interestedPosition: { title: string } | null;
   createdAt: Date;
@@ -31,25 +33,6 @@ type QueueCandidate = {
 
 interface Props {
   initial: QueueCandidate[];
-}
-
-// ── Sales Admin tier — keyword matching ──────────────────────────────────────
-// Parse experience years from status string (เช่น "3 ปี", "6 เดือน", "ไม่มี")
-// For now we use currentStatus as a proxy until form answers are wired up.
-// Replace `getExperienceText` with real field when available.
-type Tier = "high" | "mid" | "low" | "none";
-
-const TIER_CONFIG: Record<Tier, { label: string; color: string; order: number }> = {
-  high: { label: "ประสบการณ์สูง",   color: "bg-emerald-100 text-emerald-700 border-emerald-300", order: 0 },
-  mid:  { label: "ประสบการณ์ปานกลาง", color: "bg-blue-100 text-blue-700 border-blue-300",       order: 1 },
-  low:  { label: "ประสบการณ์น้อย",   color: "bg-amber-100 text-amber-700 border-amber-300",     order: 2 },
-  none: { label: "ไม่มีประสบการณ์",   color: "bg-slate-100 text-slate-500 border-slate-300",    order: 3 },
-};
-
-// Placeholder — returns "none" until experience field is available.
-// TODO: replace with real experience parsing from form answers.
-function getTier(_c: QueueCandidate): Tier {
-  return "none";
 }
 
 // ── Tab definitions ───────────────────────────────────────────────────────────
@@ -69,7 +52,7 @@ function CandidateRow({
 }) {
   const name = c.fullName ?? c.nickname ?? c.lineDisplayName ?? "ไม่ระบุชื่อ";
   const isLoading = !!loading[c.id];
-  const tier = showTier ? getTier(c) : null;
+  const tier: Tier | null = showTier ? parseTier(c.experienceText) : null;
 
   return (
     <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm hover:border-slate-300 transition-colors">
@@ -109,11 +92,18 @@ function CandidateRow({
             </span>
           )}
         </div>
-        <div className="flex items-center gap-3 mt-0.5 text-xs text-slate-500">
+        <div className="flex items-center gap-3 mt-0.5 text-xs text-slate-500 flex-wrap">
           {c.phone && (
             <span className="flex items-center gap-1">
               <Phone className="h-3 w-3" />
               {c.phone}
+            </span>
+          )}
+          {showTier && c.experienceText && (
+            <span className="text-slate-400 truncate max-w-[260px]" title={c.experienceText}>
+              {c.experienceText.length > 50
+                ? c.experienceText.slice(0, 50) + "…"
+                : c.experienceText}
             </span>
           )}
           {!showTier && c.interestedPosition && (
@@ -194,18 +184,30 @@ export function ReviewClient({ initial }: Props) {
     return ordered;
   }, [queue]);
 
-  // Filtered list for active tab
-  const filtered = useMemo(() => {
-    if (activeTab === ALL_TAB) return queue;
-    return queue.filter(
-      (c) =>
-        (c.interestedPosition?.title ?? "ไม่ระบุตำแหน่ง") === activeTab
-    );
-  }, [queue, activeTab]);
-
-  // Is the active tab Sales Admin? (for tier display)
+  // Is the active tab Sales Admin? (for tier display + sorting)
   const isSalesAdmin =
     activeTab !== ALL_TAB && activeTab.toLowerCase().includes("sales admin");
+
+  // Filtered + sorted list for active tab
+  const filtered = useMemo(() => {
+    const list =
+      activeTab === ALL_TAB
+        ? queue
+        : queue.filter(
+            (c) => (c.interestedPosition?.title ?? "ไม่ระบุตำแหน่ง") === activeTab
+          );
+
+    // For Sales Admin: sort by tier (high → mid → low → none), then FIFO within tier
+    if (isSalesAdmin) {
+      return [...list].sort((a, b) => {
+        const ta = TIER_CONFIG[parseTier(a.experienceText)].order;
+        const tb = TIER_CONFIG[parseTier(b.experienceText)].order;
+        if (ta !== tb) return ta - tb;
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      });
+    }
+    return list;
+  }, [queue, activeTab, isSalesAdmin]);
 
   async function handleQualify(candidate: QueueCandidate, result: "pass" | "fail") {
     setLoading((prev) => ({ ...prev, [candidate.id]: result }));
