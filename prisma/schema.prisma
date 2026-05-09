@@ -472,6 +472,9 @@ model Interview {
   createdAt     DateTime        @default(now()) @map("created_at")
   updatedAt     DateTime        @updatedAt @map("updated_at")
 
+  candidateResponse String?         @map("candidate_response") // null | "confirmed" | "declined"
+  respondedAt       DateTime?       @map("responded_at")
+
   candidate    Candidate          @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   jobPosition  JobPosition?       @relation(fields: [jobPositionId], references: [id])
   interviewer  User?              @relation("Interviewer", fields: [interviewerId], references: [id])

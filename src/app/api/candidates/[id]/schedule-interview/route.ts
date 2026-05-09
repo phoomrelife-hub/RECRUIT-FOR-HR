@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
-import { pushMessage } from "@/lib/line";
+import { pushMessageWithQuickReply } from "@/lib/line";
 import { NextResponse } from "next/server";
 
 // POST /api/candidates/[id]/schedule-interview
@@ -22,20 +22,16 @@ export async function POST(
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const type       = typeof body.type === "string" ? body.type : "onsite";
-  const date       = typeof body.date === "string" ? body.date.trim() : "";
-  const startTime  = typeof body.startTime === "string" ? body.startTime.trim() : "";
-  const note       = typeof body.note === "string" ? body.note.trim() : undefined;
-
-  // onsite fields
-  const location   = typeof body.location === "string" && body.location.trim()
+  const type         = typeof body.type === "string" ? body.type : "onsite";
+  const date         = typeof body.date === "string" ? body.date.trim() : "";
+  const startTime    = typeof body.startTime === "string" ? body.startTime.trim() : "";
+  const note         = typeof body.note === "string" ? body.note.trim() : undefined;
+  const location     = typeof body.location === "string" && body.location.trim()
     ? body.location.trim()
     : "76/4 อาคารแพลตินัมเพลส ซอยรามคำแหง 178 เขตมีนบุรี กรุงเทพฯ";
-
-  // online fields
-  const meetingLink     = typeof body.meetingLink === "string" ? body.meetingLink.trim() : "";
-  const interviewer     = typeof body.interviewer === "string" ? body.interviewer.trim() : "";
-  const positionLabel   = typeof body.positionLabel === "string" ? body.positionLabel.trim() : "";
+  const meetingLink  = typeof body.meetingLink === "string" ? body.meetingLink.trim() : "";
+  const interviewer  = typeof body.interviewer === "string" ? body.interviewer.trim() : "";
+  const positionLabel = typeof body.positionLabel === "string" ? body.positionLabel.trim() : "";
 
   if (!date || !startTime) {
     return NextResponse.json({ error: "date and startTime required" }, { status: 400 });
@@ -54,6 +50,7 @@ export async function POST(
       lineUserId: true,
       currentStatus: true,
       interestedPositionId: true,
+      interestedPosition: { select: { title: true } },
     },
   });
 
@@ -61,6 +58,7 @@ export async function POST(
 
   const name = candidate.fullName ?? candidate.nickname ?? candidate.lineDisplayName ?? "คุณ";
   const prevStatus = candidate.currentStatus;
+  const posTitle = positionLabel || candidate.interestedPosition?.title || "";
 
   // ── Format date ──────────────────────────────────────────────────────────
   const [y, m, d2] = date.split("-");
@@ -68,10 +66,6 @@ export async function POST(
   const thDate = `${parseInt(d2)} ${thMonths[parseInt(m) - 1]} ${parseInt(y) + 543}`;
 
   // ── Create interview record ──────────────────────────────────────────────
-  const locationNote = type === "online"
-    ? `[Online] ${meetingLink}${interviewer ? ` | ผู้สัมภาษณ์: ${interviewer}` : ""}`
-    : location;
-
   await db.interview.create({
     data: {
       candidateId:   candidate.id,
@@ -79,7 +73,9 @@ export async function POST(
       interviewDate: new Date(`${date}T${startTime}:00`),
       startTime,
       endTime:       startTime,
-      location:      locationNote || undefined,
+      interviewType: type === "online" ? "ONLINE" : "ONSITE",
+      location:      type === "onsite" ? location : undefined,
+      meetingLink:   type === "online" ? meetingLink : undefined,
       note:          note || undefined,
       createdById:   (session.user as { id?: string })?.id ?? undefined,
     },
@@ -101,27 +97,27 @@ export async function POST(
     },
   });
 
-  // ── Send LINE push message ───────────────────────────────────────────────
+  // ── Send LINE push + Quick Reply ─────────────────────────────────────────
   let lineSent = false;
   if (candidate.lineUserId) {
-    let lines: string;
+    let msgText: string;
 
     if (type === "online") {
-      lines = [
+      msgText = [
         `🎉 ยินดีด้วยนะคะ ${name}!`,
         ``,
         `ทางทีม Relife ขอนัดสัมภาษณ์ออนไลน์คุณดังนี้ค่ะ 💻✨`,
-        ...(positionLabel ? [`💼 ตำแหน่ง: ${positionLabel}`] : []),
-        ...(interviewer   ? [`👤 ผู้สัมภาษณ์: ${interviewer}`] : []),
+        ...(posTitle     ? [`💼 ตำแหน่ง: ${posTitle}`]      : []),
+        ...(interviewer  ? [`👤 ผู้สัมภาษณ์: ${interviewer}`] : []),
         `📅 วันที่: ${thDate}`,
         `🕐 เวลา: ${startTime} น.`,
         `🔗 ลิงก์: ${meetingLink}`,
         ...(note ? [``, `📝 ${note}`] : []),
         ``,
-        `กรุณาตอบกลับเพื่อยืนยัน หรือแจ้งหากไม่สะดวกได้เลยนะคะ 🙏`,
+        `กรุณายืนยันด้านล่างนะคะ 🙏`,
       ].join("\n");
     } else {
-      lines = [
+      msgText = [
         `🎉 ยินดีด้วยนะคะ ${name}!`,
         ``,
         `ทางทีม Relife ขอนัดสัมภาษณ์คุณดังนี้ค่ะ ✨`,
@@ -130,12 +126,15 @@ export async function POST(
         `📍 สถานที่: ${location}`,
         ...(note ? [``, `📝 ${note}`] : []),
         ``,
-        `กรุณาตอบกลับเพื่อยืนยัน หรือแจ้งหากไม่สะดวกได้เลยนะคะ 🙏`,
+        `กรุณายืนยันด้านล่างนะคะ 🙏`,
       ].join("\n");
     }
 
     try {
-      await pushMessage(candidate.lineUserId, lines);
+      await pushMessageWithQuickReply(candidate.lineUserId, msgText, [
+        { label: "✅ สะดวก",     text: "สะดวก" },
+        { label: "❌ ไม่สะดวก", text: "ไม่สะดวก" },
+      ]);
       lineSent = true;
     } catch (err) {
       console.error("LINE push failed:", err);

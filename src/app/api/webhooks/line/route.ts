@@ -1,11 +1,11 @@
 import { db } from "@/lib/db";
-import { verifyLineSignature, getLineProfile, type LineWebhookPayload } from "@/lib/line";
+import { verifyLineSignature, getLineProfile, pushMessage, type LineWebhookPayload } from "@/lib/line";
 import { NextResponse } from "next/server";
 
-// Direct LINE webhook receiver (fallback path)
+// Direct LINE webhook receiver
 // Production flow: LINE → Cloudflare tunnel → middleware.py → OpenClaw → openclaw/sync
 // This route handles LINE messages if the webhook is pointed directly at Vercel.
-// Bot replies are handled by OpenClaw (via middleware.py), NOT from here.
+
 export async function POST(req: Request) {
   const rawBody = await req.text();
   const signature = req.headers.get("x-line-signature") ?? "";
@@ -20,12 +20,18 @@ export async function POST(req: Request) {
   for (const event of payload.events) {
     if (event.type !== "message") continue;
 
-    const msgType = event.message.type; // text | image | file | sticker | video | audio | location
-    // Only handle text, image, file — drop sticker/video/audio silently
+    const msgType = event.message.type;
     if (!["text", "image", "file"].includes(msgType)) continue;
 
     const lineUserId = event.source.userId;
     const externalId = event.message.id;
+    const textContent = msgType === "text" ? (event.message as { text: string }).text.trim() : "";
+
+    // ── Quick Reply: interview confirmation ──────────────────────────────
+    if (msgType === "text" && (textContent === "สะดวก" || textContent === "ไม่สะดวก")) {
+      await handleInterviewResponse(lineUserId, textContent as "สะดวก" | "ไม่สะดวก");
+      // Still fall through to save message in conversation
+    }
 
     const lineProfile = await getLineProfile(lineUserId);
 
@@ -62,12 +68,12 @@ export async function POST(req: Request) {
       });
     }
 
-    // build message content + mediaUrl based on type
+    // build message content
     let content = "";
     let mediaUrl: string | null = null;
 
     if (msgType === "text") {
-      content = (event.message as { text: string }).text;
+      content = textContent;
     } else if (msgType === "image") {
       content = "[📷 รูปภาพ]";
       mediaUrl = `/api/media/line/${externalId}`;
@@ -106,9 +112,54 @@ export async function POST(req: Request) {
       where: { id: conversation.id },
       data: { lastMessageAt: new Date(), status: "ACTIVE", unreadCount: { increment: 1 } },
     });
-
-    // Note: bot reply is handled by OpenClaw via middleware.py, not here
   }
 
   return NextResponse.json({ ok: true });
+}
+
+// ── Handle interview quick reply response ─────────────────────────────────────
+
+async function handleInterviewResponse(
+  lineUserId: string,
+  response: "สะดวก" | "ไม่สะดวก"
+): Promise<void> {
+  try {
+    const candidate = await db.candidate.findUnique({
+      where: { lineUserId },
+      select: { id: true, fullName: true, nickname: true, lineDisplayName: true, currentStatus: true },
+    });
+
+    if (!candidate || candidate.currentStatus !== "INTERVIEW_SCHEDULED") return;
+
+    // Find the latest SCHEDULED interview for this candidate
+    const interview = await db.interview.findFirst({
+      where: { candidateId: candidate.id, status: "SCHEDULED" },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (!interview) return;
+
+    const candidateResponse = response === "สะดวก" ? "confirmed" : "declined";
+
+    // Update interview candidateResponse
+    await db.interview.update({
+      where: { id: interview.id },
+      data: { candidateResponse, respondedAt: new Date() },
+    });
+
+    // If declined: push a follow-up message
+    if (candidateResponse === "declined") {
+      const name = candidate.fullName ?? candidate.nickname ?? candidate.lineDisplayName ?? "คุณ";
+      try {
+        await pushMessage(
+          lineUserId,
+          `ขอบคุณที่แจ้งให้ทราบนะคะ ${name} 🙏\n\nทางทีมจะติดต่อเพื่อนัดวันและเวลาใหม่ที่สะดวกกว่านี้ให้ค่ะ 📅`
+        );
+      } catch {
+        // non-critical, ignore
+      }
+    }
+  } catch (err) {
+    console.error("handleInterviewResponse error:", err);
+  }
 }

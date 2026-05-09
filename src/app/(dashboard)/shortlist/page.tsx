@@ -21,14 +21,27 @@ export default async function ShortlistPage() {
       phone: true,
       currentStatus: true,
       interestedPosition: { select: { title: true } },
+      // latest SCHEDULED interview → for candidateResponse
+      interviews: {
+        where: { status: "SCHEDULED" },
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { candidateResponse: true, respondedAt: true },
+      },
     },
     orderBy: { updatedAt: "desc" },
   });
 
-  const qualified   = candidates.filter((c) => c.currentStatus === "QUALIFIED");
-  const scheduled   = candidates.filter((c) => c.currentStatus === "INTERVIEW_SCHEDULED");
-  const interviewed = candidates.filter((c) => c.currentStatus === "INTERVIEWED");
-  const passed      = candidates.filter((c) => c.currentStatus === "PASSED");
+  // Flatten: attach latestResponse to each candidate
+  const withResponse = candidates.map((c) => ({
+    ...c,
+    latestResponse: c.interviews[0]?.candidateResponse ?? null,
+  }));
+
+  const qualified   = withResponse.filter((c) => c.currentStatus === "QUALIFIED");
+  const scheduled   = withResponse.filter((c) => c.currentStatus === "INTERVIEW_SCHEDULED");
+  const interviewed = withResponse.filter((c) => c.currentStatus === "INTERVIEWED");
+  const passed      = withResponse.filter((c) => c.currentStatus === "PASSED");
 
   return (
     <ShortlistClient

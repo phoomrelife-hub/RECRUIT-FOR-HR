@@ -9,12 +9,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  AlertCircle,
   CalendarDays,
+  CheckCircle2,
   ChevronRight,
   Loader2,
   MessageCircle,
   MapPin,
   Phone,
+  RefreshCw,
   Send,
   Trophy,
   UserCheck,
@@ -35,6 +38,7 @@ type ShortlistCandidate = {
   phone: string | null;
   currentStatus: string;
   interestedPosition: { title: string } | null;
+  latestResponse: string | null; // "confirmed" | "declined" | null
 };
 
 interface Props {
@@ -332,8 +336,17 @@ function CandidateCard({
   actions?: React.ReactNode;
 }) {
   const name = getName(c);
+  const declined  = c.latestResponse === "declined";
+  const confirmed = c.latestResponse === "confirmed";
+
   return (
-    <div className="bg-white rounded-lg border border-slate-200 p-3 space-y-2 hover:shadow-sm transition-shadow">
+    <div
+      className={`rounded-lg border p-3 space-y-2 hover:shadow-sm transition-shadow ${
+        declined
+          ? "bg-red-50 border-red-300"
+          : "bg-white border-slate-200"
+      }`}
+    >
       <div className="flex items-center gap-2">
         <Avatar c={c} />
         <div className="min-w-0 flex-1">
@@ -347,6 +360,19 @@ function CandidateCard({
             <p className="text-xs text-slate-400 truncate">{c.interestedPosition.title}</p>
           )}
         </div>
+        {/* Response badge */}
+        {declined && (
+          <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-semibold bg-red-100 text-red-600 rounded-full px-2 py-0.5">
+            <AlertCircle className="h-3 w-3" />
+            ไม่สะดวก
+          </span>
+        )}
+        {confirmed && (
+          <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-semibold bg-green-100 text-green-600 rounded-full px-2 py-0.5">
+            <CheckCircle2 className="h-3 w-3" />
+            ยืนยันแล้ว
+          </span>
+        )}
       </div>
 
       <div className="flex gap-1.5 flex-wrap">
@@ -446,12 +472,28 @@ export function ShortlistClient({ qualified, scheduled, interviewed, passed }: P
     toast.success(`${getName(c)} มาร์กสัมภาษณ์แล้ว`);
   }
 
+  // เลื่อนนัด → กลับไป QUALIFIED (นัดใหม่ได้)
+  async function handleReschedule(c: ShortlistCandidate) {
+    const ok = await moveStatus(c.id, "QUALIFIED");
+    if (!ok) return;
+    setScheduledList((prev) => prev.filter((x) => x.id !== c.id));
+    setQualifiedList((prev) => [{ ...c, currentStatus: "QUALIFIED", latestResponse: null }, ...prev]);
+    toast.success(`${getName(c)} ย้ายกลับไปรอนัดใหม่แล้ว`);
+  }
+
   async function handleMarkPassed(c: ShortlistCandidate) {
     const ok = await moveStatus(c.id, "PASSED");
     if (!ok) return;
     setInterviewedList((prev) => prev.filter((x) => x.id !== c.id));
     setPassedList((prev) => [{ ...c, currentStatus: "PASSED" }, ...prev]);
     toast.success(`${getName(c)} ย้ายไปรอคอนเฟิร์มแล้ว`);
+  }
+
+  async function handleReject(c: ShortlistCandidate) {
+    const ok = await moveStatus(c.id, "REJECTED");
+    if (!ok) return;
+    setInterviewedList((prev) => prev.filter((x) => x.id !== c.id));
+    toast.success(`${getName(c)} บันทึกไม่ผ่านแล้ว`);
   }
 
   const total = qualifiedList.length + scheduledList.length + interviewedList.length + passedList.length;
@@ -516,15 +558,39 @@ export function ShortlistClient({ qualified, scheduled, interviewed, passed }: P
               key={c.id}
               c={c}
               actions={
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="w-full h-7 text-xs gap-1 border-blue-200 text-blue-700 hover:bg-blue-50"
-                  onClick={() => handleMarkInterviewed(c)}
-                >
-                  <ChevronRight className="h-3.5 w-3.5" />
-                  มาร์กสัมภาษณ์แล้ว
-                </Button>
+                c.latestResponse === "declined" ? (
+                  // ไม่สะดวก → แสดงปุ่มเลื่อนนัดเด่น
+                  <Button
+                    size="sm"
+                    className="w-full h-7 text-xs gap-1 bg-red-600 hover:bg-red-700 text-white"
+                    onClick={() => handleReschedule(c)}
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    เลื่อนนัด (นัดใหม่)
+                  </Button>
+                ) : (
+                  // ปกติ / ยืนยันแล้ว → 2 ปุ่ม
+                  <div className="flex gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="flex-1 h-7 text-xs gap-1 border-slate-200 text-slate-500 hover:bg-slate-50"
+                      onClick={() => handleReschedule(c)}
+                      title="เลื่อนนัด"
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="flex-1 h-7 text-xs gap-1 border-blue-200 text-blue-700 hover:bg-blue-50"
+                      onClick={() => handleMarkInterviewed(c)}
+                    >
+                      <ChevronRight className="h-3.5 w-3.5" />
+                      สัมภาษณ์แล้ว
+                    </Button>
+                  </div>
+                )
               }
             />
           ))}
@@ -542,15 +608,24 @@ export function ShortlistClient({ qualified, scheduled, interviewed, passed }: P
               key={c.id}
               c={c}
               actions={
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="w-full h-7 text-xs gap-1 border-violet-200 text-violet-700 hover:bg-violet-50"
-                  onClick={() => handleMarkPassed(c)}
-                >
-                  <ChevronRight className="h-3.5 w-3.5" />
-                  รอคอนเฟิร์มเริ่มงาน
-                </Button>
+                <div className="flex gap-1.5">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1 h-7 text-xs gap-1 border-red-200 text-red-600 hover:bg-red-50"
+                    onClick={() => handleReject(c)}
+                  >
+                    ❌ ไม่ผ่าน
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1 h-7 text-xs gap-1 border-violet-200 text-violet-700 hover:bg-violet-50"
+                    onClick={() => handleMarkPassed(c)}
+                  >
+                    ✅ ผ่าน
+                  </Button>
+                </div>
               }
             />
           ))}

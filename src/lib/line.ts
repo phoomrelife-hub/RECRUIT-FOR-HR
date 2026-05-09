@@ -80,11 +80,15 @@ export async function replyMessage(replyToken: string, text: string): Promise<vo
   });
 }
 
-export async function pushMessage(lineUserId: string, text: string): Promise<void> {
+export type LineQuickReplyItem = {
+  label: string; // max 20 chars
+  text: string;  // message sent when tapped
+};
+
+async function doPush(lineUserId: string, messages: unknown[]): Promise<void> {
   const { token } = await getCredentials();
   if (!token) throw new Error("LINE channel access token not configured");
 
-  // Pre-check: verify user is reachable with this token before pushing
   const profile = await getLineProfile(lineUserId);
   if (!profile) {
     throw new Error(
@@ -98,15 +102,36 @@ export async function pushMessage(lineUserId: string, text: string): Promise<voi
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({
-      to: lineUserId,
-      messages: [{ type: "text", text }],
-    }),
+    body: JSON.stringify({ to: lineUserId, messages }),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(`HTTP ${res.status} — ${body}`);
   }
+}
+
+export async function pushMessage(lineUserId: string, text: string): Promise<void> {
+  await doPush(lineUserId, [{ type: "text", text }]);
+}
+
+/** Push a text message with Quick Reply chips at the bottom */
+export async function pushMessageWithQuickReply(
+  lineUserId: string,
+  text: string,
+  quickReplyItems: LineQuickReplyItem[]
+): Promise<void> {
+  await doPush(lineUserId, [
+    {
+      type: "text",
+      text,
+      quickReply: {
+        items: quickReplyItems.map((item) => ({
+          type: "action",
+          action: { type: "message", label: item.label, text: item.text },
+        })),
+      },
+    },
+  ]);
 }
 
 export type LineMessageEvent = {
