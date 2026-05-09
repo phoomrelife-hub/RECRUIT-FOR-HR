@@ -2,21 +2,10 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { pushMessage } from "@/lib/line";
 import { NextResponse } from "next/server";
-
-const MSG_PASS = `หวัดดีค้าา~ 🎉
-ยินดีด้วยนะคะ! ทางทีม Relife ได้พิจารณาใบสมัครของคุณแล้ว
-และอยากเชิญคุณมาคุยกันเพิ่มเติมค่ะ 🥳
-ทางทีมจะติดต่อกลับเพื่อนัดวันและเวลาสัมภาษณ์เร็วๆ นี้นะคะ 📅
-ฝากติดตาม inbox ไว้ด้วยนะคะ~
-ขอบคุณมากค่า ❤️
-— ทีม Relife Solutions`;
-
-const MSG_FAIL = `หวัดดีค้าา~ ขอบคุณมากๆ เลยนะคะที่สนใจมาร่วมทีม Relife 🥰
-ทางทีมได้อ่านใบสมัครของคุณแล้วค่ะ ครั้งนี้อาจจะยังไม่ match กันพอดีซักนิด
-แต่ไม่ได้แปลว่าไม่เก่งนะคะ 💪
-ถ้าในอนาคตมีตำแหน่งที่ใช่ จะทักกลับมาเลยค่า ฝากติดตาม Relife ไว้ด้วยนะคะ 🌟
-ขอบคุณอีกครั้งค้าา ❤️
-— ทีม Relife Solutions`;
+import {
+  DEFAULT_MSG_PASS,
+  DEFAULT_MSG_FAIL,
+} from "@/app/api/settings/qualify-messages/route";
 
 export async function POST(
   req: Request,
@@ -39,6 +28,15 @@ export async function POST(
   if (!candidate) {
     return NextResponse.json({ error: "Candidate not found" }, { status: 404 });
   }
+
+  // ── Read custom messages from settings ───────────────────────────────────
+  const settingsRows = await db.setting.findMany({
+    where: { key: { in: ["qualify.msg_pass", "qualify.msg_fail"] } },
+    select: { key: true, value: true },
+  });
+  const sm = Object.fromEntries(settingsRows.map((s) => [s.key, s.value]));
+  const MSG_PASS = sm["qualify.msg_pass"] || DEFAULT_MSG_PASS;
+  const MSG_FAIL = sm["qualify.msg_fail"] || DEFAULT_MSG_FAIL;
 
   const isPass = result === "pass";
   const newStatus = isPass ? "QUALIFIED" : "REJECTED";

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -24,6 +24,9 @@ import {
   Wallet,
   Laptop,
   AlertCircle,
+  Settings2,
+  Trash2,
+  CheckSquare,
 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -70,6 +73,136 @@ interface Props {
 }
 
 const ALL_TAB = "__all__";
+
+// ── Message Template Dialog ───────────────────────────────────────────────────
+function MessageTemplateDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const [msgPass, setMsgPass] = useState("");
+  const [msgFail, setMsgFail] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    fetch("/api/settings/qualify-messages")
+      .then((r) => r.json())
+      .then((d) => {
+        setMsgPass(d.msg_pass ?? "");
+        setMsgFail(d.msg_fail ?? "");
+      })
+      .catch(() => toast.error("โหลดข้อความไม่สำเร็จ"))
+      .finally(() => setLoading(false));
+  }, [open]);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/settings/qualify-messages", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ msg_pass: msgPass, msg_fail: msgFail }),
+      });
+      if (!res.ok) throw new Error("บันทึกไม่สำเร็จ");
+      toast.success("บันทึกข้อความสำเร็จ");
+      onOpenChange(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "เกิดข้อผิดพลาด");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/40"
+        onClick={() => onOpenChange(false)}
+      />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <div>
+            <h2 className="text-base font-bold text-slate-900">ข้อความแจ้งผล LINE</h2>
+            <p className="text-xs text-slate-500 mt-0.5">ปรับแต่งข้อความที่ส่งให้ผู้สมัครเมื่อกด ผ่าน / ไม่ผ่าน</p>
+          </div>
+          <button
+            onClick={() => onOpenChange(false)}
+            className="h-8 w-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+          {loading ? (
+            <div className="flex items-center justify-center py-12 text-slate-400 gap-2">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <span className="text-sm">กำลังโหลด...</span>
+            </div>
+          ) : (
+            <>
+              <div>
+                <label className="flex items-center gap-2 text-sm font-semibold text-teal-700 mb-2">
+                  <CheckCircle className="h-4 w-4" />
+                  ข้อความเมื่อ ✅ ผ่าน
+                </label>
+                <textarea
+                  value={msgPass}
+                  onChange={(e) => setMsgPass(e.target.value)}
+                  rows={7}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-400 resize-none leading-relaxed"
+                />
+              </div>
+              <div>
+                <label className="flex items-center gap-2 text-sm font-semibold text-red-600 mb-2">
+                  <XCircle className="h-4 w-4" />
+                  ข้อความเมื่อ ❌ ไม่ผ่าน
+                </label>
+                <textarea
+                  value={msgFail}
+                  onChange={(e) => setMsgFail(e.target.value)}
+                  rows={7}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-red-300 resize-none leading-relaxed"
+                />
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onOpenChange(false)}
+            className="text-slate-600"
+          >
+            ยกเลิก
+          </Button>
+          <Button
+            size="sm"
+            className="bg-blue-600 hover:bg-blue-700 text-white"
+            onClick={handleSave}
+            disabled={saving || loading}
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+            บันทึก
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ── Detail Sheet ──────────────────────────────────────────────────────────────
 function DetailSheet({
@@ -295,11 +428,15 @@ function CandidateRow({
   c,
   showTier,
   loading,
+  selected,
+  onToggle,
   onQualify,
 }: {
   c: QueueCandidate;
   showTier: boolean;
   loading: Record<string, "pass" | "fail">;
+  selected: boolean;
+  onToggle: (id: string) => void;
   onQualify: (c: QueueCandidate, result: "pass" | "fail") => void;
 }) {
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -309,7 +446,28 @@ function CandidateRow({
 
   return (
     <>
-      <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm hover:border-slate-300 transition-colors">
+      <div
+        className={`flex items-center gap-3 rounded-xl border bg-white px-4 py-3 shadow-sm hover:border-slate-300 transition-colors ${
+          selected ? "border-blue-400 bg-blue-50/40" : "border-slate-200"
+        }`}
+      >
+        {/* Checkbox */}
+        <button
+          onClick={() => onToggle(c.id)}
+          className={`shrink-0 h-5 w-5 rounded border-2 flex items-center justify-center transition-colors ${
+            selected
+              ? "bg-blue-600 border-blue-600"
+              : "border-slate-300 hover:border-blue-400"
+          }`}
+          aria-label={selected ? "ยกเลิกการเลือก" : "เลือก"}
+        >
+          {selected && (
+            <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          )}
+        </button>
+
         {/* Avatar */}
         <div className="shrink-0">
           {c.lineProfilePicUrl ? (
@@ -430,18 +588,18 @@ export function ReviewClient({ initial, positions }: Props) {
   const [queue, setQueue] = useState<QueueCandidate[]>(initial);
   const [loading, setLoading] = useState<Record<string, "pass" | "fail">>({});
   const [activeTab, setActiveTab] = useState<string>(ALL_TAB);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [templateOpen, setTemplateOpen] = useState(false);
 
   // Build tabs: all job positions (always shown) + "ไม่ระบุตำแหน่ง" if any
   const tabs = useMemo(() => {
-    // count candidates per position title
     const countMap = new Map<string, number>();
     for (const c of queue) {
       const key = c.interestedPosition?.title ?? "ไม่ระบุตำแหน่ง";
       countMap.set(key, (countMap.get(key) ?? 0) + 1);
     }
-    // all positions from DB (ordered by createdAt), always shown even if count=0
     const named: [string, number][] = positions.map((p) => [p.title, countMap.get(p.title) ?? 0]);
-    // "ไม่ระบุตำแหน่ง" at the end only if there are candidates without position
     const noneCount = countMap.get("ไม่ระบุตำแหน่ง") ?? 0;
     return [
       ...named,
@@ -470,6 +628,38 @@ export function ReviewClient({ initial, positions }: Props) {
     return list;
   }, [queue, activeTab, isSalesAdmin]);
 
+  // IDs visible in current tab
+  const filteredIds = useMemo(() => filtered.map((c) => c.id), [filtered]);
+  const allCurrentSelected =
+    filteredIds.length > 0 && filteredIds.every((id) => selected.has(id));
+  const someCurrentSelected = filteredIds.some((id) => selected.has(id));
+
+  // Clear selection when tab changes
+  useEffect(() => {
+    setSelected(new Set());
+  }, [activeTab]);
+
+  const toggleOne = useCallback((id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleAll = useCallback(() => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allCurrentSelected) {
+        filteredIds.forEach((id) => next.delete(id));
+      } else {
+        filteredIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  }, [allCurrentSelected, filteredIds]);
+
   async function handleQualify(candidate: QueueCandidate, result: "pass" | "fail") {
     setLoading((prev) => ({ ...prev, [candidate.id]: result }));
     try {
@@ -482,6 +672,7 @@ export function ReviewClient({ initial, positions }: Props) {
       if (!res.ok) throw new Error(data.error ?? "เกิดข้อผิดพลาด");
 
       setQueue((prev) => prev.filter((c) => c.id !== candidate.id));
+      setSelected((prev) => { const n = new Set(prev); n.delete(candidate.id); return n; });
 
       const remaining = queue.filter(
         (c) =>
@@ -511,6 +702,34 @@ export function ReviewClient({ initial, positions }: Props) {
     }
   }
 
+  async function handleBulkQualify(result: "pass" | "fail") {
+    const ids = Array.from(selected);
+    if (!ids.length) return;
+
+    setBulkLoading(true);
+    try {
+      const res = await fetch("/api/candidates/bulk-qualify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, result }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "เกิดข้อผิดพลาด");
+
+      setQueue((prev) => prev.filter((c) => !ids.includes(c.id)));
+      setSelected(new Set());
+
+      const label = result === "pass" ? "✅ ผ่าน" : "❌ ไม่ผ่าน";
+      toast.success(`${data.succeeded} คน — ${label}`, {
+        description: data.failed > 0 ? `ไม่สำเร็จ ${data.failed} คน` : undefined,
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "เกิดข้อผิดพลาด");
+    } finally {
+      setBulkLoading(false);
+    }
+  }
+
   if (queue.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-slate-400">
@@ -522,74 +741,170 @@ export function ReviewClient({ initial, positions }: Props) {
   }
 
   return (
-    <div className="space-y-4">
-      {/* ── Tab bar ── */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <button
-          onClick={() => setActiveTab(ALL_TAB)}
-          className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium border transition-colors ${
-            activeTab === ALL_TAB
-              ? "bg-slate-800 text-white border-slate-800"
-              : "bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:text-slate-800"
-          }`}
-        >
-          ทั้งหมด
-          <span className={`rounded-full px-1.5 py-0 text-[10px] font-bold ${activeTab === ALL_TAB ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600"}`}>
-            {queue.length}
-          </span>
-        </button>
-        {tabs.map(([title, count]) => {
-          const isActive = activeTab === title;
-          const isSA = title.toLowerCase().includes("sales admin");
-          return (
-            <button
-              key={title}
-              onClick={() => setActiveTab(title)}
-              className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium border transition-colors ${
-                isActive
-                  ? isSA
-                    ? "bg-blue-600 text-white border-blue-600"
-                    : "bg-slate-800 text-white border-slate-800"
-                  : "bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:text-slate-800"
-              }`}
-            >
-              {title}
-              <span className={`rounded-full px-1.5 py-0 text-[10px] font-bold ${isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600"}`}>
-                {count}
+    <>
+      <div className="space-y-4">
+        {/* ── Tab bar + gear button ── */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => setActiveTab(ALL_TAB)}
+            className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium border transition-colors ${
+              activeTab === ALL_TAB
+                ? "bg-slate-800 text-white border-slate-800"
+                : "bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:text-slate-800"
+            }`}
+          >
+            ทั้งหมด
+            <span className={`rounded-full px-1.5 py-0 text-[10px] font-bold ${activeTab === ALL_TAB ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600"}`}>
+              {queue.length}
+            </span>
+          </button>
+          {tabs.map(([title, count]) => {
+            const isActive = activeTab === title;
+            const isSA = title.toLowerCase().includes("sales admin");
+            return (
+              <button
+                key={title}
+                onClick={() => setActiveTab(title)}
+                className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium border transition-colors ${
+                  isActive
+                    ? isSA
+                      ? "bg-blue-600 text-white border-blue-600"
+                      : "bg-slate-800 text-white border-slate-800"
+                    : "bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:text-slate-800"
+                }`}
+              >
+                {title}
+                <span className={`rounded-full px-1.5 py-0 text-[10px] font-bold ${isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600"}`}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+
+          {/* Gear button */}
+          <button
+            onClick={() => setTemplateOpen(true)}
+            className="ml-auto inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium border border-slate-200 bg-white text-slate-500 hover:text-slate-700 hover:border-slate-400 transition-colors"
+            title="ตั้งค่าข้อความแจ้งผล"
+          >
+            <Settings2 className="h-4 w-4" />
+            ข้อความ LINE
+          </button>
+        </div>
+
+        {/* ── Sales Admin tier legend + select-all ── */}
+        {isSalesAdmin && (
+          <div className="flex items-center gap-2 flex-wrap p-3 rounded-xl bg-blue-50 border border-blue-100">
+            <span className="text-xs font-medium text-blue-700 mr-1">ระดับประสบการณ์ :</span>
+            {(Object.entries(TIER_CONFIG) as [Tier, (typeof TIER_CONFIG)[Tier]][]).map(([key, cfg]) => (
+              <span key={key} className={`inline-flex items-center rounded-full border text-[10px] font-semibold px-2 py-0.5 ${cfg.color}`}>
+                {cfg.label}
               </span>
+            ))}
+          </div>
+        )}
+
+        {/* ── Select-all bar ── */}
+        {filtered.length > 0 && (
+          <div className="flex items-center gap-3 px-1">
+            <button
+              onClick={toggleAll}
+              className={`h-5 w-5 rounded border-2 flex items-center justify-center transition-colors shrink-0 ${
+                allCurrentSelected
+                  ? "bg-blue-600 border-blue-600"
+                  : someCurrentSelected
+                  ? "bg-blue-200 border-blue-400"
+                  : "border-slate-300 hover:border-blue-400"
+              }`}
+              aria-label="เลือกทั้งหมด"
+            >
+              {allCurrentSelected && (
+                <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+              {someCurrentSelected && !allCurrentSelected && (
+                <div className="h-2 w-2 rounded-sm bg-blue-600" />
+              )}
             </button>
-          );
-        })}
+            <span className="text-xs text-slate-500">
+              {someCurrentSelected
+                ? `เลือกแล้ว ${selected.size} คน`
+                : `เลือกทั้งหมด ${filtered.length} คน`}
+            </span>
+          </div>
+        )}
+
+        {/* ── Candidate list ── */}
+        <div className="space-y-2">
+          {filtered.length === 0 ? (
+            <div className="py-12 text-center text-slate-400 text-sm">ไม่มีรายการในตำแหน่งนี้</div>
+          ) : (
+            filtered.map((c) => (
+              <CandidateRow
+                key={c.id}
+                c={c}
+                showTier={isSalesAdmin}
+                loading={loading}
+                selected={selected.has(c.id)}
+                onToggle={toggleOne}
+                onQualify={handleQualify}
+              />
+            ))
+          )}
+        </div>
       </div>
 
-      {/* ── Sales Admin tier legend ── */}
-      {isSalesAdmin && (
-        <div className="flex items-center gap-2 flex-wrap p-3 rounded-xl bg-blue-50 border border-blue-100">
-          <span className="text-xs font-medium text-blue-700 mr-1">ระดับประสบการณ์ :</span>
-          {(Object.entries(TIER_CONFIG) as [Tier, (typeof TIER_CONFIG)[Tier]][]).map(([key, cfg]) => (
-            <span key={key} className={`inline-flex items-center rounded-full border text-[10px] font-semibold px-2 py-0.5 ${cfg.color}`}>
-              {cfg.label}
-            </span>
-          ))}
+      {/* ── Bulk action floating bar ── */}
+      {selected.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40">
+          <div className="flex items-center gap-3 bg-slate-900 text-white rounded-2xl shadow-2xl px-5 py-3">
+            <CheckSquare className="h-4 w-4 text-blue-400 shrink-0" />
+            <span className="text-sm font-medium">เลือก {selected.size} คน</span>
+            <div className="w-px h-5 bg-slate-600" />
+            <Button
+              size="sm"
+              className="bg-teal-500 hover:bg-teal-400 text-white h-8 px-4 text-xs font-semibold"
+              disabled={bulkLoading}
+              onClick={() => handleBulkQualify("pass")}
+            >
+              {bulkLoading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <>
+                  <CheckCircle className="h-3.5 w-3.5 mr-1.5" />
+                  ผ่านทั้งหมด
+                </>
+              )}
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              className="h-8 px-4 text-xs font-semibold bg-red-500 hover:bg-red-400"
+              disabled={bulkLoading}
+              onClick={() => handleBulkQualify("fail")}
+            >
+              {bulkLoading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <>
+                  <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                  ไม่ผ่านทั้งหมด
+                </>
+              )}
+            </Button>
+            <button
+              onClick={() => setSelected(new Set())}
+              className="text-slate-400 hover:text-white text-xs ml-1 transition-colors"
+            >
+              ยกเลิก
+            </button>
+          </div>
         </div>
       )}
 
-      {/* ── Candidate list ── */}
-      <div className="space-y-2">
-        {filtered.length === 0 ? (
-          <div className="py-12 text-center text-slate-400 text-sm">ไม่มีรายการในตำแหน่งนี้</div>
-        ) : (
-          filtered.map((c) => (
-            <CandidateRow
-              key={c.id}
-              c={c}
-              showTier={isSalesAdmin}
-              loading={loading}
-              onQualify={handleQualify}
-            />
-          ))
-        )}
-      </div>
-    </div>
+      {/* ── Message template dialog ── */}
+      <MessageTemplateDialog open={templateOpen} onOpenChange={setTemplateOpen} />
+    </>
   );
 }
