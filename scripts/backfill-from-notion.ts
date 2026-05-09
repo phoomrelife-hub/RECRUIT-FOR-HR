@@ -13,8 +13,9 @@ import path from "path";
 
 dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 
-const NOTION_PROP = "คุณมีประสบการณ์ด้านงานขายมากี่ปี และเคยขายอะไรบ้าง?";
-const NOTION_NAME = "ชื่อ - นามสกุล / ชื่อเล่น";
+const NOTION_PROP     = "คุณมีประสบการณ์ด้านงานขายมากี่ปี และเคยขายอะไรบ้าง?";
+const NOTION_NAME     = "ชื่อ - นามสกุล / ชื่อเล่น";
+const NOTION_POSITION = "ตำแหน่งที่สมัคร";
 const SLEEP_MS = 350;
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
@@ -103,7 +104,7 @@ async function main() {
   console.log(`Got ${pages.length} pages from Notion\n`);
 
   // ── Step 2: build map lineUserId → { notionPageId, experienceText, fullName } ──
-  type NotionEntry = { notionPageId: string; experienceText: string; fullName: string };
+  type NotionEntry = { notionPageId: string; experienceText: string; fullName: string; position: string };
   const notionMap = new Map<string, NotionEntry>();
 
   for (const page of pages) {
@@ -111,34 +112,46 @@ async function main() {
     if (!lineUserId) continue;
 
     const experienceText = extractText(page.properties[NOTION_PROP]);
-    const fullName = extractText(page.properties[NOTION_NAME]);
-    const notionPageId = page.id.replace(/-/g, "");
+    const fullName       = extractText(page.properties[NOTION_NAME]);
+    const notionPageId   = page.id.replace(/-/g, "");
+
+    // position เป็น select property
+    const posProp = page.properties[NOTION_POSITION] as Record<string, unknown> | undefined;
+    const position = (posProp?.select as Record<string, unknown> | undefined)?.name as string ?? "";
 
     // ถ้า lineUserId ซ้ำ ให้เก็บอันที่มีข้อมูลประสบการณ์
     const existing = notionMap.get(lineUserId);
     if (!existing || (!existing.experienceText && experienceText)) {
-      notionMap.set(lineUserId, { notionPageId, experienceText, fullName });
+      notionMap.set(lineUserId, { notionPageId, experienceText, fullName, position });
     }
   }
 
   console.log(`Pages with lineUserId: ${notionMap.size}`);
 
-  // ── Step 3: load candidates from DB that still need backfill ─────────────
-  // ดึงคนที่ยังขาด experienceText หรือ fullName อย่างใดอย่างหนึ่ง
+  // ── Step 3: load job positions map (title → id) ───────────────────────────
+  const jobPositions = await db.jobPosition.findMany({ select: { id: true, title: true } });
+  const jobMap = new Map(jobPositions.map((j) => [j.title.toLowerCase(), j.id]));
+
+  // ── Step 4: load candidates from DB that still need backfill ──────────────
+  // ดึงคนที่ยังขาด experienceText, fullName หรือ interestedPositionId
   const candidates = await db.candidate.findMany({
     where: {
       lineUserId: { not: null },
       OR: [
         { experienceText: null },
         { fullName: null },
+        { interestedPositionId: null },
       ],
     },
-    select: { id: true, lineUserId: true, nickname: true, fullName: true, notionPageId: true, experienceText: true },
+    select: {
+      id: true, lineUserId: true, nickname: true, fullName: true,
+      notionPageId: true, experienceText: true, interestedPositionId: true,
+    },
   });
 
   console.log(`Candidates needing backfill: ${candidates.length}\n`);
 
-  // ── Step 4: match and update ──────────────────────────────────────────────
+  // ── Step 5: match and update ──────────────────────────────────────────────
   let updated = 0;
   let skipped = 0;
   let notFound = 0;
@@ -159,6 +172,10 @@ async function main() {
     if (!c.notionPageId) updateData.notionPageId = entry.notionPageId;
     if (!c.experienceText && entry.experienceText) updateData.experienceText = entry.experienceText;
     if (!c.fullName && entry.fullName) updateData.fullName = entry.fullName;
+    if (!c.interestedPositionId && entry.position) {
+      const jobId = jobMap.get(entry.position.toLowerCase());
+      if (jobId) updateData.interestedPositionId = jobId;
+    }
 
     if (Object.keys(updateData).length === 0) {
       skipped++;
@@ -171,6 +188,7 @@ async function main() {
       const parts: string[] = [];
       if (updateData.fullName) parts.push(`ชื่อ: "${updateData.fullName}"`);
       if (updateData.experienceText) parts.push(`ประสบการณ์: "${updateData.experienceText.slice(0, 40)}"`);
+      if (updateData.interestedPositionId) parts.push(`ตำแหน่ง: "${entry.position}"`);
 
       console.log(`${progress} ✅ ${name} → ${parts.join(" | ")}`);
       updated++;
