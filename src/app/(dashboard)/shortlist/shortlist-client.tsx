@@ -508,7 +508,7 @@ export function ShortlistClient({ qualified, scheduled, interviewed, passed }: P
     if (!ok) return;
     setInterviewedList((prev) => prev.filter((x) => x.id !== c.id));
     setPassedList((prev) => [{ ...c, currentStatus: "PASSED" }, ...prev]);
-    toast.success(`${getName(c)} ย้ายไปรอคอนเฟิร์มแล้ว`);
+    toast.success(`${getName(c)} ย้ายไปส่งข้อความก่อนนัดสัมภาษณ์แล้ว`);
   }
 
   async function handleReject(c: ShortlistCandidate) {
@@ -653,9 +653,9 @@ export function ShortlistClient({ qualified, scheduled, interviewed, passed }: P
           ))}
         </Column>
 
-        {/* รอคอนเฟิร์มเริ่มงาน */}
+        {/* ส่งข้อความก่อนนัดสัมภาษณ์ */}
         <Column
-          title="รอคอนเฟิร์มเริ่มงาน"
+          title="ส่งข้อความก่อนนัดสัมภาษณ์"
           color="bg-amber-500 text-white"
           icon={<Trophy className="h-4 w-4" />}
           count={passedList.length}
