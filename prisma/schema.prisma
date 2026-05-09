@@ -474,6 +474,7 @@ model Interview {
 
   candidateResponse String?         @map("candidate_response") // null | "confirmed" | "declined"
   respondedAt       DateTime?       @map("responded_at")
+  reminderSentAt    DateTime?       @map("reminder_sent_at")
 
   candidate    Candidate          @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   jobPosition  JobPosition?       @relation(fields: [jobPositionId], references: [id])
