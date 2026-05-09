@@ -38,6 +38,7 @@ export async function POST(req: Request) {
   const positionTitle = typeof body.position === "string" ? body.position.trim() : undefined;
   const resumeUrl = typeof body.resumeUrl === "string" ? body.resumeUrl.trim() : undefined;
   const portfolioUrl = typeof body.portfolioUrl === "string" ? body.portfolioUrl.trim() : undefined;
+  const notionPageId = typeof body.notionPageId === "string" ? body.notionPageId.trim() : undefined;
 
   if (!lineUserId) {
     return NextResponse.json({ error: "lineUserId is required" }, { status: 400 });
@@ -73,6 +74,7 @@ export async function POST(req: Request) {
         interestedPositionId: interestedPositionId ?? null,
         resumeUrl: resumeUrl ?? null,
         portfolioUrl: portfolioUrl ?? null,
+        notionPageId: notionPageId ?? null,
       },
     });
 
@@ -98,6 +100,7 @@ export async function POST(req: Request) {
         ...(interestedPositionId ? { interestedPositionId } : {}),
         ...(resumeUrl ? { resumeUrl } : {}),
         ...(portfolioUrl ? { portfolioUrl } : {}),
+        ...(notionPageId ? { notionPageId } : {}),
         ...(shouldPromote ? { currentStatus: "WAITING_HR_REVIEW" } : {}),
       },
     });

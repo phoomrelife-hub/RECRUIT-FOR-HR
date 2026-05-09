@@ -9,6 +9,7 @@ import { ArrowLeft, Phone, Mail, MapPin, Calendar, DollarSign, Briefcase, Extern
 import { format } from "date-fns";
 import { CandidateStatus, SourceChannel, ExperienceStatus } from "@prisma/client";
 import { CandidateProfileClient } from "./candidate-profile-client";
+import { QualifySection } from "./qualify-section";
 
 const statusColor: Record<CandidateStatus, string> = {
   NEW_APPLICANT: "bg-slate-100 text-slate-600",
@@ -174,6 +175,14 @@ export default async function CandidateProfilePage({ params }: { params: Promise
               </CardContent>
             </Card>
           )}
+
+          {/* Qualify Section */}
+          <QualifySection
+            candidateId={candidate.id}
+            currentStatus={candidate.currentStatus}
+            lineUserId={candidate.lineUserId ?? null}
+            hasNotionPage={!!candidate.notionPageId}
+          />
 
           {/* Contact */}
           <Card className="border-slate-200">
