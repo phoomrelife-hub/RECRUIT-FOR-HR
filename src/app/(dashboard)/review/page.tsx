@@ -29,6 +29,11 @@ export default async function ReviewQueuePage() {
     orderBy: { createdAt: "asc" }, // เก่าสุดขึ้นก่อน (FIFO)
   });
 
+  const positions = await db.jobPosition.findMany({
+    select: { id: true, title: true },
+    orderBy: { createdAt: "asc" },
+  });
+
   const waitingCount = queue.filter((c) => c.currentStatus === "WAITING_HR_REVIEW").length;
 
   return (
@@ -50,7 +55,7 @@ export default async function ReviewQueuePage() {
         </p>
       </div>
 
-      <ReviewClient initial={queue as any} />
+      <ReviewClient initial={queue as any} positions={positions} />
     </div>
   );
 }

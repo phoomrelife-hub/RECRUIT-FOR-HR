@@ -62,8 +62,11 @@ type NotionDetail = {
   qa: Array<{ question: string; answer: string }>;
 };
 
+type JobPosition = { id: string; title: string };
+
 interface Props {
   initial: QueueCandidate[];
+  positions: JobPosition[];
 }
 
 const ALL_TAB = "__all__";
@@ -423,26 +426,28 @@ function CandidateRow({
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
-export function ReviewClient({ initial }: Props) {
+export function ReviewClient({ initial, positions }: Props) {
   const [queue, setQueue] = useState<QueueCandidate[]>(initial);
   const [loading, setLoading] = useState<Record<string, "pass" | "fail">>({});
   const [activeTab, setActiveTab] = useState<string>(ALL_TAB);
 
+  // Build tabs: all job positions (always shown) + "ไม่ระบุตำแหน่ง" if any
   const tabs = useMemo(() => {
-    const posMap = new Map<string, number>();
+    // count candidates per position title
+    const countMap = new Map<string, number>();
     for (const c of queue) {
       const key = c.interestedPosition?.title ?? "ไม่ระบุตำแหน่ง";
-      posMap.set(key, (posMap.get(key) ?? 0) + 1);
+      countMap.set(key, (countMap.get(key) ?? 0) + 1);
     }
-    const named = [...posMap.entries()]
-      .filter(([k]) => k !== "ไม่ระบุตำแหน่ง")
-      .sort((a, b) => b[1] - a[1]);
-    const none = posMap.get("ไม่ระบุตำแหน่ง");
+    // all positions from DB (ordered by createdAt), always shown even if count=0
+    const named: [string, number][] = positions.map((p) => [p.title, countMap.get(p.title) ?? 0]);
+    // "ไม่ระบุตำแหน่ง" at the end only if there are candidates without position
+    const noneCount = countMap.get("ไม่ระบุตำแหน่ง") ?? 0;
     return [
       ...named,
-      ...(none ? [["ไม่ระบุตำแหน่ง", none] as [string, number]] : []),
+      ...(noneCount > 0 ? [["ไม่ระบุตำแหน่ง", noneCount] as [string, number]] : []),
     ];
-  }, [queue]);
+  }, [queue, positions]);
 
   const isSalesAdmin =
     activeTab !== ALL_TAB && activeTab.toLowerCase().includes("sales admin");
