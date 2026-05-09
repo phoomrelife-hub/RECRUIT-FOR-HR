@@ -30,6 +30,9 @@ export const proxy = auth((req) => {
   // Telegram webhook — called from Telegram servers, no session
   if (req.nextUrl.pathname === "/api/telegram/webhook") return NextResponse.next();
 
+  // Admin one-time scripts — protected by x-admin-secret header (no session needed)
+  if (req.nextUrl.pathname.startsWith("/api/admin/")) return NextResponse.next();
+
   // Redirect legacy paths
   if (req.nextUrl.pathname.startsWith("/bot-config")) {
     return NextResponse.redirect(new URL("/settings/ai", req.url));
