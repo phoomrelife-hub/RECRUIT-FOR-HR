@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -86,13 +86,12 @@ function DetailSheet({
   const tier = parseTier(c.experienceText);
 
   // fetch on first open
-  async function handleOpen(v: boolean) {
-    onOpenChange(v);
-    if (v && !detail && !loadingDetail) {
-      setLoadingDetail(true);
-      setDetailError(null);
-      try {
-        const res = await fetch(`/api/candidates/${c.id}/notion-detail`);
+  useEffect(() => {
+    if (!open || detail || loadingDetail) return;
+    setLoadingDetail(true);
+    setDetailError(null);
+    fetch(`/api/candidates/${c.id}/notion-detail`)
+      .then(async (res) => {
         if (res.status === 404) {
           setDetailError("ไม่มีข้อมูลใน Notion สำหรับผู้สมัครนี้");
         } else if (!res.ok) {
@@ -100,16 +99,14 @@ function DetailSheet({
         } else {
           setDetail(await res.json());
         }
-      } catch (err) {
-        setDetailError(err instanceof Error ? err.message : "เกิดข้อผิดพลาด");
-      } finally {
-        setLoadingDetail(false);
-      }
-    }
-  }
+      })
+      .catch((err) => setDetailError(err instanceof Error ? err.message : "เกิดข้อผิดพลาด"))
+      .finally(() => setLoadingDetail(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   return (
-    <Sheet open={open} onOpenChange={handleOpen}>
+    <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
         className="w-full sm:max-w-xl overflow-y-auto p-0"
