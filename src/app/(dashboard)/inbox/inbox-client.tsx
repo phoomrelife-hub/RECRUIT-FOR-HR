@@ -24,6 +24,8 @@ import {
   Search,
   SlidersHorizontal,
   Circle,
+  Image as ImageIcon,
+  Paperclip,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -316,6 +318,51 @@ function MessageMedia({ msg, isHR }: { msg: Message; isHR: boolean }) {
         <ExternalLink size={14} className="shrink-0" />
         <span className="truncate max-w-[160px]">{fileName}</span>
       </a>
+    );
+  }
+
+  // ── Content-pattern fallback for messages saved without messageType/mediaUrl ──
+  // Handles: old "[ส่ง image]"/"[ส่ง file]" format AND new "[📷 รูปภาพ]"/"[📎 ...]"
+  // format when mediaUrl is missing (e.g. synced before fix was deployed).
+  const rawContent = msg.content ?? "";
+  const isImageContent =
+    msg.messageType === "image" ||
+    rawContent === "[ส่ง image]" ||
+    rawContent === "[📷 รูปภาพ]";
+  const isFileContent =
+    msg.messageType === "file" ||
+    rawContent === "[ส่ง file]" ||
+    /^\[📎/.test(rawContent);
+
+  if (isImageContent && !msg.mediaUrl) {
+    return (
+      <div
+        className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm ${
+          isHR
+            ? "bg-blue-500/30 border-blue-400 text-blue-100"
+            : "bg-slate-50 border-slate-200 text-slate-400"
+        }`}
+      >
+        <ImageIcon size={14} className="shrink-0" />
+        <span>รูปภาพ (หมดอายุแล้ว)</span>
+      </div>
+    );
+  }
+
+  if (isFileContent && !msg.mediaUrl) {
+    const fileName = rawContent.replace(/^\[📎 /, "").replace(/\]$/, "") || "ไฟล์แนบ";
+    const displayName = fileName === "[ส่ง file]" ? "ไฟล์แนบ" : fileName;
+    return (
+      <div
+        className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm ${
+          isHR
+            ? "bg-blue-500/30 border-blue-400 text-blue-100"
+            : "bg-slate-50 border-slate-200 text-slate-400"
+        }`}
+      >
+        <Paperclip size={14} className="shrink-0" />
+        <span className="truncate max-w-[160px]">{displayName} (หมดอายุแล้ว)</span>
+      </div>
     );
   }
 
