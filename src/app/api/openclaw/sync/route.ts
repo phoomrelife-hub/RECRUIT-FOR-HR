@@ -115,6 +115,23 @@ export async function POST(req: Request) {
           createdAt: userMsgAt,
         },
       });
+    } else if (
+      // Race-condition fix: outbound_dedup.py may create the record first (as "text")
+      // before middleware.py's thread arrives with proper messageType + mediaLineId.
+      // If we now have better media info, upgrade the existing record in-place.
+      messageType &&
+      messageType !== "text" &&
+      existing.messageType === "text" &&
+      mediaLineId
+    ) {
+      await db.message.update({
+        where: { id: existing.id },
+        data: {
+          messageType,
+          mediaUrl: `/api/media/line/${mediaLineId}`,
+          content: userMessage, // update from "[media]" → "[📷 รูปภาพ]"
+        },
+      });
     }
 
     // auto-promote NEW_APPLICANT → BOT_SCREENING
