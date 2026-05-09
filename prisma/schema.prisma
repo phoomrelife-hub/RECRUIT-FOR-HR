@@ -313,6 +313,8 @@ model Message {
   id             String        @id @default(cuid())
   conversationId String        @map("conversation_id")
   content        String
+  messageType    String        @default("text") @map("message_type") // text | image | file | sticker | video | audio
+  mediaUrl       String?       @map("media_url")
   senderType     MessageSender @map("sender_type")
   senderId       String?       @map("sender_id")
   externalId     String?       @map("external_id")

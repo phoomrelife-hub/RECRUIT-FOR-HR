@@ -35,6 +35,8 @@ type ConvStatus = "ACTIVE" | "CLOSED" | "WAITING";
 interface Message {
   id: string;
   content: string;
+  messageType?: string | null; // text | image | file | sticker | video | audio
+  mediaUrl?: string | null;
   senderType: SenderType;
   senderId?: string | null;
   sender?: { id: string; name: string; avatar?: string | null } | null;
@@ -247,6 +249,92 @@ function SimulatePanel({
 
 // ─── Message Bubble ───────────────────────────────────────────────────────────
 
+function MessageMedia({ msg, isHR }: { msg: Message; isHR: boolean }) {
+  const [imgOpen, setImgOpen] = useState(false);
+
+  if (msg.messageType === "image" && msg.mediaUrl) {
+    return (
+      <>
+        {/* Thumbnail */}
+        <div
+          className={`rounded-xl overflow-hidden border cursor-pointer hover:opacity-90 transition-opacity ${
+            isHR ? "border-blue-400" : "border-slate-200"
+          }`}
+          onClick={() => setImgOpen(true)}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={msg.mediaUrl}
+            alt="รูปภาพจาก candidate"
+            className="max-w-[200px] max-h-[200px] object-cover block"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = "none";
+              (e.target as HTMLImageElement).parentElement!.innerHTML =
+                '<span class="text-xs text-slate-400 p-2 block">รูปหมดอายุแล้ว (LINE เก็บ 7 วัน)</span>';
+            }}
+          />
+        </div>
+
+        {/* Lightbox */}
+        {imgOpen && (
+          <div
+            className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+            onClick={() => setImgOpen(false)}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={msg.mediaUrl}
+              alt="รูปภาพ"
+              className="max-w-full max-h-full object-contain rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <button
+              onClick={() => setImgOpen(false)}
+              className="absolute top-4 right-4 text-white bg-black/50 rounded-full p-1 hover:bg-black/80"
+            >
+              <X size={20} />
+            </button>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  if (msg.messageType === "file" && msg.mediaUrl) {
+    const fileName = msg.content.replace(/^\[📎 /, "").replace(/\]$/, "");
+    return (
+      <a
+        href={msg.mediaUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-medium transition-colors ${
+          isHR
+            ? "bg-blue-500 border-blue-400 text-white hover:bg-blue-400"
+            : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
+        }`}
+      >
+        <ExternalLink size={14} className="shrink-0" />
+        <span className="truncate max-w-[160px]">{fileName}</span>
+      </a>
+    );
+  }
+
+  // Default: text
+  return (
+    <div
+      className={`rounded-2xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap ${
+        isHR
+          ? "bg-blue-600 text-white rounded-tr-sm"
+          : msg.senderType === "BOT"
+          ? "bg-indigo-50 text-slate-800 border border-indigo-100 rounded-tl-sm"
+          : "bg-white text-slate-800 border border-slate-200 rounded-tl-sm"
+      }`}
+    >
+      {msg.content}
+    </div>
+  );
+}
+
 function MessageBubble({ msg }: { msg: Message }) {
   if (msg.senderType === "SYSTEM") {
     return (
@@ -272,13 +360,7 @@ function MessageBubble({ msg }: { msg: Message }) {
             : "bg-slate-200 text-slate-600"
         }`}
       >
-        {isHR ? (
-          <User size={14} />
-        ) : isBot ? (
-          <Bot size={14} />
-        ) : (
-          <MessageSquare size={14} />
-        )}
+        {isHR ? <User size={14} /> : isBot ? <Bot size={14} /> : <MessageSquare size={14} />}
       </div>
 
       <div className={`max-w-[70%] ${isHR ? "items-end" : "items-start"} flex flex-col gap-0.5`}>
@@ -287,17 +369,9 @@ function MessageBubble({ msg }: { msg: Message }) {
             {isBot ? "Claw Bot" : msg.sender?.name ?? "Candidate"}
           </span>
         )}
-        <div
-          className={`rounded-2xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap ${
-            isHR
-              ? "bg-blue-600 text-white rounded-tr-sm"
-              : isBot
-              ? "bg-indigo-50 text-slate-800 border border-indigo-100 rounded-tl-sm"
-              : "bg-white text-slate-800 border border-slate-200 rounded-tl-sm"
-          }`}
-        >
-          {msg.content}
-        </div>
+
+        <MessageMedia msg={msg} isHR={isHR} />
+
         <span className="text-[10px] text-slate-400 mx-1">
           {formatDistanceToNow(new Date(msg.createdAt), { addSuffix: true, locale: th })}
         </span>

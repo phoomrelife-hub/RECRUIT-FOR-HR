@@ -18,10 +18,13 @@ export async function POST(req: Request) {
   const payload: LineWebhookPayload = JSON.parse(rawBody);
 
   for (const event of payload.events) {
-    if (event.type !== "message" || event.message.type !== "text") continue;
+    if (event.type !== "message") continue;
+
+    const msgType = event.message.type; // text | image | file | sticker | video | audio | location
+    // Only handle text, image, file — drop sticker/video/audio silently
+    if (!["text", "image", "file"].includes(msgType)) continue;
 
     const lineUserId = event.source.userId;
-    const messageText = event.message.text;
     const externalId = event.message.id;
 
     const lineProfile = await getLineProfile(lineUserId);
@@ -59,9 +62,31 @@ export async function POST(req: Request) {
       });
     }
 
+    // build message content + mediaUrl based on type
+    let content = "";
+    let mediaUrl: string | null = null;
+
+    if (msgType === "text") {
+      content = (event.message as { text: string }).text;
+    } else if (msgType === "image") {
+      content = "[📷 รูปภาพ]";
+      mediaUrl = `/api/media/line/${externalId}`;
+    } else if (msgType === "file") {
+      const fileName = (event.message as { fileName?: string }).fileName ?? "ไฟล์แนบ";
+      content = `[📎 ${fileName}]`;
+      mediaUrl = `/api/media/line/${externalId}`;
+    }
+
     // save candidate message
     await db.message.create({
-      data: { conversationId: conversation.id, content: messageText, senderType: "CANDIDATE", externalId },
+      data: {
+        conversationId: conversation.id,
+        content,
+        messageType: msgType,
+        mediaUrl,
+        senderType: "CANDIDATE",
+        externalId,
+      },
     });
 
     // auto-promote NEW_APPLICANT → BOT_SCREENING

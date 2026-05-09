@@ -24,7 +24,16 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json();
-  const { lineUserId, displayName, pictureUrl, userMessage, botReply, externalMessageId } = body;
+  const {
+    lineUserId,
+    displayName,
+    pictureUrl,
+    userMessage,
+    botReply,
+    externalMessageId,
+    messageType,   // "text" | "image" | "file" — from middleware.py
+    mediaLineId,   // LINE message ID for image/file proxy
+  } = body;
 
   // Allow either userMessage OR botReply (or both) — at least one is required
   if (!lineUserId || (!userMessage && !botReply)) {
@@ -93,10 +102,14 @@ export async function POST(req: Request) {
       : null;
 
     if (!existing) {
+      const resolvedType = messageType ?? "text";
+      const resolvedMediaUrl = mediaLineId ? `/api/media/line/${mediaLineId}` : null;
       await db.message.create({
         data: {
           conversationId: conversation.id,
           content: userMessage,
+          messageType: resolvedType,
+          mediaUrl: resolvedMediaUrl,
           senderType: "CANDIDATE",
           externalId: externalMessageId ?? null,
           createdAt: userMsgAt,
