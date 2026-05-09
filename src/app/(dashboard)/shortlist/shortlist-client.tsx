@@ -185,34 +185,34 @@ function ScheduleDialog({
             </button>
           </div>
 
-          {/* ── Online-only fields ── */}
+          {/* ── ตำแหน่ง (shared — both onsite and online) ── */}
+          <div>
+            <label className="text-sm font-medium text-slate-700 block mb-1">
+              ตำแหน่งที่สัมภาษณ์
+            </label>
+            <input
+              type="text"
+              value={positionLabel}
+              onChange={(e) => setPositionLabel(e.target.value)}
+              placeholder={candidatePosition || "เช่น Sales Admin"}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          {/* ── Online-only: ผู้สัมภาษณ์ ── */}
           {type === "online" && (
-            <>
-              <div>
-                <label className="text-sm font-medium text-slate-700 block mb-1">
-                  ตำแหน่งที่สัมภาษณ์
-                </label>
-                <input
-                  type="text"
-                  value={positionLabel}
-                  onChange={(e) => setPositionLabel(e.target.value)}
-                  placeholder={candidatePosition || "เช่น Sales Admin"}
-                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-slate-700 block mb-1">
-                  ผู้สัมภาษณ์
-                </label>
-                <input
-                  type="text"
-                  value={interviewer}
-                  onChange={(e) => setInterviewer(e.target.value)}
-                  placeholder="เช่น คุณสมชาย / HR Manager"
-                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </>
+            <div>
+              <label className="text-sm font-medium text-slate-700 block mb-1">
+                ผู้สัมภาษณ์
+              </label>
+              <input
+                type="text"
+                value={interviewer}
+                onChange={(e) => setInterviewer(e.target.value)}
+                placeholder="เช่น คุณสมชาย / HR Manager"
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
           )}
 
           {/* ── Date & Time (shared) ── */}
