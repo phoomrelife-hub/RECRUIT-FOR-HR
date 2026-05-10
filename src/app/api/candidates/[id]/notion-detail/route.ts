@@ -88,10 +88,20 @@ export async function GET(
   const pageId = candidate.notionPageId;
 
   // Fetch page properties + blocks in parallel
-  const [page, blocksData] = await Promise.all([
-    notionFetch(`https://api.notion.com/v1/pages/${pageId}`, notionToken),
-    notionFetch(`https://api.notion.com/v1/blocks/${pageId}/children?page_size=100`, notionToken),
-  ]);
+  let page: Record<string, unknown>;
+  let blocksData: Record<string, unknown>;
+  try {
+    const results = await Promise.all([
+      notionFetch(`https://api.notion.com/v1/pages/${pageId}`, notionToken),
+      notionFetch(`https://api.notion.com/v1/blocks/${pageId}/children?page_size=100`, notionToken),
+    ]);
+    page = results[0] as Record<string, unknown>;
+    blocksData = results[1] as Record<string, unknown>;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[notion-detail] fetch error:", msg, "pageId:", pageId);
+    return NextResponse.json({ error: msg }, { status: 502 });
+  }
 
   const props = (page as { properties: Record<string, unknown> }).properties ?? {};
 
