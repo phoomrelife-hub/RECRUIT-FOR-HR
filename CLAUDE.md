@@ -3,6 +3,7 @@
 ## Project
 ATS / Recruitment system for Relife. Located at `D:\ClaudeCode Project\recruit`.
 Focus: Recruitment only. NO employee management, payroll, attendance, leave.
+Production: https://recruit-for-hr.vercel.app
 
 ## Stack (with breaking changes)
 - **Next.js 16** — uses `proxy.ts` NOT `middleware.ts`. Export named `proxy`, not default
@@ -17,11 +18,13 @@ Focus: Recruitment only. NO employee management, payroll, attendance, leave.
 - `src/lib/db.ts` — Prisma client with PrismaPg adapter (pooler URL)
 - `src/lib/auth.ts` — Auth.js config with Credentials provider
 - `src/lib/nav.ts` — Sidebar navigation config (all routes + role restrictions)
+- `src/lib/experience-tier.ts` — `parseTier(text)` → Tier; Tier = "high"|"mid"|"low"|"unspecified"|"none"
 - `src/proxy.ts` — Route protection (Next.js 16 proxy)
 - `prisma/schema.prisma` — Full DB schema (no url field)
 - `prisma.config.ts` — Prisma config with DIRECT_URL for migrations
 - `prisma/seed.ts` — Run with `npm run db:seed`
 - `src/app/(dashboard)/pipeline/pipeline-config.ts` — STAGE_ORDER + STAGE_CONFIG (Kanban single source of truth)
+- `vercel.json` — Vercel cron config (interview reminder 07:00 Bangkok daily)
 
 ## Env Variables
 ```
@@ -32,8 +35,13 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 AUTH_SECRET=...
 NEXTAUTH_URL=https://recruit-for-hr.vercel.app  ← production (localhost:3000 for local dev)
 ANTHROPIC_API_KEY=sk-ant-...   ← required for AI Summary (Phase 6)
-WEBHOOK_FORM_SECRET=...        ← shared secret for /api/webhooks/form (Apps Script sends in x-webhook-secret)
-WEBHOOK_QUALIFY_SECRET=...     ← shared secret for /api/webhooks/qualify (Make.com sends in x-webhook-secret)
+WEBHOOK_FORM_SECRET=...        ← shared secret for /api/webhooks/form
+WEBHOOK_QUALIFY_SECRET=...     ← shared secret for /api/webhooks/qualify
+NOTION_TOKEN=ntn_...           ← Notion integration token (set in Vercel Production+Preview)
+CRON_SECRET=...                ← random string for Vercel cron auth header
+LINE_CHANNEL_SECRET=...        ← fallback if not in DB (Production only in Vercel)
+LINE_CHANNEL_ACCESS_TOKEN=...  ← fallback if not in DB (Production only in Vercel)
+KIMI_API_KEY=...               ← for Daniel bot fallback
 ```
 
 ## Roles
@@ -48,74 +56,194 @@ NEW_APPLICANT → BOT_SCREENING → WAITING_HR_REVIEW → NEED_MORE_INFO → QUA
 ```
 src/app/(auth)/                         — login page
 src/app/(dashboard)/                    — protected pages with sidebar layout
-  dashboard/                            — dashboard page
+  dashboard/                            — dashboard (redesigned: hero cards, today's interviews, funnel)
   users/                                — users & roles (SUPER_ADMIN only)
   tags/                                 — tag management (SUPER_ADMIN + HR_MANAGER)
   jobs/                                 — job positions list + create/edit dialog
   jobs/[id]/                            — job detail + candidate list
   candidates/                           — candidate list (filter by status/source, paginated)
   candidates/new/                       — manual add candidate form
-  candidates/[id]/                      — candidate profile (info, status, tags, assignment, notes, screening, score, AI summary, interviews, hiring decision)
-    candidate-profile-client.tsx        — main interactive client (imports interview-section + hiring-decision-section)
+  candidates/[id]/                      — candidate profile
+    candidate-profile-client.tsx        — main interactive client
     interview-section.tsx               — schedule interview, list interviews, submit feedback
     hiring-decision-section.tsx         — make/view hiring decision (HR_MANAGER+ only)
+    qualify-section.tsx                 — pass/fail qualify buttons + LINE push + Notion patch
   candidates/[id]/edit/                 — edit candidate form
   pipeline/                             — Kanban board (all stages, drag-and-drop, filter by job)
   inbox/                                — chat center (split panel: conversation list + chat view)
+  review/                               — HR review queue (bulk qualify, auto-qualify, Notion sidebar)
+  shortlist/                            — shortlist page ("ส่งข้อความก่อนนัดสัมภาษณ์")
+  calendar/                             — interview calendar (month grid + daily detail)
   screening/                            — screening form management (list + question CRUD)
   interviews/                           — all interviews list (Upcoming / Past, stats)
   reports/                              — analytics & reports (SUPER_ADMIN + HR_MANAGER only)
   integrations/                         — LINE integration settings (SUPER_ADMIN only)
-  ~~bot-config/~~                       — DELETED (superseded by /settings/ai) — redirect to /settings/ai via proxy.ts
+  ~~bot-config/~~                       — DELETED → redirect to /settings/ai via proxy.ts
 src/app/api/
-  tags/                                 — list all tags (GET), create tag (POST) — HR_MANAGER+ only create
-  tags/[id]/                            — update tag (PUT), delete tag (DELETE) — HR_MANAGER+ only
+  tags/, tags/[id]/                     — tag CRUD
   users/, users/[id]/                   — user CRUD
   jobs/, jobs/[id]/                     — job position CRUD
   candidates/, candidates/[id]/         — candidate CRUD + status history + audit log
-  candidates/[id]/notes/                — add note (POST)
-  candidates/[id]/notes/[noteId]/       — delete note (DELETE) — creator or SUPER_ADMIN only
-  candidates/[id]/tags/[tagId]/         — add tag to candidate (POST), remove tag (DELETE)
-  candidates/[id]/assignments/          — assign candidate to HR (POST), unassign (DELETE)
-  candidates/[id]/screening/            — get screening Q&A (GET), save answers (POST)
-  candidates/[id]/score/                — get score (GET), upsert score (PUT)
-  candidates/[id]/ai-summary/           — get AI summary (GET), generate with Claude (POST)
-  candidates/[id]/hiring-decision/      — get decision (GET), upsert decision + change status (POST) — HR_MANAGER+ only
-  conversations/                        — list conversations (GET, sorted by lastMessageAt desc) + create (POST)
-  conversations/[id]/                   — get detail + messages (GET), update status (PATCH)
-  conversations/[id]/messages/          — send HR message (POST) → pushMessage to LINE automatically
-  conversations/[id]/takeover/          — HR takeover or release bot (POST, action: TAKE_OVER | RELEASE)
-  quick-replies/                        — list quick replies (GET)
-  openclaw/webhook/                     — mock incoming candidate message + bot auto-reply (POST)
-  openclaw/sync/                        — LINE→Recruit OS sync: saves candidate msg + LINE profile (displayName, pictureUrl) (POST, no auth)
-  openclaw/check-paused/               — check if HR has taken over per-user via HumanTakeover records (GET, no auth, Cache-Control: no-store)
-  openclaw/backfill-profiles/          — backfill LINE display names + profile pics for existing candidates (POST, no auth)
-  openclaw/config/                      — public GET, no auth; compiles openclaw.rules.* from DB into system prompt for OpenClaw to fetch (CORS *)
-  openclaw/workspace/                   — GET (public): file contents; POST (public, middleware.py): push files / clear dirty; PUT (HR_MANAGER+): save edited files + set dirty flag
-  webhooks/line/                        — real LINE webhook receiver (POST, no auth required)
-  webhooks/form/                        — Google Form → Recruit OS (POST, x-webhook-secret, no session auth)
-  webhooks/qualify/                     — Make.com qualify result → update status + LINE push + inbox (POST, x-webhook-secret, no session auth)
-  integrations/line/                    — manage LINE credentials in DB (GET/PUT/DELETE, SUPER_ADMIN only)
-  ~~bot-config/~~                       — DELETED (superseded by /api/settings/ai/*)
-  settings/ai/openclaw/                — OpenClaw config: enabled, model, temperature, max_tokens, system_prompt — stored as openclaw.* in Setting table (GET/PUT, HR_MANAGER+)
-  settings/ai/openclaw-rules/          — Bot Rules (หลิน): identity, critical_rules, positions, contact, active — stored as openclaw.rules.* in Setting table (GET/PUT, HR_MANAGER+)
-  pipeline/                             — GET all candidates for Kanban board (filter: jobPositionId)
-  screening-forms/                      — list all forms (GET), create form (POST) — HR_MANAGER+ only
-  screening-forms/[id]/                 — get/update/delete form; DELETE SUPER_ADMIN only
-  screening-forms/[id]/questions/       — add question (POST) — HR_MANAGER+ only
-  screening-forms/[id]/questions/[qId]/ — update/delete question — HR_MANAGER+ only
-  interviews/                           — list all interviews (GET), create interview (POST)
-  interviews/[id]/                      — get/update/delete interview (GET/PUT/DELETE)
-  interviews/[id]/feedback/             — get feedback (GET), upsert feedback + auto-INTERVIEWED (POST)
-src/lib/line.ts                         — LINE API client (verifyLineSignature, replyMessage, pushMessage) — reads from DB
-src/lib/kimi.ts                         — Kimi AI client (moonshot-v1-8k)
-src/lib/daniel-bot.ts                   — Daniel HR bot — โหลด system prompt จาก DB (bot.* settings) + Kimi fallback
-src/components/layout/                  — Sidebar (with dynamic inbox unread badge), Topbar
-src/components/ui/                      — shadcn components (incl. textarea.tsx)
-src/components/dashboard/              — stat-card.tsx, trend-chart.tsx (recharts "use client")
-src/lib/                                — db, auth, utils, nav
-src/proxy.ts                            — route protection
-prisma/                                 — schema, migrations, seed
+  candidates/[id]/notes/                — add/delete note
+  candidates/[id]/tags/[tagId]/         — add/remove tag
+  candidates/[id]/assignments/          — assign/unassign HR
+  candidates/[id]/screening/            — get/save screening Q&A
+  candidates/[id]/score/                — get/upsert score
+  candidates/[id]/ai-summary/           — get/generate AI summary
+  candidates/[id]/hiring-decision/      — get/upsert hiring decision
+  candidates/[id]/qualify/              — POST: pass/fail → status change + LINE push + Notion patch
+  candidates/[id]/notion-detail/        — GET: fetch Notion page properties + deep Q&A blocks; 404=no page, 502=Notion API error
+  candidates/bulk-qualify/              — POST { ids[], result:"pass"|"fail" } bulk qualify
+  candidates/auto-qualify/              — POST { dryRun:bool } — dry run returns preview; false executes
+  conversations/                        — list/create conversations
+  conversations/[id]/                   — get detail+messages / update status
+  conversations/[id]/messages/          — send HR message → LINE push auto
+  conversations/[id]/takeover/          — HR takeover / release bot
+  quick-replies/                        — list quick replies
+  calendar/interviews/                  — GET ?month=YYYY-MM → interviews grouped by Bangkok date
+  cron/interview-reminders/             — GET (Vercel cron, CRON_SECRET auth) — daily LINE reminder at 07:00 BKK
+  openclaw/webhook/                     — mock incoming message + bot reply
+  openclaw/sync/                        — LINE→Recruit sync: candidate msg + LINE profile
+  openclaw/check-paused/               — GET?lineUserId → HR takeover check (no auth, no-store)
+  openclaw/backfill-profiles/          — backfill LINE profiles
+  openclaw/config/                      — public, compiles openclaw.rules.* → system prompt
+  openclaw/workspace/                   — GET/POST/PUT workspace files (bidirectional sync)
+  webhooks/line/                        — real LINE webhook receiver (no auth)
+  webhooks/form/                        — Google Form → Recruit OS (x-webhook-secret)
+  webhooks/qualify/                     — Make.com qualify → status + LINE + inbox
+  integrations/line/                    — manage LINE credentials in DB
+  settings/ai/openclaw/                — OpenClaw AI config (openclaw.* in Setting)
+  settings/ai/openclaw-rules/          — Bot Rules หลิน (openclaw.rules.* in Setting)
+  settings/auto-qualify/               — GET/PUT autoqual rules (expPassTiers, salaryMax, salesMin)
+  settings/qualify-messages/           — GET/PUT qualify message templates (qualify.msg_pass/fail)
+  pipeline/                             — GET all candidates for Kanban
+  screening-forms/, screening-forms/[id]/ — screening form CRUD
+  interviews/, interviews/[id]/         — interview CRUD
+  interviews/[id]/feedback/             — upsert feedback + auto-INTERVIEWED
+  admin/backfill-experience/            — backfill experience tier from Notion
+  admin/notion-test/                    — ⚠️ TEMP debug endpoint — delete after confirming NOTION_TOKEN
+
+src/lib/
+  db.ts, auth.ts, utils.ts, nav.ts
+  line.ts           — LINE API (verifyLineSignature, replyMessage, pushMessage) — reads from DB
+  kimi.ts           — Kimi AI client (moonshot-v1-8k)
+  daniel-bot.ts     — Daniel HR bot (DB system prompt + Kimi fallback)
+  openclaw-client.ts — OpenClaw API client
+  experience-tier.ts — parseTier() + Tier type + TIER_CONFIG (colors/labels/order)
+
+src/components/
+  layout/           — Sidebar (unread badge), Topbar
+  ui/               — shadcn components
+  dashboard/        — stat-card.tsx, trend-chart.tsx (recharts "use client")
+  ai-config/        — AI settings tab components
+
+prisma/             — schema, migrations, seed
+```
+
+## Setting Table Keys (key-value config store)
+```
+line.channel_secret          — LINE credentials
+line.channel_access_token
+bot.*                        — Daniel bot system prompt sections
+openclaw.*                   — OpenClaw AI config
+openclaw.rules.*             — Bot Rules หลิน
+openclaw.file.*              — Workspace files (SOUL.md, POSITIONS.md, RULES.md, EXAMPLES.md)
+qualify.msg_pass             — LINE message template for passing candidates
+qualify.msg_fail             — LINE message template for failing candidates
+autoqual.exp_pass_tiers      — comma-separated tiers that auto-qualify (e.g. "high,mid")
+autoqual.salary_max          — max acceptable expected salary (int, null = skip rule)
+autoqual.sales_min           — min max-sales amount required (int, null = skip rule)
+```
+
+## Experience Tier System (`src/lib/experience-tier.ts`)
+```typescript
+type Tier = "high" | "mid" | "low" | "unspecified" | "none"
+// high  = 5+ years (green)
+// mid   = 2-4 years (blue)
+// low   = <2 years (amber)
+// unspecified = has experience keywords but no years mentioned (violet)
+// none  = no experience / fresh grad (slate)
+```
+- `parseTier(text)` — strips age context patterns (อายุ X ปี) before numeric parsing
+- "unspecified": text has keywords (เคย/ขาย/ทำงาน/งาน/ประสบการณ์) but no year number
+- Used in: review page tier badge, auto-qualify rule evaluation
+
+## Auto-Qualify System
+- **Settings** stored in Setting table: `autoqual.exp_pass_tiers` (comma-sep), `autoqual.salary_max`, `autoqual.sales_min`
+- **Rules**: tier not in passlist → reject; salary > max (if data exists) → reject; maxSales < min (if data exists) → reject
+- **No data = skip rule** (null expectedSalary or maxSalesAmount → don't reject on that rule)
+- **Verdict**: reject → REJECTED; all rules pass + tier in list → QUALIFIED; else → hrReview (stay in queue)
+- **Queue statuses scanned**: WAITING_HR_REVIEW, BOT_SCREENING, NEW_APPLICANT, NEED_MORE_INFO
+- **dryRun=true**: returns `{ autoQualify[], autoReject[], hrReview[] }` — preview only, no DB changes
+- **dryRun=false**: processes all, sends LINE, patches Notion, returns `{ qualifyDone, rejectDone, hrReview }`
+- **Safety**: returns 400 if no rules set at all
+- **UI**: ⚡ Auto-Qualify button in review page → opens preview modal → confirm to execute
+
+## Qualify Messages
+- Stored in Setting: `qualify.msg_pass`, `qualify.msg_fail`
+- `DEFAULT_MSG_PASS` / `DEFAULT_MSG_FAIL` exported from `/api/settings/qualify-messages/route.ts`
+- All qualify routes import these as fallback: qualify/route.ts, bulk-qualify/route.ts, auto-qualify/route.ts
+- Editable via MessageTemplateDialog in review page (🗨️ button)
+
+## Calendar Page (`/calendar`)
+- Server component fetches current month SCHEDULED interviews → passes to CalendarClient
+- Month grid: green highlight = today, violet badge = days with interviews
+- Click day → update daily detail panel (right side)
+- Interview cards: time, avatar, type badge (ONLINE/ONSITE), meeting link or location, candidateResponse badge
+- `GET /api/calendar/interviews?month=YYYY-MM` — Bangkok UTC+7 date grouping
+- Month navigation handled client-side (useRouter + searchParams)
+
+## Interview Reminder Cron
+- **Schedule**: `0 0 * * *` UTC = 07:00 Bangkok (defined in `vercel.json`)
+- **Endpoint**: `GET /api/cron/interview-reminders`
+- **Auth**: `Authorization: Bearer ${CRON_SECRET}` header (CRON_SECRET env var in Vercel)
+- **Logic**: finds today's SCHEDULED interviews (Bangkok date range) where `reminderSentAt = null` AND `candidateResponse != "declined"` → sends LINE push → marks `reminderSentAt = now()`
+- **Bangkok range**: `startOfDay` = `new Date(Date.UTC(y, m, d, -7, 0, 0))` (UTC-7h offset)
+- **Schema**: `Interview.reminderSentAt DateTime? @map("reminder_sent_at")`
+
+## Notion Integration
+- **Token**: `NOTION_TOKEN=ntn_...` in Vercel (Production + Preview) and local `.env`
+- **Bot user**: "google form intregation" (workspace: RELIFE SOLUTIONS)
+- **API route**: `GET /api/candidates/[id]/notion-detail`
+  - Returns 404 `{ error: "no_notion_page" }` if candidate has no notionPageId
+  - Returns 502 `{ error: "Notion XXX" }` if Notion API call fails (with actual HTTP status in message)
+  - Returns 200 `{ info, qa }` on success
+- **Properties extracted**: ชื่อ-นามสกุล/ชื่อเล่น, เบอร์โทร, อีเมล, อายุ, บุตร, ที่อยู่, ตำแหน่ง, ประสบการณ์, ยอดขายสูงสุด, รายได้ที่คาดหวัง, อุปกรณ์, ID Line
+- **Deep Q&A**: parsed from page blocks — h1 "📝 คำถามเชิงลึก" marks start; h2=question, paragraph=answer
+- **Called from**: review-client.tsx sidebar sheet (opens on candidate click)
+- **Notion patch** (qualify): updates `Qualify` select + `ส่งแจ้งผลแล้ว` checkbox via PATCH /pages/:id
+- **notionPageId format**: stored with or without hyphens — both work with Notion API
+- **⚠️ Pending**: `GET /api/admin/notion-test` debug endpoint should be deleted after confirming NOTION_TOKEN is correct in production
+
+## Dashboard (Redesigned)
+- 3 hero stat cards: total applicants (blue), qualified today (amber), interviews today (green)
+- Grid 2/3 + 1/3: trend chart + funnel chart (left) | channel breakdown (right)
+- Today's interviews mini-list + recent candidates row at bottom
+- All data fetched server-side in `dashboard/page.tsx`
+
+## Review Page (`/review`) Conventions
+- Lists candidates in QUEUE_STATUSES (same as auto-qualify)
+- Checkboxes per row + select-all → floating bulk action bar appears
+- Bulk action bar: ✅ ผ่าน / ❌ ไม่ผ่าน → calls `/api/candidates/bulk-qualify`
+- 🗨️ button → MessageTemplateDialog (edit qualify message templates)
+- 🎛️ button → AutoQualifySettingsDialog (tier checkboxes + salary + maxSales inputs)
+- ⚡ Auto-Qualify button → POST dryRun=true → AutoQualifyPreviewModal → confirm → POST dryRun=false
+- Click candidate row → Sheet sidebar opens → fetches `/api/candidates/[id]/notion-detail`
+- Sidebar shows: Notion info (name, phone, email, salary, experience, equipment) + deep Q&A
+- Experience tier badge shown with TIER_CONFIG color
+
+## Shortlist Page
+- Status label changed: "ส่งข้อความก่อนนัดสัมภาษณ์" (was "รอคอนเฟิร์มเริ่มงาน")
+- This stage = online interview invitation, not job confirmation
+
+## Schema Changes (this session)
+```prisma
+model Interview {
+  reminderSentAt  DateTime? @map("reminder_sent_at")  // ← added
+}
+model Candidate {
+  maxSalesAmount  Int?  @map("max_sales_amount")       // ← added
+}
 ```
 
 ## Seed Data (after npm run db:seed)
@@ -155,21 +283,17 @@ npx prisma generate  # regenerate client
 - [x] Phase 11: AI Config + AI Playground Module *(deployed 2026-05-03, commit b83bc3a)*
 - [x] Phase 12: OpenClaw ↔ Website Integration *(2026-05-04)*
 - [x] Phase 12.1: LINE bot fixes + UI cleanup *(2026-05-06, commit c3f0aba)*
-  - Per-user HR takeover check (check-paused), LINE profile sync, inbox auto-refresh
-  - Removed duplicate /bot-config UI → redirect to /settings/ai
-  - image/file forwarded to OpenClaw OCR; sticker/video/audio ack+drop with variants
-  - SOUL.md: locked address, working hours, media handling rules
 - [x] Phase 12.2: Bot Rules (หลิน) UI tab *(2026-05-06, commit 794ac43)*
-  - New "Bot Rules (หลิน)" tab in /settings/ai — edit OpenClaw prompt from UI (HR_MANAGER+)
-  - /api/settings/ai/openclaw-rules — GET/PUT for openclaw.rules.* in Setting table
-  - /api/openclaw/config — public endpoint; compiles DB rules → system prompt for OpenClaw to fetch
-  - Whitelisted /api/openclaw/config in proxy.ts (no auth required)
 - [x] Phase 12.3: Workspace File Bidirectional Sync *(2026-05-07, commit 9ff4b17)*
-  - UI Bot Rules tab: added "Sections | Raw Files" view mode switcher
-  - Raw Files view: edit SOUL.md / POSITIONS.md / RULES.md / EXAMPLES.md directly from browser
-  - /api/openclaw/workspace — GET/POST/PUT endpoint; stores file content in DB as openclaw.file.*
-  - middleware.py: background sync thread — pushes files on startup, polls for UI changes every 5 min
-  - Dirty flag: UI edit sets openclaw.file.dirty → middleware.py detects + writes to filesystem + clears
+- [x] Phase 13: HR Productivity Features *(2026-05-10)*
+  - Experience tier system (high/mid/low/unspecified/none) + age context stripping
+  - Review page: bulk qualify, auto-qualify (rules + dry-run preview), message templates
+  - Calendar page (/calendar): month grid + daily interview detail
+  - Interview reminder cron (Vercel, 07:00 Bangkok daily)
+  - Dashboard redesign: hero cards, today's interviews, funnel
+  - Notion sidebar in review page: fetch page properties + deep Q&A
+  - Auto-qualify rules: expPassTiers + salaryMax + salesMin stored in Setting table
+  - Shortlist label: "ส่งข้อความก่อนนัดสัมภาษณ์"
 
 ## UI Conventions
 - Colors: blue-600 primary, slate-* neutral, green passed, red rejected, yellow waiting
@@ -179,46 +303,32 @@ npx prisma generate  # regenerate client
 - English labels + Thai content/descriptions
 
 ## Chat Center Conventions
-- Inbox page uses `h-[calc(100vh-4rem-1.5rem)] -m-6` to fill the full viewport (offset layout padding)
-- Polling: conversation detail polled every 3s when open; sidebar unread count polled every 10s; **conversation list auto-refreshes every 5s**
-- Conversation list sorted by `lastMessageAt desc` (newest first)
-- Bot script: 6-step array in `/api/openclaw/webhook/route.ts` — index = candidateMsgCount - 1
-- Takeover creates HumanTakeover record + SYSTEM message + sets botEnabled=false on conversation
-- Release sets botEnabled=true + creates HumanTakeover record + SYSTEM message
-- HR takeover check: uses **HumanTakeover records** (not botEnabled field) — lastTakeover.action === "TAKE_OVER" = paused
-- OpenClaw Mock endpoint (`POST /api/openclaw/webhook`): accepts `{ candidateId, message, channel }` — simulates candidate message + bot reply in one call
-- When first candidate message arrives → auto-promote candidate status NEW_APPLICANT → BOT_SCREENING
-- LINE profile (displayName + pictureUrl) fetched by middleware.py and sent in sync payload → saved to candidate on every message
+- Inbox page uses `h-[calc(100vh-4rem-1.5rem)] -m-6` to fill full viewport
+- Polling: conversation detail 3s; unread count 10s; conversation list 5s
+- Conversation list sorted by `lastMessageAt desc`
+- Takeover: HumanTakeover record + SYSTEM message + botEnabled=false
+- HR takeover check: **HumanTakeover records** (not botEnabled field)
+- LINE profile (displayName + pictureUrl) saved to candidate on every sync
 
 ## Tags Conventions (Phase 4)
-- Tags are global (shared across all candidates) — managed at `/tags`
-- Only SUPER_ADMIN and HR_MANAGER can create/edit/delete tags; HR_STAFF can assign/remove on candidates
-- Tag colors use 6-char hex (`#rrggbb`); 15 preset colors available in UI
-- CandidateTag is a junction table — unique constraint `candidateId_tagId`
-- Candidate profile shows tags as colored badges with X button (inline remove)
-- Add-tag UI: dropdown button showing unassigned tags only
+- Tags are global — managed at `/tags`; HR_MANAGER+ create/edit/delete
+- Tag colors: 6-char hex (`#rrggbb`); 15 presets
+- CandidateTag junction table — unique constraint `candidateId_tagId`
 
 ## Assignment Conventions (Phase 4)
-- Each candidate has at most 1 active assignment (POST replaces previous assignment)
-- User model uses `status: UserStatus` field (not `isActive`) — filter active users with `status: "ACTIVE"`
-- Assignment section on profile shows assigned HR with avatar initial + unassign button
-- Quick-assign: click any HR user pill to reassign instantly
+- Each candidate max 1 active assignment (POST replaces)
+- User model uses `status: UserStatus` — filter active: `status: "ACTIVE"`
 
 ## Notes Conventions (Phase 4)
-- Notes are append-only; edit is not supported (delete + re-add)
-- Delete permission: note creator OR SUPER_ADMIN; delete button appears on hover (group-hover)
-- Notes ordered newest-first
+- Append-only; delete permission: creator OR SUPER_ADMIN
+- Ordered newest-first
 
 ## Pipeline Kanban Conventions (Phase 5)
-- Kanban board at `/pipeline` — uses `@dnd-kit/core` (NOT sortable; drag between columns only)
-- `STAGE_ORDER` and `STAGE_CONFIG` in `pipeline-config.ts` — single source of truth for labels/colors
-- `GET /api/pipeline?jobPositionId=xxx` — returns flat array of `KanbanCandidate[]`
-- Drag-and-drop uses `PointerSensor` with `activationConstraint: { distance: 8 }` (prevents click conflicts)
-- Optimistic update on drag end → reverts on API failure
-- Status change calls existing `PUT /api/candidates/[id]` with `{ currentStatus }` — already creates StatusHistory + AuditLog
-- Board breaks out of `p-6` layout with `-m-6` (same pattern as inbox)
-- Column scroll: `overflow-y-auto` per column; board scroll: `overflow-x-auto`
-- DragOverlay uses `dropAnimation={null}` for instant snap
+- `@dnd-kit/core` — NOT sortable; column-to-column drag only
+- `STAGE_ORDER` + `STAGE_CONFIG` in `pipeline-config.ts`
+- `GET /api/pipeline?jobPositionId=xxx` → flat array `KanbanCandidate[]`
+- PointerSensor `activationConstraint: { distance: 8 }` (prevents click conflicts)
+- DragOverlay `dropAnimation={null}` for instant snap
 
 ## AuditAction Enum (all values)
 USER_LOGIN, VIEW_CANDIDATE, EDIT_CANDIDATE, SEND_MESSAGE, TAKEOVER_CONVERSATION,
@@ -232,133 +342,98 @@ CREATE_SCREENING_FORM, UPDATE_SCREENING_FORM, DELETE_SCREENING_FORM,
 SUBMIT_SCREENING_ANSWERS, SCORE_CANDIDATE, GENERATE_AI_SUMMARY
 
 ## Screening Conventions (Phase 6)
-- ScreeningForm is linked to a JobPosition (one active form per position)
-- `GET /api/candidates/[id]/screening` returns `{ form, answers }` — form is the active form for the candidate's position
-- Saving answers: DELETE existing + createMany (no unique constraint on screeningAnswer)
-- CandidateScore: upsert by `candidateId` (unique); totalScore = sum of 6 dimensions (0–10 each, max 60)
-- AI Summary uses `claude-haiku-4-5-20251001`, prompt compiled from candidate info + screening answers + notes + score
-- AI response is JSON: `{ summary, strengths (pipe-separated), concerns (pipe-separated), recommendation (RECOMMEND/CONSIDER/NOT_RECOMMEND), nextAction }`
-- ANTHROPIC_API_KEY must be set in .env for AI Summary to work
-- Screening page at `/screening` — HR_MANAGER+ can create/edit; SUPER_ADMIN only can delete forms; HR_STAFF can view
-- Score colors: ≥48 green, ≥30 amber, <30 red (out of 60)
+- ScreeningForm linked to JobPosition (one active form per position)
+- Saving answers: DELETE existing + createMany
+- CandidateScore: upsert by `candidateId`; totalScore = sum of 6 dimensions (0–10, max 60)
+- AI Summary: `claude-haiku-4-5-20251001`; response JSON: `{ summary, strengths, concerns, recommendation, nextAction }`
+- Score colors: ≥48 green, ≥30 amber, <30 red
 
 ## Interview Management Conventions (Phase 7)
-- Interview models: `Interview`, `InterviewFeedback`, `HiringDecision` — all in schema since init
-- `POST /api/interviews` — creates interview + auto-changes candidate status to INTERVIEW_SCHEDULED
-- `POST /api/interviews/[id]/feedback` — upserts feedback + marks interview COMPLETED + auto-changes candidate to INTERVIEWED
-- `POST /api/candidates/[id]/hiring-decision` — upserts decision + changes candidate status (PASSED/REJECTED/TALENT_POOL/CLOSED); HR_MANAGER+ only
-- Interview sections are separate components: `interview-section.tsx` and `hiring-decision-section.tsx` (imported by `candidate-profile-client.tsx`)
-- InterviewResult options: PASSED | WAITING | REJECTED | NEED_SECOND_INTERVIEW (per-interview result, not final)
-- HiringResult options: PASSED | HIRED | REJECTED | TALENT_POOL | CLOSED (final hiring decision)
-- `/interviews` page shows all interviews split into Upcoming (SCHEDULED) and Past sections with stats
-- Feedback score: 6 dimensions × 0–10 (max 60); same scale as CandidateScore
+- `POST /api/interviews` → creates + auto-status INTERVIEW_SCHEDULED
+- `POST /api/interviews/[id]/feedback` → upserts + COMPLETED + auto-status INTERVIEWED
+- `POST /api/candidates/[id]/hiring-decision` → PASSED/REJECTED/TALENT_POOL/CLOSED (HR_MANAGER+)
+- InterviewResult: PASSED | WAITING | REJECTED | NEED_SECOND_INTERVIEW (per-interview)
+- HiringResult: PASSED | HIRED | REJECTED | TALENT_POOL | CLOSED (final)
+- Feedback score: 6 dimensions × 0–10 (max 60)
 
 ## LINE Integration Conventions (Phase 9)
-- Direct LINE Messaging API integration — ไม่ผ่าน OpenClaw (more stable, 1 hop)
-- `POST /api/webhooks/line` — LINE webhook receiver, ไม่ต้อง auth (bypass ใน proxy.ts)
-- Signature verification: HMAC-SHA256 of raw body using channelSecret → base64 compare with `X-Line-Signature` header
-- LINE credentials เก็บใน `Setting` table (key: `line.channel_secret`, `line.channel_access_token`)
-- `src/lib/line.ts` — อ่าน credentials จาก DB ก่อน fallback env var; exports: `verifyLineSignature`, `replyMessage`, `pushMessage`
-- `src/lib/kimi.ts` — Kimi AI client (moonshot-v1-8k) สำหรับ Daniel HR bot fallback
-- `src/lib/daniel-bot.ts` — Bot logic: โหลด system prompt จาก DB (bot.* settings) + Kimi (moonshot-v1-8k) reply
-- Bot reply ใช้ LINE Reply API (replyToken, ฟรี); HR outgoing ใช้ LINE Push API (lineUserId)
-- เมื่อ LINE message เข้า → find/create candidate by `lineUserId` → find/create conversation → save message → auto-promote NEW_APPLICANT→BOT_SCREENING → bot reply (ถ้า botEnabled)
-- Integrations page ที่ `/integrations` — SUPER_ADMIN only, มี form กรอก/แก้ไข credentials + แสดง Webhook URL + Disconnect
-- `GET/PUT/DELETE /api/integrations/line` — manage LINE credentials ใน DB
-- HR ส่งข้อความใน Inbox → `POST /api/conversations/[id]/messages` → forward LINE Push API อัตโนมัติ (ถ้า channel=LINE และมี lineUserId)
-- Facebook Messenger: planned for Phase 9.2 (not yet implemented)
-- Env vars: `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ACCESS_TOKEN`, `KIMI_API_KEY` (fallback ถ้าไม่มีใน DB)
+- Direct LINE Messaging API — ไม่ผ่าน OpenClaw
+- LINE credentials in Setting table (`line.channel_secret`, `line.channel_access_token`)
+- `src/lib/line.ts` — reads from DB then fallback env var
+- Bot reply: LINE Reply API (replyToken); HR outgoing: LINE Push API (lineUserId)
+- Facebook Messenger: planned (not implemented)
 
 ## Dashboard & Reports Conventions (Phase 8)
-- Dashboard at `/dashboard` — server component, fetches all stats including 6-month monthly trend
-- `src/components/dashboard/trend-chart.tsx` — "use client" mini BarChart (recharts) for dashboard
-- Reports at `/reports` — SUPER_ADMIN + HR_MANAGER only (redirect HR_STAFF to /dashboard)
-- `src/app/(dashboard)/reports/page.tsx` — server component, fetches all aggregated data
-- `src/app/(dashboard)/reports/reports-client.tsx` — "use client" with all recharts charts
-- recharts (`recharts: ^3.8.1`) is installed — use `BarChart`, `PieChart`, `Cell`, `ResponsiveContainer`
-- Charts must be in "use client" components; pass serialized data (no Date objects) from server
-- Monthly trend aggregated in JS (not raw SQL): build Map of last 6 months, count by createdAt
-- Reports sections: Summary Stats → Monthly Trend + Source Donut → Recruitment Funnel (horizontal bar) → Interview Status Donut + Hiring Outcomes Bar → By Position Table
-- Reports data type exported from `reports-client.tsx` as `ReportsData`
+- recharts (`recharts: ^3.8.1`) — charts must be in "use client" components
+- Monthly trend: aggregated in JS (not SQL), last 6 months Map
+- Reports: Summary → Monthly Trend + Source Donut → Funnel → Interview Status + Hiring Outcomes → By Position Table
 
 ## AI Config Conventions
-- Bot config sections เก็บใน `Setting` table ด้วย prefix `bot.*` (ไม่ต้องมี migration ใหม่)
-- 8 sections: `objectives`, `company_info`, `conversation_flow`, `response_guidelines`, `open_positions`, `critical_rules`, `contact_info`, `custom_instructions`
-- Active toggle: `bot.active = "false"` = inactive; ค่าอื่นหรือไม่มี key = active
-- `src/lib/daniel-bot.ts` — `getSystemPrompt()` โหลดจาก DB ทุก request; ถ้า inactive return ""; ถ้าไม่มี section ใดเลย fallback to `FALLBACK_PROMPT`
-- **UI ที่ `/settings/ai`** — SUPER_ADMIN + HR_MANAGER (17-tab comprehensive AI config)
-- **`/bot-config` DELETED** — redirect → `/settings/ai` via proxy.ts
-- **`/api/bot-config` DELETED** — replaced by `/api/settings/ai/*` routes
-- OpenClaw config stored as `openclaw.*` keys in Setting table; managed via `/api/settings/ai/openclaw`
-- `src/components/ai-config/openclaw-tab.tsx` — calls `/api/settings/ai/openclaw` (NOT /api/bot-config/openclaw)
-- **Bot Rules (หลิน)** stored as `openclaw.rules.*` keys in Setting table; managed via `/api/settings/ai/openclaw-rules`
-- `src/components/ai-config/openclaw-rules-tab.tsx` — 4-section accordion (identity / critical_rules / positions / contact) + active toggle + auto-save; shows Export URL for OpenClaw to fetch
-- `GET /api/openclaw/config` — public endpoint (no auth, CORS *); compiles `openclaw.rules.*` sections into a single system prompt; returns `{ active, prompt, sections }`; Cache-Control: no-store
-
-## Phase 11: AI Config + AI Playground Module
-Route: `/settings/ai` — accessible to SUPER_ADMIN + HR_MANAGER only (HR_STAFF redirect to /dashboard)
-
-### 17-tab layout under `/settings/ai`:
-Overview · Provider & Model · Persona · System Prompt · Screening Flow · Position Rules · Knowledge/FAQ · Response Templates · Guardrails · Handoff Rules · Auto Tagging · Scoring · Summary Template · Playground · Logs · Cost Control · Fallback
-
-### Key DB models to add (all include id, created_at, updated_at, created_by):
-`AiProvider` · `AiPersona` · `AiPromptVersion` (draft/published/archived) · `AiScreeningFlow` + `AiScreeningQuestion` · `AiPositionRule` · `AiFaq` · `AiResponseTemplate` · `AiGuardrail` · `AiHandoffRule` · `AiTaggingRule` · `AiScoringConfig` + `AiScoringCategory` · `AiSummaryTemplate` · `AiPlaygroundTestRun` + `AiPlaygroundMessage` · `AiLog` · `AiCostLimit` · `AiModelRoutingRule` · `AiFallbackSetting`
-
-### API routes under `/api/settings/ai/`:
-`overview` · `providers` (+ `:id/test`) · `persona` · `prompts` (+ `:id/publish`, `:id/restore`) · `screening-flow` · `position-rules` · `faqs` · `templates` · `guardrails` · `handoff-rules` · `tagging-rules` · `scoring` · `summary-templates` · `playground/run` · `playground/save` · `logs` · `cost-control` · `fallback`
-
-### Key conventions:
-- API keys masked after save — never return full key from API
-- "Test Connection" button per provider — mock success if real provider not ready
-- Prompt versioning: draft → publish flow; old versions can be restored/archived
-- Playground is tab 14 inside `/settings/ai` — does NOT send to real LINE/Facebook; mock-only
-- Mock AI service at `src/lib/ai/ai-mock.service.ts` — returns response, extractedFields, tags, score, handoff, tokenEstimate, costEstimate, latencyMs
-- Sidebar nav: Settings section, item "AI Config" href `/settings/ai` (Bot icon, SUPER_ADMIN + HR_MANAGER)
-- Separate `src/components/ai-config/` folder for all tab components
-- Services: `src/lib/ai/` — ai-config.service.ts, ai-provider.service.ts, ai-playground.service.ts, ai-logs.service.ts, ai-cost.service.ts, ai-mock.service.ts, ai-prompt-builder.ts
-- Scoring weights should sum to 100 (warn if not); default: Experience 20, Communication 20, Availability 15, Salary Fit 15, Role Fit 20, Attitude 10
-- Handoff rule trigger sets `conversation.botEnabled = false` when action includes "Pause Bot"
-- Audit log events for all config changes (see AuditAction enum — add Phase 11 actions)
+- Bot config: `bot.*` keys in Setting table
+- OpenClaw config: `openclaw.*` keys
+- Bot Rules หลิน: `openclaw.rules.*` keys
+- Workspace files: `openclaw.file.*` keys
+- `GET /api/openclaw/config` — public, CORS *, no-store; returns `{ active, prompt, sections }`
 
 ## OpenClaw Integration Conventions (Phase 12 + 12.1)
-- `src/lib/openclaw-client.ts` — OpenClaw API client: `sendToDaniel`, `testConnection`, `getConversationMessages`
-- `POST /api/openclaw/webhook` — candidate message → tries OpenClaw first, falls back to local daniel-bot; saves bot reply; handles `handoff` flag (disables botEnabled)
-- `POST /api/openclaw/sync` — LINE→Recruit sync: saves candidate message + LINE profile (displayName, pictureUrl) fetched by middleware; skips botReply if value is `"__profile_backfill__"`
-- `GET /api/openclaw/check-paused?lineUserId=xxx` — checks HumanTakeover records to see if HR took over (NOT botEnabled field); no auth, Cache-Control: no-store
-- `POST /api/openclaw/backfill-profiles` — backfill LINE displayName + pictureUrl for existing candidates; accepts optional `lineToken` override; no auth
-- `AIConversation` model — 1-to-1 with `Conversation`; stores `openclawId` for cross-referencing OpenClaw sessions
-- `SourceChannel` enum now includes `WEBSITE` (purple badge)
-- `/daniel` page — SUPER_ADMIN + HR_MANAGER; real-time stats, live conversations, connection config + test button
-- `GET /api/daniel/stats` — activeConversations, responseRate, avgResponseSeconds, totalBotMessages
-- `GET /api/daniel/conversations` — last 20 active conversations with last message + openclawId
-- `POST /api/daniel/test-connection` — SUPER_ADMIN only; calls OpenClaw `/api/health`
-- Env vars: `OPENCLAW_API_URL` (default `http://localhost:18789`), `OPENCLAW_API_KEY`, `OPENCLAW_WEBHOOK_SECRET`, `LINE_CHANNEL_ACCESS_TOKEN` (for pushMessage to LINE)
-- OpenClaw payload to `/api/webhook/recruit`: `{ conversationId, candidateId, message, channel, context }`
-- OpenClaw response: `{ reply, confidence?, openclawId?, handoff? }`
+- `POST /api/openclaw/sync` — saves candidate msg + LINE profile; skips botReply if `"__profile_backfill__"`
+- `GET /api/openclaw/check-paused?lineUserId=xxx` — checks HumanTakeover records; no auth, no-store
+- `AIConversation` model — 1-to-1 with Conversation; stores `openclawId`
+- `SourceChannel` enum includes `WEBSITE` (purple badge)
+- `/daniel` page — real-time stats, live conversations, connection config
 
-## OpenClaw Middleware (WSL — \\wsl.localhost\Ubuntu-24.04\home\graph\.openclaw\workspace-hr\scripts\)
-- **middleware.py** (port 18788) — receives LINE webhooks from Cloudflare tunnel, 3s debounce, forwards to OpenClaw (18789)
-  - `image`, `file` → **forward to OpenClaw for OCR** (not dropped)
-  - `sticker`, `video`, `audio`, `location` → **ack + drop** with type-specific variant messages (MEDIA_ACK_MAP)
-  - Checks `is_bot_paused(userId)` before forwarding → skips OpenClaw if HR has taken over (cached 30s)
-  - Fetches LINE profile (displayName + pictureUrl) and sends in sync payload to Recruit OS
-  - Saves replyToken→userId map for outbound_dedup
-- **outbound_dedup.py** (port 19000) — outbound proxy between OpenClaw and LINE API; dedup + garbage detection
-- **session_manager.py** — per-user session state (SQLite); `get`, `update`, `log`, `should_respond` commands
-- **start-tunnel.sh** — starts middleware + outbound_dedup + Cloudflare tunnel; auto-updates LINE webhook URL via API
-- Workspace files: `SOUL.md` (bot rules/personality), `POSITIONS.md` (job positions + company info), `RULES.md`
-- **SOUL.md key rules**: กฎ 4 (OCR รูปก่อนตอบ), กฎ 5 (เวลางาน Sales Admin 06:00-22:00 ทุกวัน), กฎ 6 (ที่อยู่บริษัท locked), กฎ 7 (WFH เฉพาะ Sales Admin)
-- Company address (locked): **76/4 อาคารแพลตินัมเพลส ซอยรามคำแหง 178 เขตมีนบุรี กรุงเทพมหานคร 10510**
-- To restart: `wsl -d Ubuntu-24.04 -u graph -- sh -c 'cd /home/graph/.openclaw/workspace-hr/scripts && bash start-tunnel.sh'`
+## OpenClaw Middleware (WSL)
+**Path**: `\\wsl.localhost\Ubuntu-24.04\home\graph\.openclaw\workspace-hr\scripts\`
+
+- **middleware.py** (port 18788) — receives LINE webhooks, 3s debounce, forwards to OpenClaw (18789)
+  - image/file → forward to OpenClaw for OCR
+  - sticker/video/audio/location → ack + drop (MEDIA_ACK_MAP)
+  - `is_bot_paused(userId)` check (cached 30s) → skip OpenClaw if HR took over
+  - Fetches LINE profile → sends in sync payload
+- **outbound_dedup.py** (port 19000) — outbound proxy; dedup + garbage detection
+- **session_manager.py** — per-user session state (SQLite)
+- **start-tunnel.sh** — starts middleware + outbound_dedup + cloudflared tunnel; auto-updates LINE webhook URL
+- **Workspace files**: SOUL.md, POSITIONS.md, RULES.md, EXAMPLES.md
+
+**SOUL.md key rules**:
+- กฎ 4: OCR รูปก่อนตอบ
+- กฎ 5: Sales Admin เวลางาน 06:00-22:00 ทุกวัน
+- กฎ 6: ที่อยู่บริษัท locked = **76/4 อาคารแพลตินัมเพลส ซอยรามคำแหง 178 เขตมีนบุรี กทม. 10510**
+- กฎ 7: WFH เฉพาะ Sales Admin
+
+**cloudflared**: installed at `/home/linuxbrew/.linuxbrew/bin/cloudflared` (v2026.3.0 via Homebrew)
+- `sudo cloudflared` จะ error เพราะ sudo ไม่เห็น Homebrew PATH — ปกติ
+- start-tunnel.sh ใช้ `CLOUDFLARED_BIN="${CLOUDFLARED:-/home/linuxbrew/.linuxbrew/bin/cloudflared}"` — ถูกต้อง
+- **Cloudflare Quick Tunnel status**: ถ้า error 1101 = Cloudflare ล่มฝั่งเขา รอแล้วรันใหม่
+
+**To restart middleware + tunnel**:
+```bash
+wsl -d Ubuntu-24.04 -u graph -- sh -c 'cd /home/graph/.openclaw/workspace-hr/scripts && bash start-tunnel.sh'
+```
+
+**Tunnel troubleshooting**:
+- localtunnel ไม่ทำงานใน WSL นี้ (503 เสมอ ปัญหา WSL network)
+- serveo.net ไม่ stable (process ตายเร็ว)
+- start-tunnel.sh: ใช้ cloudflared อย่างเดียว ไม่มี fallback (by design)
+- ถ้า Cloudflare ล่ม: รอ + เช็ค cloudflarestatus.com
 
 ## Important Rules
-1. shadcn uses `@base-ui/react` — use `render` prop not `asChild`. Select `onValueChange` is `(value: string | null) => void`, wrap with `(v) => v && handler(v)`
+1. shadcn uses `@base-ui/react` — `render` prop not `asChild`; Select `onValueChange: (v: string | null) => void`
 2. Prisma 7 — no url in schema, use prisma.config.ts
 3. Next.js 16 — proxy.ts not middleware.ts
 4. Bot state is per-conversation (bot_enabled field)
 5. Every message must be saved to DB
 6. HR Takeover must block bot from responding
 7. All important actions need AuditLog entry
-8. Zod `.default()` causes type mismatch with react-hook-form resolver — use plain `.string()` and set default in `defaultValues` instead
+8. Zod `.default()` causes type mismatch with react-hook-form resolver — use plain `.string()` and set default in `defaultValues`
 9. Status changes must create CandidateStatusHistory + AuditLog entries
-10. After adding new AuditAction values to schema.prisma, always run `npx prisma migrate dev` AND `npx prisma generate`
+10. After adding new AuditAction values: run `npx prisma migrate dev` AND `npx prisma generate`
+11. Bangkok timezone: UTC+7; date range = `new Date(Date.UTC(y, m, d, -7, 0, 0))` for startOfDay BKK
+12. Notion API accepts both hyphenated and non-hyphenated page IDs
+13. Auto-qualify: null salary/sales = skip rule (don't reject just because data is missing)
+
+## Known Issues / TODO
+- [ ] **DELETE** `/api/admin/notion-test` after confirming NOTION_TOKEN works correctly in production
+- [ ] **Notion 502 in production** — may be NOTION_TOKEN mismatch in Vercel; check via `/api/admin/notion-test`
+- [ ] **LINE bot offline** — Cloudflare Quick Tunnel currently down (error 1101); restart tunnel when Cloudflare recovers
+- [ ] **Candidate self-scheduling** — send link for candidates to pick interview time slots (not implemented)
