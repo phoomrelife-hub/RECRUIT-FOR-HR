@@ -3,20 +3,66 @@ import { NextResponse } from "next/server";
 import { fuzzyMatchPosition } from "@/lib/position-match";
 
 // ── POST /api/webhooks/email-jobbkk ──────────────────────────────────────────
-// Called by Make.com after parsing a JobBKK application email.
+// Called by Make.com — receives raw email content, parses on server side.
 // Security: x-webhook-secret header must match WEBHOOK_JOBBKK_SECRET env var
 //
-// Payload:
+// Payload (new format — Make.com sends raw email):
 // {
-//   fullName: string           — ชื่อ-นามสกุล
-//   email?: string             — อีเมลผู้สมัคร
-//   phone?: string             — เบอร์โทร / มือถือ
-//   position?: string          — ตำแหน่งที่สมัคร (จาก Subject หรือ body)
-//   expectedSalary?: number    — เงินเดือนที่ต้องการ
-//   experienceText?: string    — ประสบการณ์ทำงาน
-//   resumeUrl?: string         — ลิงก์ resume บน JobBKK
+//   emailText: string    — plain text of the email (1.text from Gmail module)
+//   emailHtml?: string   — HTML of the email (1.html)
+//   subject?: string     — email subject (1.subject)
 //   source?: "JOBBKK"|"JOBTHAI"
 // }
+
+// ── JobBKK email parser ───────────────────────────────────────────────────────
+function parseJobBkkEmail(text: string, subject?: string) {
+  const t = text ?? "";
+
+  // ── fullName: Thai name appearing before "เพศ" label ─────────────────────
+  const nameMatch =
+    t.match(/([ก-๙a-zA-Z][ก-๙a-zA-Z\s]{1,40})\s*\n\s*เพศ/) ??
+    t.match(/^([ก-๙]{2,}(?:\s[ก-๙]{2,})+)/m);
+  const fullName = nameMatch?.[1]?.trim() ?? "";
+
+  // ── phone: โทรศัพท์ or มือถือ ────────────────────────────────────────────
+  const phoneMatch = t.match(/(?:โทรศัพท์|มือถือ)[:\s]*([0-9][\d\-]{8,12})/);
+  const phone = phoneMatch?.[1]?.replace(/\D/g, "") || undefined;
+
+  // ── email: first non-jobbkk/non-relife email address ─────────────────────
+  const emailMatches = [...t.matchAll(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g)];
+  const email = emailMatches
+    .map((m) => m[1])
+    .find((e) => !e.includes("jobbkk") && !e.includes("relife"));
+
+  // ── position: from subject "Application letter in X" or "ตำแหน่ง: X" ──────
+  let positionTitle: string | undefined;
+  if (subject) {
+    const subjectMatch =
+      subject.match(/Application letter in (.+)/i) ??
+      subject.match(/ตำแหน่ง[:\s]+(.+)/);
+    positionTitle = subjectMatch?.[1]?.trim();
+  }
+  if (!positionTitle) {
+    const posMatch = t.match(/(?:ตำแหน่งที่สมัคร|ตำแหน่ง)[:\s]+(.+)/);
+    positionTitle = posMatch?.[1]?.trim();
+  }
+
+  // ── expectedSalary: เงินเดือน ─────────────────────────────────────────────
+  const salaryMatch = t.match(/เงินเดือน[^:\d]*[:\s]+([\d,]+)/);
+  const expectedSalary = salaryMatch
+    ? parseInt(salaryMatch[1].replace(/,/g, ""), 10) || undefined
+    : undefined;
+
+  // ── experienceText: section ประสบการณ์การทำงาน ────────────────────────────
+  const expMatch = t.match(/ประสบการณ์การทำงาน\s*\n+([\s\S]+?)(?:\n{2,}|\n[ก-๙A-Z])/);
+  const experienceText = expMatch?.[1]?.trim() || undefined;
+
+  // ── resumeUrl: jobbkk resume link ─────────────────────────────────────────
+  const urlMatch = t.match(/(https?:\/\/(?:www\.)?jobbkk\.com\/resumes\/[^\s]+)/);
+  const resumeUrl = urlMatch?.[1] || undefined;
+
+  return { fullName, phone, email, positionTitle, expectedSalary, experienceText, resumeUrl };
+}
 
 export async function POST(req: Request) {
   // ── Auth ──────────────────────────────────────────────────────────────────
@@ -36,17 +82,43 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const fullName = typeof body.fullName === "string" ? body.fullName.trim() : "";
-  const email = typeof body.email === "string" ? body.email.trim() : undefined;
-  const phone = typeof body.phone === "string" ? body.phone.trim() : undefined;
-  const positionTitle = typeof body.position === "string" ? body.position.trim() : undefined;
-  const expectedSalary = typeof body.expectedSalary === "number" ? body.expectedSalary : undefined;
-  const experienceText = typeof body.experienceText === "string" ? body.experienceText.trim() : undefined;
-  const resumeUrl = typeof body.resumeUrl === "string" ? body.resumeUrl.trim() : undefined;
   const source = body.source === "JOBTHAI" ? "JOBTHAI" as const : "JOBBKK" as const;
 
+  // ── Detect payload format ─────────────────────────────────────────────────
+  // New format: { emailText, subject } — server parses
+  // Legacy format: { fullName, email, phone, ... } — direct fields
+  let fullName: string;
+  let email: string | undefined;
+  let phone: string | undefined;
+  let positionTitle: string | undefined;
+  let expectedSalary: number | undefined;
+  let experienceText: string | undefined;
+  let resumeUrl: string | undefined;
+
+  if (typeof body.emailText === "string") {
+    // ── New format: parse from raw email ──────────────────────────────────
+    const subject = typeof body.subject === "string" ? body.subject : undefined;
+    const parsed = parseJobBkkEmail(body.emailText, subject);
+    fullName = parsed.fullName;
+    email = parsed.email;
+    phone = parsed.phone;
+    positionTitle = parsed.positionTitle;
+    expectedSalary = parsed.expectedSalary;
+    experienceText = parsed.experienceText;
+    resumeUrl = parsed.resumeUrl;
+  } else {
+    // ── Legacy format: direct fields ──────────────────────────────────────
+    fullName = typeof body.fullName === "string" ? body.fullName.trim() : "";
+    email = typeof body.email === "string" ? body.email.trim() : undefined;
+    phone = typeof body.phone === "string" ? body.phone.trim() : undefined;
+    positionTitle = typeof body.position === "string" ? body.position.trim() : undefined;
+    expectedSalary = typeof body.expectedSalary === "number" ? body.expectedSalary : undefined;
+    experienceText = typeof body.experienceText === "string" ? body.experienceText.trim() : undefined;
+    resumeUrl = typeof body.resumeUrl === "string" ? body.resumeUrl.trim() : undefined;
+  }
+
   if (!fullName) {
-    return NextResponse.json({ error: "fullName is required" }, { status: 400 });
+    return NextResponse.json({ error: "Could not extract fullName from email" }, { status: 400 });
   }
 
   // ── Match position ────────────────────────────────────────────────────────
@@ -112,5 +184,9 @@ export async function POST(req: Request) {
     data: { lastMessageAt: new Date(), status: "ACTIVE" },
   });
 
-  return NextResponse.json({ ok: true, candidateId: candidate.id });
+  return NextResponse.json({
+    ok: true,
+    candidateId: candidate.id,
+    parsed: { fullName, phone, email, positionTitle, expectedSalary },
+  });
 }
