@@ -55,3 +55,42 @@ export function extractPositionFromMessage(content: string): string | null {
   const m = content.match(/ตำแหน่ง:\s*(.+)/);
   return m?.[1]?.trim() ?? null;
 }
+
+/**
+ * Search for a known position title INSIDE free-text (candidate messages).
+ * Tries: exact normalized contains → prefix-10-char → word overlap ≥60%.
+ */
+export function findPositionInText(
+  content: string,
+  positions: PositionOption[]
+): PositionOption | undefined {
+  if (!content || positions.length === 0) return undefined;
+
+  const normContent = normPos(content);
+
+  // Pass 1 — position title contained in message
+  for (const p of positions) {
+    const normTitle = normPos(p.title);
+    if (normContent.includes(normTitle)) return p;
+    // prefix check (≥8 chars to avoid false positives)
+    const prefix = normTitle.substring(0, 10);
+    if (prefix.length >= 8 && normContent.includes(prefix)) return p;
+  }
+
+  // Pass 2 — word overlap (≥60% of position words found in message)
+  let bestMatch: PositionOption | undefined;
+  let maxOverlap = 0;
+  for (const p of positions) {
+    const pWords = normPos(p.title).split(" ").filter((w) => w.length >= 4);
+    if (pWords.length === 0) continue;
+    const contentWords = new Set(normContent.split(" ").filter((w) => w.length >= 4));
+    const overlap = pWords.filter((w) => contentWords.has(w)).length;
+    const ratio = overlap / pWords.length;
+    if (ratio >= 0.6 && overlap > maxOverlap) {
+      maxOverlap = overlap;
+      bestMatch = p;
+    }
+  }
+
+  return bestMatch;
+}

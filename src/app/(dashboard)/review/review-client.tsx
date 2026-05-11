@@ -1009,6 +1009,7 @@ export function ReviewClient({ initial, positions }: Props) {
   const [aqLoading, setAqLoading] = useState(false);
   const [aqConfigured, setAqConfigured] = useState<boolean | null>(null);
   const [backfillLoading, setBackfillLoading] = useState(false);
+  const [fullBackfillLoading, setFullBackfillLoading] = useState(false);
   const [bulkPositionId, setBulkPositionId] = useState("");
 
   useEffect(() => {
@@ -1201,7 +1202,6 @@ export function ReviewClient({ initial, positions }: Props) {
         return;
       }
 
-      // Reload page so queue reflects updated positions
       toast.success(`ซ่อมตำแหน่งสำเร็จ ${data.fixed} คน`, {
         description: "กำลังโหลดหน้าใหม่...",
       });
@@ -1210,6 +1210,35 @@ export function ReviewClient({ initial, positions }: Props) {
       toast.error(err instanceof Error ? err.message : "เกิดข้อผิดพลาด");
     } finally {
       setBackfillLoading(false);
+    }
+  }
+
+  async function handleFullBackfill() {
+    setFullBackfillLoading(true);
+    try {
+      const res = await fetch("/api/admin/backfill-positions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ allStatuses: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "เกิดข้อผิดพลาด");
+
+      if (data.fixed === 0) {
+        toast.info("ไม่พบข้อมูลตำแหน่งเพิ่มเติม", {
+          description: `ตรวจทั้งหมด ${data.scanned} คน — ไม่มีข้อมูลในแชทเพียงพอ`,
+        });
+        return;
+      }
+
+      toast.success(`อัปเดตตำแหน่งทั้งหมด ${data.fixed} คน`, {
+        description: `จาก SYSTEM: ${data.bySource?.system ?? 0} คน · จากแชท: ${data.bySource?.candidate ?? 0} คน`,
+        duration: 5000,
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "เกิดข้อผิดพลาด");
+    } finally {
+      setFullBackfillLoading(false);
     }
   }
 
@@ -1297,17 +1326,30 @@ export function ReviewClient({ initial, positions }: Props) {
               {" "}ที่ยังไม่ระบุตำแหน่ง — ระบบจะพยายามดึงจากประวัติแชทอัตโนมัติ
             </p>
           </div>
-          <button
-            onClick={handleBackfillPositions}
-            disabled={backfillLoading}
-            className="shrink-0 flex items-center gap-1.5 text-xs font-semibold text-blue-700 border border-blue-300 bg-white hover:bg-blue-100 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50"
-          >
-            {backfillLoading ? (
-              <><Loader2 className="h-3 w-3 animate-spin" />กำลังซ่อม...</>
-            ) : (
-              <>🔧 ซ่อมตำแหน่งอัตโนมัติ</>
-            )}
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={handleBackfillPositions}
+              disabled={backfillLoading || fullBackfillLoading}
+              className="flex items-center gap-1.5 text-xs font-semibold text-blue-700 border border-blue-300 bg-white hover:bg-blue-100 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50"
+            >
+              {backfillLoading ? (
+                <><Loader2 className="h-3 w-3 animate-spin" />กำลังซ่อม...</>
+              ) : (
+                <>🔧 ซ่อมในคิวนี้</>
+              )}
+            </button>
+            <button
+              onClick={handleFullBackfill}
+              disabled={backfillLoading || fullBackfillLoading}
+              className="flex items-center gap-1.5 text-xs font-semibold text-violet-700 border border-violet-300 bg-white hover:bg-violet-100 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50"
+            >
+              {fullBackfillLoading ? (
+                <><Loader2 className="h-3 w-3 animate-spin" />กำลังสแกน...</>
+              ) : (
+                <>🔍 สแกนทั้งหมด 725 คน</>
+              )}
+            </button>
+          </div>
         </div>
       )}
 
