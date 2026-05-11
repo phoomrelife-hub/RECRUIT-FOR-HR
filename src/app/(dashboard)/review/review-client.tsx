@@ -1002,6 +1002,7 @@ export function ReviewClient({ initial, positions }: Props) {
   const [aqRunning, setAqRunning] = useState(false);
   const [aqLoading, setAqLoading] = useState(false);
   const [aqConfigured, setAqConfigured] = useState<boolean | null>(null);
+  const [backfillLoading, setBackfillLoading] = useState(false);
 
   useEffect(() => {
     fetch("/api/settings/auto-qualify")
@@ -1179,6 +1180,32 @@ export function ReviewClient({ initial, positions }: Props) {
     }
   }
 
+  async function handleBackfillPositions() {
+    setBackfillLoading(true);
+    try {
+      const res = await fetch("/api/admin/backfill-positions", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "เกิดข้อผิดพลาด");
+
+      if (data.fixed === 0) {
+        toast.info("ไม่พบข้อมูลตำแหน่งเพิ่มเติม", {
+          description: `ตรวจ ${data.scanned} คน — ไม่มีข้อมูลในแชทเพียงพอ`,
+        });
+        return;
+      }
+
+      // Reload page so queue reflects updated positions
+      toast.success(`ซ่อมตำแหน่งสำเร็จ ${data.fixed} คน`, {
+        description: "กำลังโหลดหน้าใหม่...",
+      });
+      setTimeout(() => window.location.reload(), 1200);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "เกิดข้อผิดพลาด");
+    } finally {
+      setBackfillLoading(false);
+    }
+  }
+
   async function handleBulkQualify(result: "pass" | "fail") {
     const ids = Array.from(selected);
     if (!ids.length) return;
@@ -1219,6 +1246,32 @@ export function ReviewClient({ initial, positions }: Props) {
 
   return (
     <>
+      {/* ── Unlinked position banner ── */}
+      {queue.some((c) => !c.interestedPosition) && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 mb-2">
+          <div className="flex items-center gap-2.5">
+            <AlertCircle className="h-4 w-4 text-blue-500 shrink-0" />
+            <p className="text-sm text-blue-800">
+              <span className="font-semibold">
+                พบ {queue.filter((c) => !c.interestedPosition).length} คน
+              </span>
+              {" "}ที่ยังไม่ระบุตำแหน่ง — ระบบจะพยายามดึงจากประวัติแชทอัตโนมัติ
+            </p>
+          </div>
+          <button
+            onClick={handleBackfillPositions}
+            disabled={backfillLoading}
+            className="shrink-0 flex items-center gap-1.5 text-xs font-semibold text-blue-700 border border-blue-300 bg-white hover:bg-blue-100 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50"
+          >
+            {backfillLoading ? (
+              <><Loader2 className="h-3 w-3 animate-spin" />กำลังซ่อม...</>
+            ) : (
+              <>🔧 ซ่อมตำแหน่งอัตโนมัติ</>
+            )}
+          </button>
+        </div>
+      )}
+
       {/* ── Auto-Qualify warning banner ── */}
       {aqConfigured === false && queue.length > 0 && (
         <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 mb-4">
