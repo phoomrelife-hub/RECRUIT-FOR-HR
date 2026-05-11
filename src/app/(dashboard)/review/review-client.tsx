@@ -287,6 +287,8 @@ type QueueCandidate = {
   lineProfilePicUrl: string | null;
   lineUserId: string | null;
   phone: string | null;
+  email: string | null;
+  sourceChannel: string;
   notionPageId: string | null;
   experienceText: string | null;
   currentStatus: string;
@@ -451,6 +453,150 @@ function MessageTemplateDialog({
             disabled={saving || loading}
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+            บันทึก
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Email Qualify Template Dialog ────────────────────────────────────────────
+function EmailQualifyDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const [subjectPass, setSubjectPass] = useState("");
+  const [subjectFail, setSubjectFail] = useState("");
+  const [bodyPass, setBodyPass] = useState("");
+  const [bodyFail, setBodyFail] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    fetch("/api/settings/email-qualify")
+      .then((r) => r.json())
+      .then((d) => {
+        setSubjectPass(d.subjectPass ?? "");
+        setSubjectFail(d.subjectFail ?? "");
+        setBodyPass(d.bodyPass ?? "");
+        setBodyFail(d.bodyFail ?? "");
+      })
+      .catch(() => toast.error("โหลดเทมเพลต Email ไม่สำเร็จ"))
+      .finally(() => setLoading(false));
+  }, [open]);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/settings/email-qualify", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subjectPass, subjectFail, bodyPass, bodyFail }),
+      });
+      if (!res.ok) throw new Error("บันทึกไม่สำเร็จ");
+      toast.success("บันทึกเทมเพลต Email สำเร็จ");
+      onOpenChange(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "เกิดข้อผิดพลาด");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={() => onOpenChange(false)} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <div>
+            <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <Mail className="h-4 w-4 text-red-500" /> เทมเพลต Email แจ้งผล
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              ใช้ <code className="bg-slate-100 px-1 rounded">{"{ชื่อ}"}</code> และ <code className="bg-slate-100 px-1 rounded">{"{ตำแหน่ง}"}</code> เพื่อแทรกข้อมูลผู้สมัคร
+            </p>
+          </div>
+          <button onClick={() => onOpenChange(false)} className="h-8 w-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors">✕</button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+          {loading ? (
+            <div className="flex items-center justify-center py-12 text-slate-400 gap-2">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <span className="text-sm">กำลังโหลด...</span>
+            </div>
+          ) : (
+            <>
+              {/* Pass */}
+              <div className="space-y-3 p-4 rounded-xl bg-emerald-50 border border-emerald-100">
+                <p className="text-sm font-semibold text-emerald-700 flex items-center gap-1.5">
+                  <CheckCircle className="h-4 w-4" /> เมื่อ ✅ ผ่าน
+                </p>
+                <div>
+                  <label className="text-xs text-slate-500 block mb-1">หัวข้ออีเมล (Subject)</label>
+                  <input
+                    type="text"
+                    value={subjectPass}
+                    onChange={(e) => setSubjectPass(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500 block mb-1">เนื้อหาอีเมล (HTML ได้)</label>
+                  <textarea
+                    value={bodyPass}
+                    onChange={(e) => setBodyPass(e.target.value)}
+                    rows={6}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-400 resize-none leading-relaxed"
+                  />
+                </div>
+              </div>
+
+              {/* Fail */}
+              <div className="space-y-3 p-4 rounded-xl bg-red-50 border border-red-100">
+                <p className="text-sm font-semibold text-red-600 flex items-center gap-1.5">
+                  <XCircle className="h-4 w-4" /> เมื่อ ❌ ไม่ผ่าน
+                </p>
+                <div>
+                  <label className="text-xs text-slate-500 block mb-1">หัวข้ออีเมล (Subject)</label>
+                  <input
+                    type="text"
+                    value={subjectFail}
+                    onChange={(e) => setSubjectFail(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500 block mb-1">เนื้อหาอีเมล (HTML ได้)</label>
+                  <textarea
+                    value={bodyFail}
+                    onChange={(e) => setBodyFail(e.target.value)}
+                    rows={6}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-red-300 resize-none leading-relaxed"
+                  />
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100">
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} className="text-slate-600">ยกเลิก</Button>
+          <Button
+            size="sm"
+            className="bg-red-500 hover:bg-red-600 text-white"
+            onClick={handleSave}
+            disabled={saving || loading}
+          >
+            {saving && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
             บันทึก
           </Button>
         </div>
@@ -896,6 +1042,16 @@ function CandidateRow({
                 <MessageCircle className="h-2.5 w-2.5" /> LINE
               </span>
             )}
+            {c.sourceChannel === "JOBBKK" && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-red-100 text-red-700 text-[10px] font-semibold px-1.5 py-0.5">
+                <Mail className="h-2.5 w-2.5" /> JobBKK
+              </span>
+            )}
+            {c.sourceChannel === "JOBTHAI" && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 text-orange-700 text-[10px] font-semibold px-1.5 py-0.5">
+                <Mail className="h-2.5 w-2.5" /> JobThai
+              </span>
+            )}
             {tier && (
               <span
                 className={`inline-flex items-center rounded-full border text-[10px] font-semibold px-2 py-0.5 ${TIER_CONFIG[tier].color}`}
@@ -909,6 +1065,12 @@ function CandidateRow({
               <span className="flex items-center gap-1">
                 <Phone className="h-3 w-3" />
                 {c.phone}
+              </span>
+            )}
+            {!c.lineUserId && c.email && (
+              <span className="flex items-center gap-1 text-slate-400">
+                <Mail className="h-3 w-3" />
+                {c.email}
               </span>
             )}
             {showTier && c.experienceText && (
@@ -1000,9 +1162,11 @@ export function ReviewClient({ initial, positions }: Props) {
   const [queue, setQueue] = useState<QueueCandidate[]>(initial);
   const [loading, setLoading] = useState<Record<string, "pass" | "fail">>({});
   const [activeTab, setActiveTab] = useState<string>(ALL_TAB);
+  const [sourceFilter, setSourceFilter] = useState<"ALL" | "LINE" | "EMAIL">("ALL");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
   const [templateOpen, setTemplateOpen] = useState(false);
+  const [emailQualifyOpen, setEmailQualifyOpen] = useState(false);
   const [aqSettingsOpen, setAqSettingsOpen] = useState(false);
   const [aqPreview, setAqPreview] = useState<PreviewData | null>(null);
   const [aqRunning, setAqRunning] = useState(false);
@@ -1037,13 +1201,21 @@ export function ReviewClient({ initial, positions }: Props) {
   const isSalesAdmin =
     activeTab !== ALL_TAB && activeTab.toLowerCase().includes("sales admin");
 
+  const EMAIL_SOURCES = ["JOBBKK", "JOBTHAI"];
+
   const filtered = useMemo(() => {
-    const list =
+    let list =
       activeTab === ALL_TAB
         ? queue
         : queue.filter(
             (c) => (c.interestedPosition?.title ?? "ไม่ระบุตำแหน่ง") === activeTab
           );
+    // Apply source filter
+    if (sourceFilter === "LINE") {
+      list = list.filter((c) => !EMAIL_SOURCES.includes(c.sourceChannel));
+    } else if (sourceFilter === "EMAIL") {
+      list = list.filter((c) => EMAIL_SOURCES.includes(c.sourceChannel));
+    }
     if (isSalesAdmin) {
       return [...list].sort((a, b) => {
         const ta = TIER_CONFIG[parseTier(a.experienceText)].order;
@@ -1053,7 +1225,8 @@ export function ReviewClient({ initial, positions }: Props) {
       });
     }
     return list;
-  }, [queue, activeTab, isSalesAdmin]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queue, activeTab, isSalesAdmin, sourceFilter]);
 
   // IDs visible in current tab
   const filteredIds = useMemo(() => filtered.map((c) => c.id), [filtered]);
@@ -1124,6 +1297,7 @@ export function ReviewClient({ initial, positions }: Props) {
         candidate.fullName ?? candidate.nickname ?? candidate.lineDisplayName ?? "ไม่ระบุ";
       const msgs: string[] = [];
       if (data.lineSent) msgs.push("ส่ง LINE แล้ว");
+      if (data.emailSent) msgs.push("ส่ง Email แล้ว");
       if (data.notionPatched) msgs.push("อัปเดต Notion แล้ว");
 
       toast.success(`${name} — ${label}`, {
@@ -1433,13 +1607,57 @@ export function ReviewClient({ initial, positions }: Props) {
             <button
               onClick={() => setTemplateOpen(true)}
               className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium border border-slate-200 bg-white text-slate-500 hover:text-slate-700 hover:border-slate-400 transition-colors"
-              title="ตั้งค่าข้อความแจ้งผล"
+              title="ตั้งค่าข้อความแจ้งผล LINE"
             >
               <Settings2 className="h-4 w-4" />
-              ข้อความ LINE
+              LINE
+            </button>
+            <button
+              onClick={() => setEmailQualifyOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 hover:border-red-300 transition-colors"
+              title="ตั้งค่า Email แจ้งผล JobBKK/JobThai"
+            >
+              <Mail className="h-4 w-4" />
+              Email
             </button>
           </div>
         </div>
+
+        {/* ── Source filter toggle ── */}
+        {(() => {
+          const lineCount = queue.filter((c) => !["JOBBKK","JOBTHAI"].includes(c.sourceChannel)).length;
+          const emailCount = queue.filter((c) => ["JOBBKK","JOBTHAI"].includes(c.sourceChannel)).length;
+          if (emailCount === 0) return null; // no email candidates → hide toggle
+          return (
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-slate-500 mr-1">แหล่งที่มา:</span>
+              {(["ALL", "LINE", "EMAIL"] as const).map((f) => {
+                const labels: Record<typeof f, string> = { ALL: "ทั้งหมด", LINE: "📱 LINE", EMAIL: "📧 Email" };
+                const counts: Record<typeof f, number> = { ALL: queue.length, LINE: lineCount, EMAIL: emailCount };
+                return (
+                  <button
+                    key={f}
+                    onClick={() => setSourceFilter(f)}
+                    className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
+                      sourceFilter === f
+                        ? f === "EMAIL"
+                          ? "bg-red-500 text-white border-red-500"
+                          : f === "LINE"
+                          ? "bg-green-600 text-white border-green-600"
+                          : "bg-slate-700 text-white border-slate-700"
+                        : "bg-white text-slate-600 border-slate-200 hover:border-slate-400"
+                    }`}
+                  >
+                    {labels[f]}
+                    <span className={`rounded-full px-1.5 text-[10px] font-bold ${sourceFilter === f ? "bg-white/20" : "bg-slate-100 text-slate-500"}`}>
+                      {counts[f]}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })()}
 
         {/* ── Sales Admin tier legend + select-all ── */}
         {isSalesAdmin && (
@@ -1585,6 +1803,9 @@ export function ReviewClient({ initial, positions }: Props) {
 
       {/* ── Message template dialog ── */}
       <MessageTemplateDialog open={templateOpen} onOpenChange={setTemplateOpen} />
+
+      {/* ── Email qualify template dialog ── */}
+      <EmailQualifyDialog open={emailQualifyOpen} onOpenChange={setEmailQualifyOpen} />
 
       {/* ── Auto-Qualify settings dialog ── */}
       <AutoQualifySettingsDialog

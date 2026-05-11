@@ -151,6 +151,8 @@ enum SourceChannel {
   FACEBOOK
   WEBSITE
   MANUAL
+  JOBBKK
+  JOBTHAI
   OTHER
 }
 

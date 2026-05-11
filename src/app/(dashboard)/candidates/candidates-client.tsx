@@ -70,6 +70,8 @@ const sourceLabel: Record<SourceChannel, string> = {
   FACEBOOK: "Facebook",
   WEBSITE: "Website",
   MANUAL: "Manual",
+  JOBBKK: "JobBKK",
+  JOBTHAI: "JobThai",
   OTHER: "Other",
 };
 
@@ -78,6 +80,8 @@ const sourceBadge: Record<SourceChannel, string> = {
   FACEBOOK: "bg-blue-50 text-blue-600",
   WEBSITE: "bg-purple-50 text-purple-700",
   MANUAL: "bg-slate-50 text-slate-600",
+  JOBBKK: "bg-red-50 text-red-700",
+  JOBTHAI: "bg-orange-50 text-orange-700",
   OTHER: "bg-orange-50 text-orange-600",
 };
 

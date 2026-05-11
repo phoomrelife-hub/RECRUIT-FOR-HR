@@ -22,6 +22,8 @@ export default async function ReviewQueuePage() {
         lineProfilePicUrl: true,
         lineUserId: true,
         phone: true,
+        email: true,
+        sourceChannel: true,
         notionPageId: true,
         experienceText: true,
         currentStatus: true,
@@ -87,7 +89,7 @@ export default async function ReviewQueuePage() {
           )}
         </div>
         <p className="mt-1 text-sm text-slate-500">
-          กด ✅ ผ่าน หรือ ❌ ไม่ผ่าน เพื่อแจ้งผลและส่ง LINE ทันที
+          กด ✅ ผ่าน หรือ ❌ ไม่ผ่าน · LINE candidates แจ้งผลผ่าน LINE · JobBKK แจ้งผลผ่าน Email
           {waitingCount > 0 && ` · ${waitingCount} รายรอพิจารณา`}
         </p>
       </div>

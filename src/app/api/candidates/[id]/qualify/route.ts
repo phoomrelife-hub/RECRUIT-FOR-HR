@@ -1,11 +1,19 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { pushMessage } from "@/lib/line";
+import { sendEmail, renderEmailTemplate } from "@/lib/gmail";
 import { NextResponse } from "next/server";
 import {
   DEFAULT_MSG_PASS,
   DEFAULT_MSG_FAIL,
 } from "@/app/api/settings/qualify-messages/route";
+import {
+  DEFAULT_EMAIL_QUALIFY,
+  EMAIL_QUALIFY_KEYS,
+} from "@/app/api/settings/email-qualify/route";
+
+const EMAIL_SOURCES = ["JOBBKK", "JOBTHAI"] as const;
+type EmailSource = typeof EMAIL_SOURCES[number];
 
 export async function POST(
   req: Request,
@@ -29,14 +37,27 @@ export async function POST(
     return NextResponse.json({ error: "Candidate not found" }, { status: 404 });
   }
 
+  // ── Detect if email-based candidate ──────────────────────────────────────
+  const isEmailSource = EMAIL_SOURCES.includes(candidate.sourceChannel as EmailSource);
+
   // ── Read custom messages from settings ───────────────────────────────────
+  const allKeys = [
+    "qualify.msg_pass", "qualify.msg_fail",
+    ...Object.values(EMAIL_QUALIFY_KEYS),
+  ];
   const settingsRows = await db.setting.findMany({
-    where: { key: { in: ["qualify.msg_pass", "qualify.msg_fail"] } },
+    where: { key: { in: allKeys } },
     select: { key: true, value: true },
   });
   const sm = Object.fromEntries(settingsRows.map((s) => [s.key, s.value]));
   const MSG_PASS = sm["qualify.msg_pass"] || DEFAULT_MSG_PASS;
   const MSG_FAIL = sm["qualify.msg_fail"] || DEFAULT_MSG_FAIL;
+
+  // Email templates
+  const emailSubjectPass = sm[EMAIL_QUALIFY_KEYS.subjectPass] || DEFAULT_EMAIL_QUALIFY.subjectPass;
+  const emailSubjectFail = sm[EMAIL_QUALIFY_KEYS.subjectFail] || DEFAULT_EMAIL_QUALIFY.subjectFail;
+  const emailBodyPass = sm[EMAIL_QUALIFY_KEYS.bodyPass] || DEFAULT_EMAIL_QUALIFY.bodyPass;
+  const emailBodyFail = sm[EMAIL_QUALIFY_KEYS.bodyFail] || DEFAULT_EMAIL_QUALIFY.bodyFail;
 
   const isPass = result === "pass";
   const newStatus = isPass ? "QUALIFIED" : "REJECTED";
@@ -84,16 +105,45 @@ export async function POST(
     data: { lastMessageAt: new Date(), status: "ACTIVE" },
   });
 
-  // ── send LINE push ────────────────────────────────────────────────────────
+  // ── send LINE push (LINE candidates) ─────────────────────────────────────
   let lineSent = false;
   let lineError: string | null = null;
-  if (candidate.lineUserId) {
+  if (!isEmailSource && candidate.lineUserId) {
     try {
       await pushMessage(candidate.lineUserId, messageText);
       lineSent = true;
     } catch (err) {
       lineError = err instanceof Error ? err.message : String(err);
       console.error("[qualify] LINE push failed:", lineError);
+    }
+  }
+
+  // ── send Email (JobBKK/JobThai candidates) ────────────────────────────────
+  let emailSent = false;
+  let emailError: string | null = null;
+  if (isEmailSource && candidate.email) {
+    try {
+      const positionTitle = candidate.interestedPositionId
+        ? (await db.jobPosition.findUnique({
+            where: { id: candidate.interestedPositionId },
+            select: { title: true },
+          }))?.title ?? ""
+        : "";
+
+      const vars = {
+        ชื่อ: candidate.fullName ?? candidate.nickname ?? "ผู้สมัคร",
+        ตำแหน่ง: positionTitle,
+      };
+
+      await sendEmail({
+        to: candidate.email,
+        subject: renderEmailTemplate(isPass ? emailSubjectPass : emailSubjectFail, vars),
+        html: renderEmailTemplate(isPass ? emailBodyPass : emailBodyFail, vars),
+      });
+      emailSent = true;
+    } catch (err) {
+      emailError = err instanceof Error ? err.message : String(err);
+      console.error("[qualify] Email send failed:", emailError);
     }
   }
 
@@ -134,7 +184,9 @@ export async function POST(
     ok: true,
     status: newStatus,
     lineSent,
+    emailSent,
     notionPatched,
     ...(lineError ? { lineError } : {}),
+    ...(emailError ? { emailError } : {}),
   });
 }

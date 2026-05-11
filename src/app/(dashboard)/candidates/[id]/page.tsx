@@ -45,6 +45,8 @@ const sourceLabel: Record<SourceChannel, string> = {
   FACEBOOK: "Facebook",
   WEBSITE: "Website",
   MANUAL: "Manual",
+  JOBBKK: "JobBKK",
+  JOBTHAI: "JobThai",
   OTHER: "Other",
 };
 

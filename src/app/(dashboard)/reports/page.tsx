@@ -52,6 +52,8 @@ const SOURCE_LABELS: Record<SourceChannel, string> = {
   FACEBOOK: "Facebook",
   WEBSITE: "Website",
   MANUAL: "Manual",
+  JOBBKK: "JobBKK",
+  JOBTHAI: "JobThai",
   OTHER: "Other",
 };
 
@@ -60,6 +62,8 @@ const SOURCE_COLORS: Record<SourceChannel, string> = {
   FACEBOOK: "#3b82f6",
   WEBSITE: "#a855f7",
   MANUAL: "#64748b",
+  JOBBKK: "#ef4444",
+  JOBTHAI: "#f97316",
   OTHER: "#94a3b8",
 };
 
@@ -151,7 +155,7 @@ async function getReportsData(): Promise<ReportsData> {
   }));
 
   // Source data
-  const sourceData = (["LINE", "FACEBOOK", "WEBSITE", "MANUAL", "OTHER"] as SourceChannel[]).map((s) => ({
+  const sourceData = (["LINE", "FACEBOOK", "WEBSITE", "MANUAL", "JOBBKK", "JOBTHAI", "OTHER"] as SourceChannel[]).map((s) => ({
     source: s,
     label: SOURCE_LABELS[s],
     count: candidatesBySource.find((x) => x.sourceChannel === s)?._count.id ?? 0,
