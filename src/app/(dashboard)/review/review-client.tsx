@@ -291,6 +291,7 @@ type QueueCandidate = {
   experienceText: string | null;
   currentStatus: string;
   interestedPosition: { id: string; title: string } | null;
+  detectedPosition: { id: string; title: string } | null;
   createdAt: Date;
 };
 
@@ -920,6 +921,11 @@ function CandidateRow({
             {!showTier && c.interestedPosition && (
               <span className="text-slate-400">{c.interestedPosition.title}</span>
             )}
+            {!showTier && !c.interestedPosition && c.detectedPosition && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-medium px-2 py-0.5">
+                💡 น่าจะเป็น: {c.detectedPosition.title}
+              </span>
+            )}
           </div>
         </div>
 
@@ -1003,6 +1009,7 @@ export function ReviewClient({ initial, positions }: Props) {
   const [aqLoading, setAqLoading] = useState(false);
   const [aqConfigured, setAqConfigured] = useState<boolean | null>(null);
   const [backfillLoading, setBackfillLoading] = useState(false);
+  const [bulkPositionId, setBulkPositionId] = useState("");
 
   useEffect(() => {
     fetch("/api/settings/auto-qualify")
@@ -1203,6 +1210,38 @@ export function ReviewClient({ initial, positions }: Props) {
       toast.error(err instanceof Error ? err.message : "เกิดข้อผิดพลาด");
     } finally {
       setBackfillLoading(false);
+    }
+  }
+
+  async function handleBulkAssignPosition() {
+    const ids = Array.from(selected);
+    if (!ids.length || !bulkPositionId) return;
+    setBulkLoading(true);
+    try {
+      const res = await fetch("/api/candidates/bulk-assign-position", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, positionId: bulkPositionId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "เกิดข้อผิดพลาด");
+
+      const pos = positions.find((p) => p.id === bulkPositionId);
+      // Update queue state — assign position to all selected candidates
+      setQueue((prev) =>
+        prev.map((c) =>
+          selected.has(c.id) ? { ...c, interestedPosition: pos ?? null } : c
+        )
+      );
+      setSelected(new Set());
+      setBulkPositionId("");
+      toast.success(`กำหนดตำแหน่งสำเร็จ ${data.updated} คน`, {
+        description: `→ ${data.position}`,
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "เกิดข้อผิดพลาด");
+    } finally {
+      setBulkLoading(false);
     }
   }
 
@@ -1428,10 +1467,39 @@ export function ReviewClient({ initial, positions }: Props) {
       {/* ── Bulk action floating bar ── */}
       {selected.size > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40">
-          <div className="flex items-center gap-3 bg-slate-900 text-white rounded-2xl shadow-2xl px-5 py-3">
+          <div className="flex items-center gap-3 bg-slate-900 text-white rounded-2xl shadow-2xl px-5 py-3 flex-wrap max-w-2xl">
             <CheckSquare className="h-4 w-4 text-blue-400 shrink-0" />
             <span className="text-sm font-medium">เลือก {selected.size} คน</span>
             <div className="w-px h-5 bg-slate-600" />
+
+            {/* ── Bulk position assign (shows when unlinked candidates selected) ── */}
+            {Array.from(selected).some((id) => !queue.find((c) => c.id === id)?.interestedPosition) && (
+              <>
+                <div className="flex items-center gap-1.5">
+                  <select
+                    value={bulkPositionId}
+                    onChange={(e) => setBulkPositionId(e.target.value)}
+                    className="text-xs bg-slate-800 border border-slate-600 rounded-lg px-2 py-1.5 text-white focus:outline-none focus:border-blue-400 appearance-none pr-6"
+                    style={{ backgroundImage: "none" }}
+                  >
+                    <option value="">📌 กำหนดตำแหน่ง...</option>
+                    {positions.map((p) => (
+                      <option key={p.id} value={p.id}>{p.title}</option>
+                    ))}
+                  </select>
+                  <Button
+                    size="sm"
+                    className="bg-blue-600 hover:bg-blue-500 text-white h-8 px-3 text-xs font-semibold disabled:opacity-40"
+                    disabled={!bulkPositionId || bulkLoading}
+                    onClick={handleBulkAssignPosition}
+                  >
+                    {bulkLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "ยืนยัน"}
+                  </Button>
+                </div>
+                <div className="w-px h-5 bg-slate-600" />
+              </>
+            )}
+
             <Button
               size="sm"
               className="bg-teal-500 hover:bg-teal-400 text-white h-8 px-4 text-xs font-semibold"

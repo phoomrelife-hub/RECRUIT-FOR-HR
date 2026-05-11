@@ -2,11 +2,12 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ReviewClient } from "./review-client";
 import { ClipboardCheck } from "lucide-react";
+import { fuzzyMatchPosition, extractPositionFromMessage } from "@/lib/position-match";
 
 export default async function ReviewQueuePage() {
   await auth();
 
-  const [queue, positions] = await Promise.all([
+  const [rawQueue, positions] = await Promise.all([
     db.candidate.findMany({
       where: {
         currentStatus: {
@@ -35,6 +36,41 @@ export default async function ReviewQueuePage() {
       orderBy: { createdAt: "asc" },
     }),
   ]);
+
+  // ── Detect position for unlinked candidates ─────────────────────────────
+  const unlinkedIds = rawQueue
+    .filter((c) => !c.interestedPosition)
+    .map((c) => c.id);
+
+  const detectedMap = new Map<string, { id: string; title: string }>();
+
+  if (unlinkedIds.length > 0) {
+    const msgs = await db.message.findMany({
+      where: {
+        conversation: { candidateId: { in: unlinkedIds } },
+        senderType: "SYSTEM",
+      },
+      select: {
+        content: true,
+        conversation: { select: { candidateId: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    for (const msg of msgs) {
+      const cid = msg.conversation.candidateId;
+      if (detectedMap.has(cid)) continue; // already found one for this candidate
+      const hint = extractPositionFromMessage(msg.content);
+      if (!hint) continue;
+      const matched = fuzzyMatchPosition(hint, positions);
+      if (matched) detectedMap.set(cid, matched);
+    }
+  }
+
+  const queue = rawQueue.map((c) => ({
+    ...c,
+    detectedPosition: detectedMap.get(c.id) ?? null,
+  }));
 
   const waitingCount = queue.filter((c) => c.currentStatus === "WAITING_HR_REVIEW").length;
 

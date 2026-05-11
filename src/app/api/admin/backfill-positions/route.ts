@@ -1,44 +1,7 @@
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
-
-// ── Shared fuzzy-match logic (same as webhooks/form/route.ts) ─────────────────
-function normPos(s: string) {
-  return s.toLowerCase().replace(/[\/\-]+/g, " ").replace(/\s+/g, " ").trim();
-}
-
-function fuzzyMatch(
-  submittedTitle: string,
-  positions: { id: string; title: string }[]
-): { id: string; title: string } | undefined {
-  const normSubmitted = normPos(submittedTitle);
-  const prefix = normSubmitted.substring(0, 14);
-
-  // Pass 1: normalized prefix contains
-  let matched = positions.find((p) => {
-    const normP = normPos(p.title);
-    return normP.includes(prefix) || normSubmitted.includes(normPos(p.title).substring(0, 14));
-  });
-
-  // Pass 2: word overlap (≥4 chars)
-  if (!matched) {
-    const submittedWords = new Set(
-      normSubmitted.split(" ").filter((w) => w.length >= 4)
-    );
-    let maxOverlap = 0;
-    for (const p of positions) {
-      const pWords = normPos(p.title).split(" ").filter((w) => w.length >= 4);
-      const overlap = pWords.filter((w) => submittedWords.has(w)).length;
-      if (overlap > maxOverlap) {
-        maxOverlap = overlap;
-        matched = p;
-      }
-    }
-    if (maxOverlap === 0) matched = undefined;
-  }
-
-  return matched;
-}
+import { fuzzyMatchPosition, extractPositionFromMessage } from "@/lib/position-match";
 
 // ── POST /api/admin/backfill-positions ────────────────────────────────────────
 // Finds candidates without interestedPositionId, extracts position from their
@@ -88,11 +51,6 @@ export async function POST(req: Request) {
     orderBy: { createdAt: "asc" },
   });
 
-  // ── Extract position title from SYSTEM messages ───────────────────────────
-  // System messages from form webhook look like:
-  //   "📋 ใบสมัครจาก Google Form\nชื่อ: ...\nตำแหน่ง: Content Creator / Live Streamer"
-  const POSITION_REGEX = /ตำแหน่ง:\s*(.+)/;
-
   const results: {
     candidateId: string;
     name: string;
@@ -106,16 +64,13 @@ export async function POST(req: Request) {
     let extractedPosition: string | null = null;
 
     for (const msg of allMessages) {
-      const m = msg.content.match(POSITION_REGEX);
-      if (m?.[1]) {
-        extractedPosition = m[1].trim();
-        break;
-      }
+      const hint = extractPositionFromMessage(msg.content);
+      if (hint) { extractedPosition = hint; break; }
     }
 
-    if (!extractedPosition) continue; // no position hint in messages
+    if (!extractedPosition) continue;
 
-    const matched = fuzzyMatch(extractedPosition, positions);
+    const matched = fuzzyMatchPosition(extractedPosition, positions);
     const name = candidate.fullName ?? candidate.nickname ?? candidate.id;
 
     if (matched && !dryRun) {
