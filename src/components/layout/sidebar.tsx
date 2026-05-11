@@ -19,18 +19,14 @@ export function Sidebar({ userRole }: SidebarProps) {
   useEffect(() => {
     async function fetchUnread() {
       try {
-        const res = await fetch("/api/conversations");
+        const res = await fetch("/api/conversations/unread-count");
         if (!res.ok) return;
         const data = await res.json();
-        const total = (data.conversations ?? []).reduce(
-          (sum: number, c: any) => sum + (c.unreadCount ?? 0),
-          0
-        );
-        setInboxUnread(total);
+        setInboxUnread(data.total ?? 0);
       } catch {}
     }
     fetchUnread();
-    const interval = setInterval(fetchUnread, 10000);
+    const interval = setInterval(fetchUnread, 15000);
     return () => clearInterval(interval);
   }, []);
 

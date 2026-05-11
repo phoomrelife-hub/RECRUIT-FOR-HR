@@ -392,7 +392,7 @@ SUBMIT_SCREENING_ANSWERS, SCORE_CANDIDATE, GENERATE_AI_SUMMARY
   - Fetches LINE profile → sends in sync payload
 - **outbound_dedup.py** (port 19000) — outbound proxy; dedup + garbage detection
 - **session_manager.py** — per-user session state (SQLite)
-- **start-tunnel.sh** — starts middleware + outbound_dedup + cloudflared tunnel; auto-updates LINE webhook URL
+- **start-tunnel.sh** — starts middleware + outbound_dedup + ngrok tunnel (primary) → cloudflared fallback; auto-updates LINE webhook URL
 - **Workspace files**: SOUL.md, POSITIONS.md, RULES.md, EXAMPLES.md
 
 **SOUL.md key rules**:
@@ -401,10 +401,21 @@ SUBMIT_SCREENING_ANSWERS, SCORE_CANDIDATE, GENERATE_AI_SUMMARY
 - กฎ 6: ที่อยู่บริษัท locked = **76/4 อาคารแพลตินัมเพลส ซอยรามคำแหง 178 เขตมีนบุรี กทม. 10510**
 - กฎ 7: WFH เฉพาะ Sales Admin
 
-**cloudflared**: installed at `/home/linuxbrew/.linuxbrew/bin/cloudflared` (v2026.3.0 via Homebrew)
+**ngrok** (PRIMARY tunnel): installed at `/usr/local/bin/ngrok` (v3.39.1)
+- authtoken saved to `/home/graph/.config/ngrok/ngrok.yml`
+- **Static domain**: `doorway-armless-roamer.ngrok-free.dev` (ไม่เปลี่ยนตลอดไป)
+- **LINE webhook**: ตั้งไว้ที่ `https://doorway-armless-roamer.ngrok-free.dev/line/webhook` (permanent — ไม่ต้อง set ใหม่)
+- รัน: `ngrok http 18788 --log=stdout` (ไม่ต้องใส่ `--domain` flag — ดึง static domain จาก account อัตโนมัติ)
+- ถ้า ngrok ล่ม → cloudflared รับต่อ แต่ LINE webhook URL จะเปลี่ยน ต้อง update manual
+
+**cloudflared** (FALLBACK): installed at `/home/linuxbrew/.linuxbrew/bin/cloudflared` (v2026.3.0 via Homebrew)
 - `sudo cloudflared` จะ error เพราะ sudo ไม่เห็น Homebrew PATH — ปกติ
 - start-tunnel.sh ใช้ `CLOUDFLARED_BIN="${CLOUDFLARED:-/home/linuxbrew/.linuxbrew/bin/cloudflared}"` — ถูกต้อง
 - **Cloudflare Quick Tunnel status**: ถ้า error 1101 = Cloudflare ล่มฝั่งเขา รอแล้วรันใหม่
+
+**LINE Webhook API** (important):
+- Field name สำหรับ PUT `/v2/bot/channel/webhook/endpoint` คือ **`endpoint`** (ไม่ใช่ `webhookEndpointUrl` — LINE เปลี่ยน API แล้ว)
+- ตัวอย่าง: `{"endpoint": "https://..."}`
 
 **To restart middleware + tunnel**:
 ```bash
@@ -414,8 +425,8 @@ wsl -d Ubuntu-24.04 -u graph -- sh -c 'cd /home/graph/.openclaw/workspace-hr/scr
 **Tunnel troubleshooting**:
 - localtunnel ไม่ทำงานใน WSL นี้ (503 เสมอ ปัญหา WSL network)
 - serveo.net ไม่ stable (process ตายเร็ว)
-- start-tunnel.sh: ใช้ cloudflared อย่างเดียว ไม่มี fallback (by design)
-- ถ้า Cloudflare ล่ม: รอ + เช็ค cloudflarestatus.com
+- start-tunnel.sh: ngrok primary → cloudflared fallback
+- ถ้า Cloudflare ล่ม: ngrok รับต่อได้เลย URL ไม่เปลี่ยน
 
 ## Important Rules
 1. shadcn uses `@base-ui/react` — `render` prop not `asChild`; Select `onValueChange: (v: string | null) => void`
@@ -433,7 +444,7 @@ wsl -d Ubuntu-24.04 -u graph -- sh -c 'cd /home/graph/.openclaw/workspace-hr/scr
 13. Auto-qualify: null salary/sales = skip rule (don't reject just because data is missing)
 
 ## Known Issues / TODO
-- [ ] **DELETE** `/api/admin/notion-test` after confirming NOTION_TOKEN works correctly in production
-- [ ] **Notion 502 in production** — may be NOTION_TOKEN mismatch in Vercel; check via `/api/admin/notion-test`
-- [ ] **LINE bot offline** — Cloudflare Quick Tunnel currently down (error 1101); restart tunnel when Cloudflare recovers
+- [x] ~~**DELETE** `/api/admin/notion-test`~~ — ลบแล้ว (2026-05-10); NOTION_TOKEN อัปเดตใน Vercel แล้ว ทำงานปกติ
+- [x] ~~**Notion 502 in production**~~ — แก้แล้ว: อัปเดต NOTION_TOKEN ใน Vercel (2026-05-10)
+- [x] ~~**LINE bot offline**~~ — แก้แล้ว: ngrok เป็น primary tunnel (static domain ถาวร)
 - [ ] **Candidate self-scheduling** — send link for candidates to pick interview time slots (not implemented)

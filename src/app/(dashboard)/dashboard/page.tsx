@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { TrendChart } from "@/components/dashboard/trend-chart";
+import { TrendChartInteractive } from "@/components/dashboard/trend-chart-interactive";
 import {
   Users,
   MessageSquare,
@@ -17,7 +17,6 @@ import { CandidateStatus, SourceChannel } from "@prisma/client";
 import Link from "next/link";
 
 // ── Thai helpers ──────────────────────────────────────────────────────────────
-const MONTH_NAMES = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
 const MONTH_FULL  = ["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
 const DOW_THAI   = ["อาทิตย์","จันทร์","อังคาร","พุธ","พฤหัสบดี","ศุกร์","เสาร์"];
 
@@ -53,7 +52,6 @@ async function getData() {
   const startOfMonth    = new Date(now.getFullYear(), now.getMonth(), 1);
   const startLastMonth  = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const endLastMonth    = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
-  const sixMonthsAgo    = new Date(now.getFullYear(), now.getMonth() - 5, 1);
 
   // Bangkok today range
   const bkkNow   = new Date(now.getTime() + 7 * 3600000);
@@ -72,7 +70,6 @@ async function getData() {
     interviewScheduled,
     lineCount,
     recentCandidates,
-    trendRaw,
     todayInterviews,
   ] = await Promise.all([
     db.candidate.count(),
@@ -93,10 +90,6 @@ async function getData() {
         interestedPosition: { select: { title: true } },
       },
     }),
-    db.candidate.findMany({
-      where: { createdAt: { gte: sixMonthsAgo } },
-      select: { createdAt: true },
-    }),
     db.interview.findMany({
       where: { status: "SCHEDULED", interviewDate: { gte: todayStart, lt: todayEnd } },
       select: {
@@ -113,21 +106,6 @@ async function getData() {
     }),
   ]);
 
-  // Monthly trend
-  const monthMap = new Map<string, number>();
-  for (let i = 5; i >= 0; i--) {
-    const d2 = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    monthMap.set(`${d2.getFullYear()}-${String(d2.getMonth()+1).padStart(2,"0")}`, 0);
-  }
-  for (const c of trendRaw) {
-    const key = `${c.createdAt.getFullYear()}-${String(c.createdAt.getMonth()+1).padStart(2,"0")}`;
-    if (monthMap.has(key)) monthMap.set(key, (monthMap.get(key) ?? 0) + 1);
-  }
-  const monthlyTrend = Array.from(monthMap.entries()).map(([key, count]) => ({
-    month: MONTH_NAMES[parseInt(key.split("-")[1]) - 1],
-    count,
-  }));
-
   const monthChange = lastMonth > 0
     ? Math.round(((thisMonth - lastMonth) / lastMonth) * 100)
     : 0;
@@ -135,7 +113,7 @@ async function getData() {
   return {
     totalCandidates, thisMonth, lastMonth, monthChange,
     waitingHR, qualified, passed, rejected, interviewScheduled,
-    lineCount, recentCandidates, monthlyTrend, todayInterviews,
+    lineCount, recentCandidates, todayInterviews,
     todayLabel: `วัน${DOW_THAI[now.getDay()]}ที่ ${now.getDate()} ${MONTH_FULL[now.getMonth()]} ${now.getFullYear() + 543}`,
   };
 }
@@ -209,18 +187,9 @@ export default async function DashboardPage() {
 
       {/* ── Middle row: Chart + Funnel ── */}
       <div className="grid grid-cols-3 gap-4">
-        {/* Trend chart */}
+        {/* Trend chart — interactive (day / week / month) */}
         <div className="col-span-2 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="text-sm font-semibold text-slate-800">ผู้สมัครรายเดือน</h3>
-              <p className="text-xs text-slate-400 mt-0.5">6 เดือนล่าสุด</p>
-            </div>
-            <span className="rounded-full bg-blue-50 text-blue-600 text-xs font-semibold px-3 py-1">
-              รวม {data.totalCandidates} คน
-            </span>
-          </div>
-          <TrendChart data={data.monthlyTrend} />
+          <TrendChartInteractive defaultPeriod="monthly" />
         </div>
 
         {/* Funnel */}

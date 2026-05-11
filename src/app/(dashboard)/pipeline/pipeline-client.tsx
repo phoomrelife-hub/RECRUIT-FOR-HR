@@ -11,7 +11,7 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { toast } from "sonner";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw, Kanban } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -49,7 +49,7 @@ function groupByStatus(candidates: KanbanCandidate[]) {
 
 export function PipelineClient({ initialCandidates, jobs }: Props) {
   const [candidates, setCandidates] = useState<KanbanCandidate[]>(initialCandidates);
-  const [selectedJobId, setSelectedJobId] = useState<string>("ALL");
+  const [selectedJobId, setSelectedJobId] = useState<string>("");
   const [activeCandidate, setActiveCandidate] = useState<KanbanCandidate | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -68,10 +68,10 @@ export function PipelineClient({ initialCandidates, jobs }: Props) {
 
   const handleJobFilter = useCallback(async (jobId: string) => {
     setSelectedJobId(jobId);
+    if (!jobId) return;
     setIsRefreshing(true);
     try {
-      const url =
-        jobId === "ALL" ? "/api/pipeline" : `/api/pipeline?jobPositionId=${jobId}`;
+      const url = `/api/pipeline?jobPositionId=${jobId}`;
       const res = await fetch(url);
       if (!res.ok) throw new Error();
       const data: KanbanCandidate[] = await res.json();
@@ -84,12 +84,10 @@ export function PipelineClient({ initialCandidates, jobs }: Props) {
   }, []);
 
   const handleRefresh = useCallback(async () => {
+    if (!selectedJobId) return;
     setIsRefreshing(true);
     try {
-      const url =
-        selectedJobId === "ALL"
-          ? "/api/pipeline"
-          : `/api/pipeline?jobPositionId=${selectedJobId}`;
+      const url = `/api/pipeline?jobPositionId=${selectedJobId}`;
       const res = await fetch(url);
       if (!res.ok) throw new Error();
       const data: KanbanCandidate[] = await res.json();
@@ -170,7 +168,6 @@ export function PipelineClient({ initialCandidates, jobs }: Props) {
                 <SelectValue placeholder="ทุกตำแหน่ง" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="ALL">ทุกตำแหน่ง</SelectItem>
                 {jobs.map((job) => (
                   <SelectItem key={job.id} value={job.id}>
                     {job.title}
@@ -197,33 +194,43 @@ export function PipelineClient({ initialCandidates, jobs }: Props) {
       </div>
 
       {/* Kanban board */}
-      <div className="flex-1 overflow-x-auto overflow-y-hidden">
-        <DndContext
-          sensors={sensors}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-        >
-          <div
-            className="flex gap-3 p-4 h-full"
-            style={{ minWidth: `${STAGE_ORDER.length * 272 + (STAGE_ORDER.length - 1) * 12 + 32}px` }}
-          >
-            {STAGE_ORDER.map((status) => (
-              <div key={status} className="flex flex-col" style={{ height: "calc(100vh - 4rem - 90px - 2rem)" }}>
-                <KanbanColumn
-                  status={status}
-                  candidates={groups[status] ?? []}
-                />
-              </div>
-            ))}
+      {!selectedJobId ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-4 text-slate-400">
+          <Kanban className="h-14 w-14 opacity-20" />
+          <div className="text-center">
+            <p className="text-base font-medium text-slate-500">เลือกตำแหน่งงานเพื่อดู Pipeline</p>
+            <p className="text-sm mt-1">เลือกตำแหน่งจาก dropdown ด้านบนขวา เพื่อโหลด Kanban</p>
           </div>
+        </div>
+      ) : (
+        <div className="flex-1 overflow-x-auto overflow-y-hidden">
+          <DndContext
+            sensors={sensors}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
+            <div
+              className="flex gap-3 p-4 h-full"
+              style={{ minWidth: `${STAGE_ORDER.length * 272 + (STAGE_ORDER.length - 1) * 12 + 32}px` }}
+            >
+              {STAGE_ORDER.map((status) => (
+                <div key={status} className="flex flex-col" style={{ height: "calc(100vh - 4rem - 90px - 2rem)" }}>
+                  <KanbanColumn
+                    status={status}
+                    candidates={groups[status] ?? []}
+                  />
+                </div>
+              ))}
+            </div>
 
-          <DragOverlay dropAnimation={null}>
-            {activeCandidate ? (
-              <KanbanCard candidate={activeCandidate} isOverlay />
-            ) : null}
-          </DragOverlay>
-        </DndContext>
-      </div>
+            <DragOverlay dropAnimation={null}>
+              {activeCandidate ? (
+                <KanbanCard candidate={activeCandidate} isOverlay />
+              ) : null}
+            </DragOverlay>
+          </DndContext>
+        </div>
+      )}
     </div>
   );
 }

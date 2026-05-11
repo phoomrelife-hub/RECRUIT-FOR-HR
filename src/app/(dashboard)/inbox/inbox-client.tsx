@@ -26,6 +26,7 @@ import {
   Circle,
   Image as ImageIcon,
   Paperclip,
+  CheckCheck,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -419,7 +420,7 @@ function MessageBubble({ msg }: { msg: Message }) {
   const isBot = msg.senderType === "BOT";
 
   return (
-    <div className={`flex gap-2 mb-3 ${isRight ? "flex-row-reverse" : "flex-row"}`}>
+    <div className={`msg-bubble flex gap-2 mb-3 ${isRight ? "flex-row-reverse" : "flex-row"}`}>
       <div
         className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold ${
           isHR
@@ -458,18 +459,23 @@ function ConvItem({
   conv,
   active,
   onClick,
+  onMarkRead,
 }: {
   conv: Conversation;
   active: boolean;
   onClick: () => void;
+  onMarkRead?: () => void;
 }) {
+  const [hovered, setHovered] = useState(false);
   const lastMsg = conv.messages[0];
   const name = candidateName(conv.candidate);
 
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left px-4 py-3 border-b border-slate-100 hover:bg-slate-50 transition-colors ${
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className={`relative w-full text-left px-4 py-3 border-b border-slate-100 hover:bg-slate-50 transition-colors ${
         active ? "bg-blue-50 border-l-2 border-l-blue-600" : ""
       }`}
     >
@@ -480,7 +486,18 @@ function ConvItem({
             <span className={`text-sm font-medium truncate ${active ? "text-blue-700" : "text-slate-800"}`}>
               {name}
             </span>
-            <div className="flex items-center gap-1.5 flex-shrink-0">
+            <div className="flex items-center gap-1 flex-shrink-0">
+              {/* mark-as-read icon — ปรากฏเมื่อ hover + มี unread */}
+              {hovered && conv.unreadCount > 0 && onMarkRead && (
+                <span
+                  role="button"
+                  title="ทำเครื่องหมายว่าอ่านแล้ว"
+                  onClick={(e) => { e.stopPropagation(); onMarkRead(); }}
+                  className="p-0.5 rounded text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+                >
+                  <CheckCheck size={13} />
+                </span>
+              )}
               {channelIcon(conv.channel)}
               {conv.unreadCount > 0 && (
                 <span className="bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">
@@ -835,6 +852,7 @@ export function InboxClient({
   const [filterChannel, setFilterChannel] = useState<string>("ALL");
   const [filterBot, setFilterBot] = useState<string>("ALL"); // ALL | BOT | HR
   const [filterUnread, setFilterUnread] = useState(false);
+  const [filterCandidateStatus, setFilterCandidateStatus] = useState<string>("ALL");
   const [sortBy, setSortBy] = useState<"LATEST" | "UNREAD_FIRST">("LATEST");
   const [search, setSearch] = useState("");
   const [showNewConv, setShowNewConv] = useState(false);
@@ -856,6 +874,8 @@ export function InboxClient({
   const prevMessageCountRef = useRef(0);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // ref ที่ mirror activeId — ทำให้ refreshList ไม่ต้อง capture state ใน closure
+  const activeIdRef = useRef<string | null>(null);
 
   // ── filtered + sorted conversations ──
   const filtered = (() => {
@@ -865,13 +885,15 @@ export function InboxClient({
       if (filterBot === "BOT" && !c.botEnabled) return false;
       if (filterBot === "HR" && c.botEnabled) return false;
       if (filterUnread && c.unreadCount === 0) return false;
+      if (filterCandidateStatus !== "ALL" && c.candidate.currentStatus !== filterCandidateStatus) return false;
       if (search) {
         const q = search.toLowerCase();
         const cand = c.candidate;
         const fields = [
-          candidateName(cand),
-          cand.phone ?? "",
+          cand.fullName ?? "",
+          cand.nickname ?? "",
           cand.lineDisplayName ?? "",
+          cand.phone ?? "",
           cand.interestedPosition?.title ?? "",
           (c.messages as { content: string }[])?.[0]?.content ?? "",
         ].map((f) => f.toLowerCase());
@@ -895,7 +917,19 @@ export function InboxClient({
     if (!res.ok) return;
     const data = await res.json();
     setActiveConv(data);
-    setMessages(data.messages ?? []);
+    const incoming: Message[] = data.messages ?? [];
+    setMessages((prev) => {
+      // ถ้า length เท่ากันและ message ล่าสุดเหมือนกัน → ไม่ต้อง re-render
+      // (กรณี poll แล้วไม่มีข้อความใหม่)
+      if (
+        incoming.length === prev.length &&
+        incoming.length > 0 &&
+        incoming[incoming.length - 1].id === prev[prev.length - 1]?.id
+      ) {
+        return prev;
+      }
+      return incoming;
+    });
     setConversations((prev) =>
       prev.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c))
     );
@@ -911,16 +945,57 @@ export function InboxClient({
   }, []);
 
   // ── refresh conversations list ──
+  // ใช้ functional update + activeIdRef เพื่อป้องกัน race condition:
+  // ถ้า DB write (unreadCount=0) ยังไม่เสร็จตอน list refresh มา
+  // conv ที่ user กำลังเปิดอยู่จะถูก lock ไว้ที่ 0 เสมอ
   const refreshList = useCallback(async () => {
     const res = await fetch("/api/conversations");
     if (!res.ok) return;
     const data = await res.json();
-    setConversations(data.conversations ?? []);
+    const incoming: Conversation[] = data.conversations ?? [];
+    const currentActiveId = activeIdRef.current;
+    setConversations(
+      incoming.map((c) => ({
+        ...c,
+        unreadCount: c.id === currentActiveId ? 0 : c.unreadCount,
+      }))
+    );
+  }, []);
+
+  // ── mark one conversation as read ──
+  const markOneRead = useCallback(async (id: string) => {
+    // optimistic
+    setConversations((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c))
+    );
+    await fetch(`/api/conversations/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ markRead: true }),
+    });
+  }, []);
+
+  // ── mark all conversations as read ──
+  const [markingAll, setMarkingAll] = useState(false);
+  const markAllRead = useCallback(async () => {
+    setMarkingAll(true);
+    setConversations((prev) => prev.map((c) => ({ ...c, unreadCount: 0 })));
+    await fetch("/api/conversations/mark-all-read", { method: "POST" });
+    setMarkingAll(false);
   }, []);
 
   // ── select conversation ──
+  const [isLoadingConv, setIsLoadingConv] = useState(false);
+
   async function selectConv(id: string) {
+    if (id === activeId) return; // ป้องกัน double-click
     setActiveId(id);
+    activeIdRef.current = id;
+    // ล้างทันทีเพื่อไม่ให้เห็น conv เก่าขณะโหลด
+    setActiveConv(null);
+    setMessages([]);
+    setInputMsg("");
+    setIsLoadingConv(true);
     isAtBottomRef.current = true;
     prevMessageCountRef.current = 0;
     setShowScrollBtn(false);
@@ -929,6 +1004,7 @@ export function InboxClient({
     setShowTagMenu(false);
     setShowAssignMenu(false);
     setShowScheduleForm(false);
+    setLinePushError(null);
     const conv = conversations.find((c) => c.id === id);
     if (conv) {
       await Promise.all([
@@ -938,6 +1014,7 @@ export function InboxClient({
     } else {
       await loadConversation(id);
     }
+    setIsLoadingConv(false);
   }
 
   // ── polling ──
@@ -951,7 +1028,7 @@ export function InboxClient({
 
   useEffect(() => {
     refreshList(); // sync ทันทีตอน mount ไม่รอ interval แรก
-    const listPoll = setInterval(() => refreshList(), 2000);
+    const listPoll = setInterval(() => refreshList(), 5000);
     return () => clearInterval(listPoll);
   }, [refreshList]);
 
@@ -988,10 +1065,25 @@ export function InboxClient({
   // ── send HR message ──
   async function sendMessage() {
     if (!inputMsg.trim() || !activeId || sending) return;
+    const text = inputMsg.trim();
+
+    // 1. Clear input + optimistic bubble ทันที
+    setInputMsg("");
     setSending(true);
     setLinePushError(null);
+    const tempId = `temp-${Date.now()}`;
+    const tempMsg: Message = {
+      id: tempId,
+      content: text,
+      senderType: "HR",
+      senderId: currentUser.id,
+      sender: { id: currentUser.id, name: currentUser.name },
+      createdAt: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, tempMsg]);
+    isAtBottomRef.current = true;
 
-    // Auto-takeover if bot is still active
+    // 2. Auto-takeover ถ้า bot ยังเปิดอยู่
     if (activeConv?.botEnabled) {
       const takeoverRes = await fetch(`/api/conversations/${activeId}/takeover`, {
         method: "POST",
@@ -999,24 +1091,29 @@ export function InboxClient({
         body: JSON.stringify({ action: "TAKE_OVER" }),
       });
       if (!takeoverRes.ok) {
+        // rollback
+        setMessages((prev) => prev.filter((m) => m.id !== tempId));
+        setInputMsg(text);
         setSending(false);
         return;
       }
     }
 
+    // 3. ส่งจริง
     const res = await fetch(`/api/conversations/${activeId}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: inputMsg.trim() }),
+      body: JSON.stringify({ content: text }),
     });
     if (res.ok) {
       const data = await res.json();
-      setInputMsg("");
-      isAtBottomRef.current = true; // force scroll after HR sends
+      // โหลด conv เพื่อแทน temp msg ด้วย real ID (silent — ไม่แสดง loading)
       await loadConversation(activeId);
-      if (data.linePushError) {
-        setLinePushError(data.linePushError);
-      }
+      if (data.linePushError) setLinePushError(data.linePushError);
+    } else {
+      // rollback ถ้า fail
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      setInputMsg(text);
     }
     setSending(false);
   }
@@ -1056,12 +1153,36 @@ export function InboxClient({
   async function changeStatus(newStatus: string) {
     if (!activeConv || changingStatus || newStatus === activeConv.candidate.currentStatus) return;
     setChangingStatus(true);
-    await fetch(`/api/candidates/${activeConv.candidateId}`, {
+    // optimistic: อัปเดต UI ทันที
+    const prevStatus = activeConv.candidate.currentStatus;
+    setActiveConv((prev) =>
+      prev ? { ...prev, candidate: { ...prev.candidate, currentStatus: newStatus } } : prev
+    );
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === activeConv.id
+          ? { ...c, candidate: { ...c.candidate, currentStatus: newStatus } }
+          : c
+      )
+    );
+    const res = await fetch(`/api/candidates/${activeConv.candidateId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ currentStatus: newStatus }),
     });
-    await loadConversation(activeConv.id);
+    if (!res.ok) {
+      // rollback ถ้า fail
+      setActiveConv((prev) =>
+        prev ? { ...prev, candidate: { ...prev.candidate, currentStatus: prevStatus } } : prev
+      );
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === activeConv.id
+            ? { ...c, candidate: { ...c.candidate, currentStatus: prevStatus } }
+            : c
+        )
+      );
+    }
     setChangingStatus(false);
   }
 
@@ -1135,6 +1256,16 @@ export function InboxClient({
               )}
             </div>
             <div className="flex gap-1">
+              {totalUnread > 0 && (
+                <button
+                  onClick={markAllRead}
+                  disabled={markingAll}
+                  title="ทำเครื่องหมายว่าอ่านทั้งหมด"
+                  className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-colors disabled:opacity-40"
+                >
+                  <CheckCheck size={13} />
+                </button>
+              )}
               <button
                 onClick={refreshList}
                 title="Refresh"
@@ -1171,7 +1302,7 @@ export function InboxClient({
             )}
           </div>
 
-          {/* Status tabs */}
+          {/* Conversation status tabs */}
           <div className="flex gap-1">
             {(["ALL", "ACTIVE", "WAITING", "CLOSED"] as const).map((s) => (
               <button
@@ -1186,6 +1317,25 @@ export function InboxClient({
                 {s === "ALL" ? "ทั้งหมด" : s === "ACTIVE" ? "Active" : s === "WAITING" ? "รอ" : "ปิด"}
               </button>
             ))}
+          </div>
+
+          {/* Candidate pipeline status filter */}
+          <div className="flex items-center gap-2">
+            <SlidersHorizontal size={11} className="text-slate-400 flex-shrink-0" />
+            <select
+              value={filterCandidateStatus}
+              onChange={(e) => setFilterCandidateStatus(e.target.value)}
+              className={`flex-1 text-[11px] border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 appearance-none cursor-pointer transition-colors ${
+                filterCandidateStatus !== "ALL"
+                  ? "border-blue-400 bg-blue-50 text-blue-700 font-medium"
+                  : "border-slate-200 text-slate-600"
+              }`}
+            >
+              <option value="ALL">ทุกสถานะผู้สมัคร</option>
+              {STATUS_ORDER.map((s) => (
+                <option key={s} value={s}>{statusLabel[s]}</option>
+              ))}
+            </select>
           </div>
 
           {/* Advanced filters row */}
@@ -1263,13 +1413,13 @@ export function InboxClient({
           </div>
 
           {/* Active filter count badge */}
-          {(filterChannel !== "ALL" || filterBot !== "ALL" || filterUnread || search) && (
+          {(filterChannel !== "ALL" || filterBot !== "ALL" || filterUnread || search || filterCandidateStatus !== "ALL") && (
             <div className="flex items-center justify-between">
               <span className="text-[10px] text-slate-400">
                 แสดง {filtered.length} จาก {conversations.length} การสนทนา
               </span>
               <button
-                onClick={() => { setFilterChannel("ALL"); setFilterBot("ALL"); setFilterUnread(false); setSearch(""); setFilterStatus("ALL"); setSortBy("LATEST"); }}
+                onClick={() => { setFilterChannel("ALL"); setFilterBot("ALL"); setFilterUnread(false); setSearch(""); setFilterStatus("ALL"); setFilterCandidateStatus("ALL"); setSortBy("LATEST"); }}
                 className="text-[10px] text-blue-500 hover:text-blue-700 font-medium"
               >
                 ล้างทั้งหมด
@@ -1318,6 +1468,7 @@ export function InboxClient({
                 conv={conv}
                 active={conv.id === activeId}
                 onClick={() => selectConv(conv.id)}
+                onMarkRead={conv.unreadCount > 0 ? () => markOneRead(conv.id) : undefined}
               />
             ))
           )}
@@ -1325,12 +1476,31 @@ export function InboxClient({
       </div>
 
       {/* ── Middle Panel: Chat View ────────────────────────────── */}
-      {!activeConv ? (
+      {!activeId ? (
         <div className="flex-1 flex flex-col items-center justify-center text-slate-400 gap-3">
           <MessageSquare size={48} className="opacity-20" />
           <p className="text-base font-medium">เลือกการสนทนาเพื่อเริ่มต้น</p>
         </div>
-      ) : (
+      ) : isLoadingConv ? (
+        /* Skeleton while loading */
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className="h-16 bg-white border-b border-slate-200 px-4 flex items-center gap-3 flex-shrink-0">
+            <div className="w-10 h-10 rounded-full bg-slate-100 animate-pulse" />
+            <div className="space-y-2 flex-1">
+              <div className="h-3 w-32 bg-slate-100 rounded animate-pulse" />
+              <div className="h-2.5 w-24 bg-slate-100 rounded animate-pulse" />
+            </div>
+          </div>
+          <div className="flex-1 p-4 bg-slate-50 space-y-3 overflow-hidden">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className={`flex gap-2 ${i % 2 === 0 ? "" : "flex-row-reverse"}`}>
+                <div className="w-7 h-7 rounded-full bg-slate-200 animate-pulse flex-shrink-0" />
+                <div className={`h-9 rounded-2xl bg-slate-200 animate-pulse ${i % 2 === 0 ? "w-48" : "w-36"}`} style={{ animationDelay: `${i * 80}ms` }} />
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : !activeConv ? null : (
         <div className="flex-1 flex flex-col min-w-0">
           {/* Chat Header */}
           <div className="h-16 bg-white border-b border-slate-200 px-4 flex items-center justify-between flex-shrink-0">
@@ -1539,7 +1709,7 @@ export function InboxClient({
       )}
 
       {/* ── Right Panel: Quick Actions ─────────────────────────── */}
-      {activeConv && (
+      {activeConv && !isLoadingConv && (
         <QuickActionsPanel
           conv={activeConv}
           candidateTags={candidateTags}

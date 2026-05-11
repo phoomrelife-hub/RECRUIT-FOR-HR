@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Loader2, Plus, MessageSquare, Tag, UserCheck, X, Trash2, ClipboardList, Star, Sparkles, RefreshCw, CheckCircle, AlertCircle, ThumbsUp, ThumbsDown, Minus } from "lucide-react";
+import { Loader2, Plus, MessageSquare, Tag, UserCheck, X, Trash2, ClipboardList, Star, Sparkles, RefreshCw, CheckCircle, AlertCircle, ThumbsUp, ThumbsDown, Minus, History } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { useRouter } from "next/navigation";
@@ -78,6 +78,14 @@ type HiringDecisionData = {
   updatedAt: Date;
 };
 
+type StatusHistoryItem = {
+  id: string;
+  fromStatus: CandidateStatus | null;
+  toStatus: CandidateStatus;
+  reason: string | null;
+  createdAt: Date;
+};
+
 type CandidateData = {
   id: string;
   interestedPositionId: string | null;
@@ -90,6 +98,7 @@ type CandidateData = {
   aiSummary: AiSummary | null;
   interviews: InterviewItem[];
   hiringDecision: HiringDecisionData | null;
+  statusHistory: StatusHistoryItem[];
 };
 
 interface Props {
@@ -753,6 +762,60 @@ export function CandidateProfileClient({
           )}
         </CardContent>
       </Card>
+
+      {/* Status Timeline */}
+      {candidate.statusHistory.length > 0 && (
+        <Card className="border-slate-200">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <History className="h-4 w-4 text-slate-500" />
+              ประวัติสถานะ
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ol className="relative border-l border-slate-200 ml-2 space-y-0">
+              {candidate.statusHistory.map((h, i) => {
+                const statusThai: Record<string, string> = {
+                  NEW_APPLICANT: "ผู้สมัครใหม่", BOT_SCREENING: "บอทคัดกรอง",
+                  WAITING_HR_REVIEW: "รอ HR พิจารณา", NEED_MORE_INFO: "ขอข้อมูลเพิ่ม",
+                  QUALIFIED: "ผ่านเกณฑ์", INTERVIEW_SCHEDULED: "นัดสัมภาษณ์",
+                  INTERVIEWED: "สัมภาษณ์แล้ว", PASSED: "ผ่านการคัดเลือก",
+                  REJECTED: "ไม่ผ่าน", TALENT_POOL: "Talent Pool", CLOSED: "ปิด",
+                };
+                const isFirst = i === 0;
+                return (
+                  <li key={h.id} className="ml-4 pb-5 last:pb-0">
+                    <span className={`absolute -left-[5px] flex h-2.5 w-2.5 items-center justify-center rounded-full ${isFirst ? "bg-blue-500" : "bg-slate-300"}`} />
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {h.fromStatus && (
+                            <>
+                              <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${statusColor[h.fromStatus]}`}>
+                                {statusThai[h.fromStatus] ?? h.fromStatus}
+                              </span>
+                              <span className="text-slate-300 text-xs">→</span>
+                            </>
+                          )}
+                          <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${statusColor[h.toStatus]}`}>
+                            {statusThai[h.toStatus] ?? h.toStatus}
+                          </span>
+                        </div>
+                        {h.reason && (
+                          <p className="text-xs text-slate-400 mt-0.5 italic">{h.reason}</p>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-slate-400 shrink-0 mt-0.5">
+                        {format(new Date(h.createdAt), "d MMM yy HH:mm")}
+                      </span>
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

@@ -49,6 +49,7 @@ export async function GET(req: Request) {
           OR: [
             { fullName: { contains: search, mode: "insensitive" as const } },
             { nickname: { contains: search, mode: "insensitive" as const } },
+            { lineDisplayName: { contains: search, mode: "insensitive" as const } },
             { phone: { contains: search } },
             { email: { contains: search, mode: "insensitive" as const } },
           ],
@@ -96,6 +97,22 @@ export async function POST(req: Request) {
   }
 
   const data = parsed.data;
+  const bypass = new URL(req.url).searchParams.get("bypass") === "true";
+
+  // Duplicate check by phone or email
+  if (!bypass && (data.phone || data.email)) {
+    const orConditions = [];
+    if (data.phone) orConditions.push({ phone: data.phone });
+    if (data.email) orConditions.push({ email: data.email });
+    const existing = await db.candidate.findFirst({
+      where: { OR: orConditions },
+      select: { id: true, fullName: true, nickname: true, phone: true, email: true, currentStatus: true },
+    });
+    if (existing) {
+      return NextResponse.json({ error: "duplicate", candidate: existing }, { status: 409 });
+    }
+  }
+
   const candidate = await db.candidate.create({
     data: {
       ...data,

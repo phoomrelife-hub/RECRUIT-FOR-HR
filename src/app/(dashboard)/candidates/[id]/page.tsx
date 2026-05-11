@@ -10,6 +10,7 @@ import { format } from "date-fns";
 import { CandidateStatus, SourceChannel, ExperienceStatus } from "@prisma/client";
 import { CandidateProfileClient } from "./candidate-profile-client";
 import { QualifySection } from "./qualify-section";
+import { NotionDataCard } from "./notion-data-card";
 
 const statusColor: Record<CandidateStatus, string> = {
   NEW_APPLICANT: "bg-slate-100 text-slate-600",
@@ -184,6 +185,14 @@ export default async function CandidateProfilePage({ params }: { params: Promise
             hasNotionPage={!!candidate.notionPageId}
           />
 
+          {/* Notion Data Card — show if linked */}
+          {candidate.notionPageId && (
+            <NotionDataCard
+              candidateId={candidate.id}
+              positionTitle={candidate.interestedPosition?.title ?? null}
+            />
+          )}
+
           {/* Contact */}
           <Card className="border-slate-200">
             <CardHeader className="pb-3">
@@ -287,27 +296,6 @@ export default async function CandidateProfilePage({ params }: { params: Promise
             </CardContent>
           </Card>
 
-          {/* Status History */}
-          <Card className="border-slate-200">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold text-slate-700">Status History</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {candidate.statusHistory.slice(0, 8).map((h) => (
-                <div key={h.id} className="flex items-start gap-2 text-xs text-slate-500">
-                  <span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-slate-300 shrink-0" />
-                  <div>
-                    <span className="font-medium text-slate-700">{h.toStatus.replace(/_/g, " ")}</span>
-                    {h.reason && <span className="ml-1 text-slate-400">— {h.reason}</span>}
-                    <p className="text-slate-400">{format(new Date(h.createdAt), "d MMM yy HH:mm")}</p>
-                  </div>
-                </div>
-              ))}
-              {candidate.statusHistory.length === 0 && (
-                <p className="text-xs text-slate-400">ไม่มีประวัติสถานะ</p>
-              )}
-            </CardContent>
-          </Card>
         </div>
 
         {/* Right: Interactive Sections */}

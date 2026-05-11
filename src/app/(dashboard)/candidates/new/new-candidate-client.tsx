@@ -6,13 +6,22 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, ArrowLeft } from "lucide-react";
+import { Loader2, ArrowLeft, AlertTriangle } from "lucide-react";
 import { useForm, Controller } from "react-hook-form";
+import { useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+
+const statusLabel: Record<string, string> = {
+  NEW_APPLICANT: "ผู้สมัครใหม่", BOT_SCREENING: "บอทคัดกรอง",
+  WAITING_HR_REVIEW: "รอ HR พิจารณา", NEED_MORE_INFO: "ขอข้อมูลเพิ่ม",
+  QUALIFIED: "ผ่านเกณฑ์", INTERVIEW_SCHEDULED: "นัดสัมภาษณ์",
+  INTERVIEWED: "สัมภาษณ์แล้ว", PASSED: "ผ่านการคัดเลือก",
+  REJECTED: "ไม่ผ่าน", TALENT_POOL: "Talent Pool", CLOSED: "ปิด",
+};
 
 const schema = z.object({
   fullName: z.string().min(1, "กรุณาใส่ชื่อ"),
@@ -40,6 +49,8 @@ interface Props {
 
 export function NewCandidateClient({ jobs, defaultJobId }: Props) {
   const router = useRouter();
+  const [duplicate, setDuplicate] = useState<{ id: string; fullName: string | null; nickname: string | null; phone: string | null; email: string | null; currentStatus: string } | null>(null);
+  const [bypassDuplicate, setBypassDuplicate] = useState(false);
 
   const {
     register,
@@ -72,11 +83,17 @@ export function NewCandidateClient({ jobs, defaultJobId }: Props) {
       portfolioUrl: data.portfolioUrl || null,
     };
 
-    const res = await fetch("/api/candidates", {
+    const res = await fetch(`/api/candidates${bypassDuplicate ? "?bypass=true" : ""}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+
+    if (res.status === 409) {
+      const data = await res.json();
+      setDuplicate(data.candidate);
+      return;
+    }
 
     if (!res.ok) {
       toast.error("บันทึกไม่สำเร็จ");
@@ -95,6 +112,33 @@ export function NewCandidateClient({ jobs, defaultJobId }: Props) {
           <ArrowLeft className="h-4 w-4" /> กลับ
         </Button>
       </Link>
+
+      {/* Duplicate warning */}
+      {duplicate && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-3">
+          <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-amber-800">พบผู้สมัครเดิมในระบบ</p>
+            <p className="text-xs text-amber-700 mt-0.5">
+              {duplicate.fullName ?? duplicate.nickname ?? "ไม่ระบุชื่อ"}
+              {duplicate.phone ? ` · ${duplicate.phone}` : ""}
+              {duplicate.email ? ` · ${duplicate.email}` : ""}
+              {" · "}
+              <span className="font-medium">{statusLabel[duplicate.currentStatus] ?? duplicate.currentStatus}</span>
+            </p>
+          </div>
+          <div className="flex gap-2 shrink-0">
+            <Link href={`/candidates/${duplicate.id}`}>
+              <Button size="sm" variant="outline" className="text-xs h-7 border-amber-300 text-amber-700 hover:bg-amber-100">
+                ดูโปรไฟล์เดิม
+              </Button>
+            </Link>
+            <Button size="sm" variant="ghost" className="text-xs h-7 text-amber-600" onClick={() => { setDuplicate(null); setBypassDuplicate(true); }}>
+              เพิ่มใหม่อยู่ดี
+            </Button>
+          </div>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit(onSubmit)}>
         <Card className="border-slate-200">

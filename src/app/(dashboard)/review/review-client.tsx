@@ -29,6 +29,8 @@ import {
   CheckSquare,
   Zap,
   SlidersHorizontal,
+  Link2,
+  Tag,
 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -292,6 +294,12 @@ type QueueCandidate = {
   createdAt: Date;
 };
 
+type PropItem = {
+  name: string;
+  type: "text" | "url" | "tags" | "number" | "files";
+  value: string | string[] | number;
+};
+
 type NotionDetail = {
   info: {
     name: string;
@@ -307,6 +315,7 @@ type NotionDetail = {
     equipment: string[];
     lineId: string;
   };
+  allProps: PropItem[];
   qa: Array<{ question: string; answer: string }>;
 };
 
@@ -465,6 +474,7 @@ function DetailSheet({
 
   const name = c.fullName ?? c.nickname ?? c.lineDisplayName ?? "ไม่ระบุชื่อ";
   const tier = parseTier(c.experienceText);
+  const isSalesAdmin = (c.interestedPosition?.title ?? "").toLowerCase().includes("sales admin");
 
   // fetch on first open
   useEffect(() => {
@@ -571,9 +581,9 @@ function DetailSheet({
             </div>
           )}
 
-          {detail && (
+          {detail && isSalesAdmin && (
             <>
-              {/* Contact from Notion */}
+              {/* Contact from Notion — Sales Admin */}
               <Section title="ข้อมูลส่วนตัว">
                 <InfoRow icon={<Phone className="h-3.5 w-3.5" />} label="เบอร์โทร" value={detail.info.phone} />
                 <InfoRow icon={<Mail className="h-3.5 w-3.5" />} label="อีเมล" value={detail.info.email} />
@@ -614,6 +624,106 @@ function DetailSheet({
               {/* Deep Q&A */}
               {detail.qa.length > 0 && (
                 <Section title={`คำถามเชิงลึก (${detail.qa.length} ข้อ)`}>
+                  <div className="space-y-4 mt-1">
+                    {detail.qa.map((item, i) => (
+                      <div key={i} className="space-y-1">
+                        <p className="text-xs font-semibold text-slate-700 leading-snug">
+                          {i + 1}. {item.question}
+                        </p>
+                        <p className={`text-xs leading-relaxed pl-3 border-l-2 ${item.answer === "(ไม่ได้ตอบ)" ? "text-slate-400 border-slate-200 italic" : "text-slate-600 border-blue-200"}`}>
+                          {item.answer}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </Section>
+              )}
+            </>
+          )}
+
+          {detail && !isSalesAdmin && (
+            <>
+              {/* Generic Notion props — all other positions */}
+              {detail.allProps.length > 0 && (
+                <Section title="ข้อมูลจาก Notion">
+                  {detail.allProps.map((prop) => {
+                    if (prop.type === "url") {
+                      return (
+                        <div key={prop.name} className="flex items-start gap-2 py-1">
+                          <span className="shrink-0 mt-0.5 text-slate-400"><Link2 className="h-3.5 w-3.5" /></span>
+                          <div className="flex-1 min-w-0">
+                            <span className="text-[10px] text-slate-400 block">{prop.name}</span>
+                            <a
+                              href={prop.value as string}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-blue-600 hover:underline break-all"
+                            >
+                              {prop.value as string}
+                            </a>
+                          </div>
+                        </div>
+                      );
+                    }
+                    if (prop.type === "files") {
+                      return (
+                        <div key={prop.name} className="flex items-start gap-2 py-1">
+                          <span className="shrink-0 mt-0.5 text-slate-400"><FileText className="h-3.5 w-3.5" /></span>
+                          <div className="flex-1 min-w-0">
+                            <span className="text-[10px] text-slate-400 block">{prop.name}</span>
+                            {(prop.value as string[]).map((url, i) => (
+                              <a
+                                key={i}
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                              >
+                                <ExternalLink className="h-2.5 w-2.5" />
+                                {i === 0 ? "เปิดไฟล์" : `ไฟล์ ${i + 1}`}
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    }
+                    if (prop.type === "tags") {
+                      return (
+                        <div key={prop.name} className="flex items-start gap-2 py-1">
+                          <span className="shrink-0 mt-0.5 text-slate-400"><Tag className="h-3.5 w-3.5" /></span>
+                          <div className="flex-1 min-w-0">
+                            <span className="text-[10px] text-slate-400 block">{prop.name}</span>
+                            <div className="flex flex-wrap gap-1 mt-0.5">
+                              {(prop.value as string[]).map((v) => (
+                                <span key={v} className="inline-flex rounded-full bg-slate-100 text-slate-600 text-[10px] font-medium px-2 py-0.5">
+                                  {v}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+                    // text or number
+                    const displayVal =
+                      typeof prop.value === "number"
+                        ? prop.value.toLocaleString()
+                        : (prop.value as string);
+                    return (
+                      <InfoRow
+                        key={prop.name}
+                        icon={<span className="h-3.5 w-3.5 inline-block" />}
+                        label={prop.name}
+                        value={displayVal}
+                      />
+                    );
+                  })}
+                </Section>
+              )}
+
+              {/* Q&A blocks — available for all positions */}
+              {detail.qa.length > 0 && (
+                <Section title={`คำถาม-คำตอบ (${detail.qa.length} ข้อ)`}>
                   <div className="space-y-4 mt-1">
                     {detail.qa.map((item, i) => (
                       <div key={i} className="space-y-1">
@@ -840,6 +950,14 @@ export function ReviewClient({ initial, positions }: Props) {
   const [aqPreview, setAqPreview] = useState<PreviewData | null>(null);
   const [aqRunning, setAqRunning] = useState(false);
   const [aqLoading, setAqLoading] = useState(false);
+  const [aqConfigured, setAqConfigured] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    fetch("/api/settings/auto-qualify")
+      .then((r) => r.json())
+      .then((d) => setAqConfigured((d.expPassTiers ?? []).length > 0))
+      .catch(() => setAqConfigured(null));
+  }, []);
 
   // Build tabs: all job positions (always shown) + "ไม่ระบุตำแหน่ง" if any
   const tabs = useMemo(() => {
@@ -1039,6 +1157,25 @@ export function ReviewClient({ initial, positions }: Props) {
 
   return (
     <>
+      {/* ── Auto-Qualify warning banner ── */}
+      {aqConfigured === false && queue.length > 0 && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 mb-4">
+          <div className="flex items-center gap-2.5">
+            <AlertCircle className="h-4 w-4 text-amber-500 shrink-0" />
+            <p className="text-sm text-amber-800">
+              <span className="font-semibold">Auto-Qualify ยังไม่ได้ตั้งกฎ</span>
+              {" — "}มี {queue.length} คนรอในคิว ตั้งกฎเพื่อให้ระบบคัดกรองอัตโนมัติ
+            </p>
+          </div>
+          <button
+            onClick={() => setAqSettingsOpen(true)}
+            className="shrink-0 text-xs font-semibold text-amber-700 border border-amber-300 bg-white hover:bg-amber-100 rounded-lg px-3 py-1.5 transition-colors"
+          >
+            ตั้งกฎเดี๋ยวนี้
+          </button>
+        </div>
+      )}
+
       <div className="space-y-4">
         {/* ── Tab bar + gear button ── */}
         <div className="flex items-center gap-2 flex-wrap">

@@ -14,6 +14,7 @@ import {
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "@/components/dashboard/stat-card";
+import { TrendChartInteractive } from "@/components/dashboard/trend-chart-interactive";
 import { Users, TrendingUp, CheckCircle2, Calendar } from "lucide-react";
 
 export type ReportsData = {
@@ -78,7 +79,6 @@ export function ReportsClient({ data }: { data: ReportsData }) {
     summary,
     funnelData,
     sourceData,
-    monthlyTrend,
     positionData,
     interviewStatusData,
     hiringOutcomeData,
@@ -140,23 +140,10 @@ export function ReportsClient({ data }: { data: ReportsData }) {
 
       {/* Monthly Trend + Source Channel */}
       <div className="grid grid-cols-3 gap-6">
-        {/* Monthly Trend */}
+        {/* Trend chart — interactive */}
         <Card className="border-slate-200 col-span-2">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold">
-              Monthly Trend (6 เดือนล่าสุด)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={monthlyTrend} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="month" tick={{ fontSize: 12, fill: "#64748b" }} />
-                <YAxis tick={{ fontSize: 12, fill: "#64748b" }} allowDecimals={false} />
-                <Tooltip content={<BarTooltip />} />
-                <Bar dataKey="count" name="ผู้สมัคร" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+          <CardContent className="pt-5">
+            <TrendChartInteractive height={220} defaultPeriod="monthly" />
           </CardContent>
         </Card>
 

@@ -51,6 +51,37 @@ function phoneVal(prop: unknown): string {
   return typeof p.phone_number === "string" ? p.phone_number : "";
 }
 
+function urlVal(prop: unknown): string {
+  if (!prop || typeof prop !== "object") return "";
+  const p = prop as Record<string, unknown>;
+  return typeof p.url === "string" ? p.url : "";
+}
+
+function dateVal(prop: unknown): string {
+  if (!prop || typeof prop !== "object") return "";
+  const p = prop as Record<string, unknown>;
+  const d = p.date as Record<string, unknown> | undefined;
+  return typeof d?.start === "string" ? d.start : "";
+}
+
+function filesVal(prop: unknown): string[] {
+  if (!prop || typeof prop !== "object") return [];
+  const p = prop as Record<string, unknown>;
+  const arr = p.files as Array<Record<string, unknown>> | undefined;
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .map((f) => {
+      const ext = f.external as Record<string, unknown> | undefined;
+      const file = f.file as Record<string, unknown> | undefined;
+      return typeof ext?.url === "string"
+        ? ext.url
+        : typeof file?.url === "string"
+        ? file.url
+        : "";
+    })
+    .filter(Boolean) as string[];
+}
+
 async function notionFetch(url: string, token: string) {
   const res = await fetch(url, {
     headers: {
@@ -121,6 +152,53 @@ export async function GET(
     lineId:          richText(props["ID Line ติดต่อกลับ"]),
   };
 
+  // ── Extract all properties generically ───────────────────────────────────
+  type PropType = "text" | "url" | "tags" | "number" | "files";
+  type PropItem = { name: string; type: PropType; value: string | string[] | number };
+  const allProps: PropItem[] = [];
+
+  for (const [name, prop] of Object.entries(props)) {
+    if (!prop || typeof prop !== "object") continue;
+    const p = prop as Record<string, unknown>;
+    const pType = p.type as string;
+    let item: PropItem | null = null;
+
+    if (pType === "title" || pType === "rich_text") {
+      const v = richText(prop);
+      if (v) item = { name, type: "text", value: v };
+    } else if (pType === "number") {
+      const v = numVal(prop);
+      if (v != null) item = { name, type: "number", value: v };
+    } else if (pType === "select") {
+      const v = selectVal(prop);
+      if (v) item = { name, type: "text", value: v };
+    } else if (pType === "multi_select") {
+      const v = multiSelectVal(prop);
+      if (v.length > 0) item = { name, type: "tags", value: v };
+    } else if (pType === "email") {
+      const v = emailVal(prop);
+      if (v) item = { name, type: "text", value: v };
+    } else if (pType === "phone_number") {
+      const v = phoneVal(prop);
+      if (v) item = { name, type: "text", value: v };
+    } else if (pType === "url") {
+      const v = urlVal(prop);
+      if (v) item = { name, type: "url", value: v };
+    } else if (pType === "files") {
+      const v = filesVal(prop);
+      if (v.length > 0) item = { name, type: "files", value: v };
+    } else if (pType === "date") {
+      const v = dateVal(prop);
+      if (v) item = { name, type: "text", value: v };
+    } else if (pType === "checkbox") {
+      if ((prop as Record<string, unknown>).checkbox === true) {
+        item = { name, type: "text", value: "✓" };
+      }
+    }
+
+    if (item) allProps.push(item);
+  }
+
   // ── Extract deep Q&A from blocks ─────────────────────────────────────────
   // Format: h1 "📝 คำถามเชิงลึก", then pairs of h2 (question) + paragraph (answer)
   type QA = { question: string; answer: string };
@@ -152,5 +230,5 @@ export async function GET(
     }
   }
 
-  return NextResponse.json({ info, qa });
+  return NextResponse.json({ info, allProps, qa });
 }

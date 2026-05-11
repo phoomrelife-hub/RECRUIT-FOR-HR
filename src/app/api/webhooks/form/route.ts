@@ -45,17 +45,50 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "lineUserId is required" }, { status: 400 });
   }
 
-  // ── look up job position ──────────────────────────────────────────────────
+  // ── look up job position (fuzzy match) ───────────────────────────────────
   let interestedPositionId: string | undefined;
   if (positionTitle) {
-    const job = await db.jobPosition.findFirst({
-      where: {
-        title: { contains: positionTitle.substring(0, 30), mode: "insensitive" },
-        status: { in: ["OPEN", "DRAFT"] },
-      },
+    // Normalize: lowercase, collapse slashes/spaces/dashes into single space
+    const norm = (s: string) =>
+      s.toLowerCase().replace(/[\/\-]+/g, " ").replace(/\s+/g, " ").trim();
+
+    const normSubmitted = norm(positionTitle);
+    // Use first 14 chars of normalized submitted title for contains lookup
+    // "Content Creator / Live Streamer" → "content creator live streamer" → "content creator" (14)
+    // This matches "Content Creator/Live stream" → "content creator live stream" ✓
+    const prefix = normSubmitted.substring(0, 14);
+
+    // Fetch all active positions for client-side fuzzy matching
+    const allPositions = await db.jobPosition.findMany({
+      where: { status: { in: ["OPEN", "DRAFT"] } },
+      select: { id: true, title: true },
       orderBy: { createdAt: "asc" },
     });
-    interestedPositionId = job?.id;
+
+    // Pass 1: normalized title contains prefix of submitted (or vice versa)
+    let matched = allPositions.find((p) => {
+      const normP = norm(p.title);
+      return normP.includes(prefix) || normSubmitted.includes(norm(p.title).substring(0, 14));
+    });
+
+    // Pass 2: word-overlap — count significant words (≥4 chars) in common
+    if (!matched) {
+      const submittedWords = new Set(
+        normSubmitted.split(" ").filter((w) => w.length >= 4)
+      );
+      let maxOverlap = 0;
+      for (const p of allPositions) {
+        const pWords = norm(p.title).split(" ").filter((w) => w.length >= 4);
+        const overlap = pWords.filter((w) => submittedWords.has(w)).length;
+        if (overlap > maxOverlap) {
+          maxOverlap = overlap;
+          matched = p;
+        }
+      }
+      if (maxOverlap === 0) matched = undefined;
+    }
+
+    interestedPositionId = matched?.id;
   }
 
   // ── find or upsert candidate ──────────────────────────────────────────────

@@ -58,11 +58,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   const { id } = await params;
   const body = await req.json();
-  const { status } = body;
+  const { status, markRead } = body;
 
   const updated = await db.conversation.update({
     where: { id },
-    data: { ...(status ? { status } : {}) },
+    data: {
+      ...(status ? { status } : {}),
+      ...(markRead ? { unreadCount: 0 } : {}),
+    },
   });
 
   return NextResponse.json(updated);

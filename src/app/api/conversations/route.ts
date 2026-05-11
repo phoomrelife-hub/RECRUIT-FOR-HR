@@ -9,6 +9,8 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status");
   const search = searchParams.get("search");
+  const limitParam = searchParams.get("limit");
+  const limit = limitParam ? Math.min(parseInt(limitParam, 10), 200) : undefined;
 
   const where = {
     ...(status && status !== "ALL" ? { status: status as any } : {}),
@@ -54,6 +56,7 @@ export async function GET(req: Request) {
       },
     },
     orderBy: { lastMessageAt: "desc" },
+    ...(limit ? { take: limit } : {}),
   });
 
   return NextResponse.json({ conversations });
