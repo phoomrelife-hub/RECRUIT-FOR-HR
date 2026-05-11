@@ -25,7 +25,7 @@ export default async function ReviewQueuePage() {
         experienceText: true,
         currentStatus: true,
         createdAt: true,
-        interestedPosition: { select: { title: true } },
+        interestedPosition: { select: { id: true, title: true } },
       },
       orderBy: { createdAt: "asc" },
     }),

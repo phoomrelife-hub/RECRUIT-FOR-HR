@@ -290,7 +290,7 @@ type QueueCandidate = {
   notionPageId: string | null;
   experienceText: string | null;
   currentStatus: string;
-  interestedPosition: { title: string } | null;
+  interestedPosition: { id: string; title: string } | null;
   createdAt: Date;
 };
 
@@ -463,18 +463,43 @@ function DetailSheet({
   c,
   open,
   onOpenChange,
+  positions,
+  onPositionChange,
 }: {
   c: QueueCandidate;
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  positions: JobPosition[];
+  onPositionChange: (candidateId: string, pos: { id: string; title: string } | null) => void;
 }) {
   const [detail, setDetail] = useState<NotionDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [savingPos, setSavingPos] = useState(false);
 
   const name = c.fullName ?? c.nickname ?? c.lineDisplayName ?? "ไม่ระบุชื่อ";
   const tier = parseTier(c.experienceText);
   const isSalesAdmin = (c.interestedPosition?.title ?? "").toLowerCase().includes("sales admin");
+
+  async function handleSavePosition(positionId: string) {
+    if (savingPos) return;
+    setSavingPos(true);
+    try {
+      const res = await fetch(`/api/candidates/${c.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ interestedPositionId: positionId || null }),
+      });
+      if (!res.ok) throw new Error("บันทึกไม่สำเร็จ");
+      const matched = positionId ? positions.find((p) => p.id === positionId) ?? null : null;
+      onPositionChange(c.id, matched);
+      toast.success(matched ? `กำหนดตำแหน่ง: ${matched.title}` : "ยกเลิกตำแหน่งแล้ว");
+    } catch {
+      toast.error("บันทึกตำแหน่งไม่สำเร็จ");
+    } finally {
+      setSavingPos(false);
+    }
+  }
 
   // fetch on first open
   useEffect(() => {
@@ -524,11 +549,27 @@ function DetailSheet({
                 {name}
               </SheetTitle>
               <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                {c.interestedPosition && (
-                  <span className="text-xs text-slate-500">
-                    {c.interestedPosition.title}
+                {/* Position selector — always visible, editable */}
+                <div className="relative">
+                  <select
+                    value={c.interestedPosition?.id ?? ""}
+                    onChange={(e) => handleSavePosition(e.target.value)}
+                    disabled={savingPos}
+                    className={`text-xs rounded-md border px-2 py-0.5 pr-5 appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-400 transition-colors ${
+                      c.interestedPosition
+                        ? "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                        : "border-amber-300 bg-amber-50 text-amber-700 hover:border-amber-400"
+                    } disabled:opacity-50`}
+                  >
+                    <option value="">— ยังไม่ระบุตำแหน่ง —</option>
+                    {positions.map((p) => (
+                      <option key={p.id} value={p.id}>{p.title}</option>
+                    ))}
+                  </select>
+                  <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 text-[9px]">
+                    {savingPos ? "⏳" : "▾"}
                   </span>
-                )}
+                </div>
                 <span
                   className={`inline-flex items-center rounded-full border text-[10px] font-semibold px-2 py-0.5 ${TIER_CONFIG[tier].color}`}
                 >
@@ -786,6 +827,8 @@ function CandidateRow({
   selected,
   onToggle,
   onQualify,
+  positions,
+  onPositionChange,
 }: {
   c: QueueCandidate;
   showTier: boolean;
@@ -793,6 +836,8 @@ function CandidateRow({
   selected: boolean;
   onToggle: (id: string) => void;
   onQualify: (c: QueueCandidate, result: "pass" | "fail") => void;
+  positions: JobPosition[];
+  onPositionChange: (candidateId: string, pos: { id: string; title: string } | null) => void;
 }) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const name = c.fullName ?? c.nickname ?? c.lineDisplayName ?? "ไม่ระบุชื่อ";
@@ -933,7 +978,13 @@ function CandidateRow({
         </div>
       </div>
 
-      <DetailSheet c={c} open={sheetOpen} onOpenChange={setSheetOpen} />
+      <DetailSheet
+        c={c}
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        positions={positions}
+        onPositionChange={onPositionChange}
+      />
     </>
   );
 }
@@ -1026,6 +1077,17 @@ export function ReviewClient({ initial, positions }: Props) {
       return next;
     });
   }, [allCurrentSelected, filteredIds]);
+
+  const handlePositionChange = useCallback(
+    (candidateId: string, pos: { id: string; title: string } | null) => {
+      setQueue((prev) =>
+        prev.map((c) =>
+          c.id === candidateId ? { ...c, interestedPosition: pos } : c
+        )
+      );
+    },
+    []
+  );
 
   async function handleQualify(candidate: QueueCandidate, result: "pass" | "fail") {
     setLoading((prev) => ({ ...prev, [candidate.id]: result }));
@@ -1302,6 +1364,8 @@ export function ReviewClient({ initial, positions }: Props) {
                 selected={selected.has(c.id)}
                 onToggle={toggleOne}
                 onQualify={handleQualify}
+                positions={positions}
+                onPositionChange={handlePositionChange}
               />
             ))
           )}
