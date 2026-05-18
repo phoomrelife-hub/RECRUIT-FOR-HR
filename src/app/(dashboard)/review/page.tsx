@@ -23,6 +23,7 @@ export default async function ReviewQueuePage() {
         lineUserId: true,
         phone: true,
         email: true,
+        address: true,
         sourceChannel: true,
         notionPageId: true,
         experienceText: true,

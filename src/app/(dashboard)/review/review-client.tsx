@@ -37,6 +37,7 @@ import {
 import { toast } from "sonner";
 import Link from "next/link";
 import { parseTier, TIER_CONFIG, type Tier } from "@/lib/experience-tier";
+import { parseLocation, buildLocationOptions, matchesLocationFilter } from "@/lib/parse-location";
 
 // ── Auto-Qualify Settings Dialog ──────────────────────────────────────────────
 const ALL_TIERS: Tier[] = ["high", "mid", "low", "unspecified", "none"];
@@ -290,6 +291,7 @@ type QueueCandidate = {
   lineUserId: string | null;
   phone: string | null;
   email: string | null;
+  address: string | null;
   sourceChannel: string;
   notionPageId: string | null;
   experienceText: string | null;
@@ -1178,6 +1180,8 @@ export function ReviewClient({ initial, positions }: Props) {
   const [fullBackfillLoading, setFullBackfillLoading] = useState(false);
   const [bulkPositionId, setBulkPositionId] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [locationFilter, setLocationFilter] = useState("");
+  const [addressBackfillLoading, setAddressBackfillLoading] = useState(false);
 
   useEffect(() => {
     fetch("/api/settings/auto-qualify")
@@ -1229,6 +1233,10 @@ export function ReviewClient({ initial, positions }: Props) {
         return name.includes(q) || phone.includes(q) || email.includes(q);
       });
     }
+    // Apply location filter
+    if (locationFilter) {
+      list = list.filter((c) => matchesLocationFilter(c.address, locationFilter));
+    }
     if (isSalesAdmin) {
       return [...list].sort((a, b) => {
         const ta = TIER_CONFIG[parseTier(a.experienceText)].order;
@@ -1239,7 +1247,11 @@ export function ReviewClient({ initial, positions }: Props) {
     }
     return list;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queue, activeTab, isSalesAdmin, sourceFilter, searchQuery]);
+  }, [queue, activeTab, isSalesAdmin, sourceFilter, searchQuery, locationFilter]);
+
+  // Location options from all candidates with address
+  const locationGroups = useMemo(() => buildLocationOptions(queue), [queue]);
+  const hasAddressData = queue.some((c) => c.address);
 
   // IDs visible in current tab
   const filteredIds = useMemo(() => filtered.map((c) => c.id), [filtered]);
@@ -1458,6 +1470,25 @@ export function ReviewClient({ initial, positions }: Props) {
       toast.error(err instanceof Error ? err.message : "เกิดข้อผิดพลาด");
     } finally {
       setBulkLoading(false);
+    }
+  }
+
+  async function handleAddressBackfill() {
+    setAddressBackfillLoading(true);
+    try {
+      const res = await fetch("/api/admin/backfill-address", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "เกิดข้อผิดพลาด");
+      if (data.updated === 0) {
+        toast.info("ไม่มีข้อมูลที่อยู่เพิ่มเติม", { description: "อาจไม่มี Notion page หรืออัปเดตแล้ว" });
+      } else {
+        toast.success(`ดึงที่อยู่สำเร็จ ${data.updated} คน`, { description: "กำลังโหลดหน้าใหม่..." });
+        setTimeout(() => window.location.reload(), 1200);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "เกิดข้อผิดพลาด");
+    } finally {
+      setAddressBackfillLoading(false);
     }
   }
 
@@ -1691,6 +1722,56 @@ export function ReviewClient({ initial, positions }: Props) {
             </button>
           )}
         </div>
+
+        {/* ── Location filter ── */}
+        {hasAddressData ? (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-slate-500 shrink-0">📍 ที่อยู่:</span>
+            <select
+              value={locationFilter}
+              onChange={(e) => setLocationFilter(e.target.value)}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+            >
+              <option value="">ทุกพื้นที่</option>
+              {locationGroups.map((group) => (
+                <optgroup key={group.group} label={group.group}>
+                  {group.options.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            {locationFilter && (
+              <button
+                onClick={() => setLocationFilter("")}
+                className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-1"
+              >
+                <X className="h-3 w-3" /> ล้าง
+              </button>
+            )}
+            <button
+              onClick={handleAddressBackfill}
+              disabled={addressBackfillLoading}
+              className="ml-auto flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600 disabled:opacity-50 transition-colors"
+              title="ดึงที่อยู่จาก Notion"
+            >
+              {addressBackfillLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : "🔄"}
+              อัปเดตที่อยู่
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-400">📍 ยังไม่มีข้อมูลที่อยู่ —</span>
+            <button
+              onClick={handleAddressBackfill}
+              disabled={addressBackfillLoading}
+              className="text-xs font-medium text-blue-600 hover:text-blue-700 disabled:opacity-50 flex items-center gap-1"
+            >
+              {addressBackfillLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+              ดึงจาก Notion
+            </button>
+          </div>
+        )}
 
         {/* ── Sales Admin tier legend + select-all ── */}
         {isSalesAdmin && (

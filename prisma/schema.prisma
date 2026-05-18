@@ -193,6 +193,7 @@ model Candidate {
   notionPageId         String?           @map("notion_page_id")
   experienceText       String?           @map("experience_text")  // raw answer: "3 ปีขายเครื่องสำอาง"
   maxSalesAmount       Int?              @map("max_sales_amount") // ยอดขายสูงสุด (บาท/เดือน)
+  address              String?           @map("address")          // ที่อยู่ (backfill จาก Notion)
   currentStatus        CandidateStatus   @default(NEW_APPLICANT) @map("current_status")
   ownerId              String?           @map("owner_id")
   createdAt            DateTime          @default(now()) @map("created_at")
