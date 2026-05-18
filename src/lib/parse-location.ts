@@ -39,10 +39,10 @@ export function parseLocation(address: string | null | undefined): ParsedLocatio
   // Check กรุงเทพ
   const isBkk = BKK_ALIASES.some((alias) => text.includes(alias.toLowerCase()));
   if (isBkk) {
-    // Extract เขต — จับแค่คำเดียวหลัง "เขต" (ไม่เอาแขวง/จังหวัด)
-    const districtMatch = address.match(/เขต\s*([฀-๿]+)/);
+    // Extract เขต — จับ non-whitespace word หลัง "เขต"
+    const districtMatch = address.match(/เขต\s*(\S+)/);
     const rawDistrict = districtMatch ? districtMatch[1].trim() : null;
-    // กรอง keyword ที่ไม่ใช่ชื่อเขต
+    // กรอง keyword ที่ไม่ใช่ชื่อเขต (เช่น "แขวง..." หรือ "กรุงเทพ...")
     const SKIP = ["แขวง", "จังหวัด", "กรุงเทพ", "มหานคร"];
     const district = rawDistrict && !SKIP.some((s) => rawDistrict.startsWith(s))
       ? rawDistrict
@@ -50,7 +50,7 @@ export function parseLocation(address: string | null | undefined): ParsedLocatio
     return {
       province: "กรุงเทพมหานคร",
       district,
-      label: district ? `เขต${district}` : "กรุงเทพมหานคร",
+      label: district ? `เขต${district}` : "กรุงเทพ (ไม่ระบุเขต)",
     };
   }
 
@@ -130,7 +130,7 @@ export function matchesLocationFilter(
   if (filterValue.startsWith("bkk:")) {
     if (loc.province !== "กรุงเทพมหานคร") return false;
     const district = filterValue.slice(4);
-    if (district === "__all__") return true;
+    if (district === "__all__") return loc.district === null; // เฉพาะคนไม่ระบุเขต
     return loc.district === district;
   }
 
