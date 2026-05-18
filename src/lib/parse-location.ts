@@ -39,13 +39,18 @@ export function parseLocation(address: string | null | undefined): ParsedLocatio
   // Check กรุงเทพ
   const isBkk = BKK_ALIASES.some((alias) => text.includes(alias.toLowerCase()));
   if (isBkk) {
-    // Extract เขต — pattern: เขตXXX, เขต XXX
-    const districtMatch = address.match(/เขต\s*([^\s,/\d]+(?:\s+[^\s,/\d]+)?)/);
-    const district = districtMatch ? districtMatch[1].trim() : null;
+    // Extract เขต — จับแค่คำเดียวหลัง "เขต" (ไม่เอาแขวง/จังหวัด)
+    const districtMatch = address.match(/เขต\s*([฀-๿]+)/);
+    const rawDistrict = districtMatch ? districtMatch[1].trim() : null;
+    // กรอง keyword ที่ไม่ใช่ชื่อเขต
+    const SKIP = ["แขวง", "จังหวัด", "กรุงเทพ", "มหานคร"];
+    const district = rawDistrict && !SKIP.some((s) => rawDistrict.startsWith(s))
+      ? rawDistrict
+      : null;
     return {
       province: "กรุงเทพมหานคร",
       district,
-      label: district ? `กรุงเทพฯ — เขต${district}` : "กรุงเทพมหานคร",
+      label: district ? `เขต${district}` : "กรุงเทพมหานคร",
     };
   }
 

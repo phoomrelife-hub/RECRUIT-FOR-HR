@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -1161,6 +1161,144 @@ function CandidateRow({
   );
 }
 
+// ── Location Combobox ─────────────────────────────────────────────────────────
+function LocationCombobox({
+  groups,
+  value,
+  onChange,
+}: {
+  groups: import("@/lib/parse-location").LocationGroup[];
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  React.useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const allOptions = groups.flatMap((g) =>
+    g.options.map((o) => ({ ...o, group: g.group }))
+  );
+
+  const filtered = search.trim()
+    ? allOptions.filter((o) =>
+        o.label.toLowerCase().includes(search.toLowerCase()) ||
+        o.group.toLowerCase().includes(search.toLowerCase())
+      )
+    : allOptions;
+
+  const selectedLabel = allOptions.find((o) => o.value === value)?.label ?? "";
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => { setOpen((v) => !v); setSearch(""); }}
+        className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs transition-colors min-w-[140px] max-w-[200px] ${
+          value
+            ? "border-blue-400 bg-blue-50 text-blue-700 font-medium"
+            : "border-slate-200 bg-white text-slate-600 hover:border-slate-400"
+        }`}
+      >
+        <MapPin className="h-3 w-3 shrink-0" />
+        <span className="truncate flex-1 text-left">
+          {value ? selectedLabel : "ทุกพื้นที่"}
+        </span>
+        {value ? (
+          <span
+            onClick={(e) => { e.stopPropagation(); onChange(""); }}
+            className="text-blue-400 hover:text-blue-700 ml-1"
+          >
+            <X className="h-3 w-3" />
+          </span>
+        ) : (
+          <span className="text-slate-400 text-[9px]">▾</span>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-lg w-56 overflow-hidden">
+          {/* Search input */}
+          <div className="p-2 border-b border-slate-100">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+              <input
+                autoFocus
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="ค้นหาเขต / จังหวัด..."
+                className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              />
+            </div>
+          </div>
+
+          {/* Options */}
+          <div className="max-h-60 overflow-y-auto py-1">
+            {/* All option */}
+            {!search && (
+              <button
+                onClick={() => { onChange(""); setOpen(false); }}
+                className={`w-full text-left px-3 py-2 text-xs transition-colors ${
+                  !value ? "bg-blue-50 text-blue-700 font-medium" : "text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                ทุกพื้นที่
+              </button>
+            )}
+
+            {/* Grouped options */}
+            {search ? (
+              filtered.length === 0 ? (
+                <p className="text-xs text-slate-400 text-center py-4">ไม่พบ</p>
+              ) : (
+                filtered.map((o) => (
+                  <button
+                    key={o.value}
+                    onClick={() => { onChange(o.value); setOpen(false); setSearch(""); }}
+                    className={`w-full text-left px-3 py-1.5 text-xs transition-colors flex items-center justify-between ${
+                      value === o.value ? "bg-blue-50 text-blue-700 font-medium" : "text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    <span>{o.label}</span>
+                    <span className="text-[10px] text-slate-400">{o.group}</span>
+                  </button>
+                ))
+              )
+            ) : (
+              groups.map((g) => (
+                <div key={g.group}>
+                  <p className="px-3 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider bg-slate-50">
+                    {g.group}
+                  </p>
+                  {g.options.map((o) => (
+                    <button
+                      key={o.value}
+                      onClick={() => { onChange(o.value); setOpen(false); setSearch(""); }}
+                      className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
+                        value === o.value ? "bg-blue-50 text-blue-700 font-medium" : "text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 export function ReviewClient({ initial, positions }: Props) {
   const [queue, setQueue] = useState<QueueCandidate[]>(initial);
@@ -1724,54 +1862,22 @@ export function ReviewClient({ initial, positions }: Props) {
         </div>
 
         {/* ── Location filter ── */}
-        {hasAddressData ? (
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-slate-500 shrink-0">📍 ที่อยู่:</span>
-            <select
-              value={locationFilter}
-              onChange={(e) => setLocationFilter(e.target.value)}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
-            >
-              <option value="">ทุกพื้นที่</option>
-              {locationGroups.map((group) => (
-                <optgroup key={group.group} label={group.group}>
-                  {group.options.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-            {locationFilter && (
-              <button
-                onClick={() => setLocationFilter("")}
-                className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-1"
-              >
-                <X className="h-3 w-3" /> ล้าง
-              </button>
-            )}
-            <button
-              onClick={handleAddressBackfill}
-              disabled={addressBackfillLoading}
-              className="ml-auto flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600 disabled:opacity-50 transition-colors"
-              title="ดึงที่อยู่จาก Notion"
-            >
-              {addressBackfillLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : "🔄"}
-              อัปเดตที่อยู่
-            </button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-400">📍 ยังไม่มีข้อมูลที่อยู่ —</span>
-            <button
-              onClick={handleAddressBackfill}
-              disabled={addressBackfillLoading}
-              className="text-xs font-medium text-blue-600 hover:text-blue-700 disabled:opacity-50 flex items-center gap-1"
-            >
-              {addressBackfillLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-              ดึงจาก Notion
-            </button>
-          </div>
-        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          <LocationCombobox
+            groups={locationGroups}
+            value={locationFilter}
+            onChange={setLocationFilter}
+          />
+          <button
+            onClick={handleAddressBackfill}
+            disabled={addressBackfillLoading}
+            className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600 disabled:opacity-50 transition-colors"
+            title="ดึงที่อยู่จาก Notion"
+          >
+            {addressBackfillLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : "🔄"}
+            {hasAddressData ? "อัปเดตที่อยู่" : "ดึงที่อยู่จาก Notion"}
+          </button>
+        </div>
 
         {/* ── Sales Admin tier legend + select-all ── */}
         {isSalesAdmin && (
