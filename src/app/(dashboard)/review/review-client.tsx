@@ -31,6 +31,8 @@ import {
   SlidersHorizontal,
   Link2,
   Tag,
+  Search,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -1175,6 +1177,7 @@ export function ReviewClient({ initial, positions }: Props) {
   const [backfillLoading, setBackfillLoading] = useState(false);
   const [fullBackfillLoading, setFullBackfillLoading] = useState(false);
   const [bulkPositionId, setBulkPositionId] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     fetch("/api/settings/auto-qualify")
@@ -1216,6 +1219,16 @@ export function ReviewClient({ initial, positions }: Props) {
     } else if (sourceFilter === "EMAIL") {
       list = list.filter((c) => EMAIL_SOURCES.includes(c.sourceChannel));
     }
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      list = list.filter((c) => {
+        const name = (c.fullName ?? c.nickname ?? c.lineDisplayName ?? "").toLowerCase();
+        const phone = (c.phone ?? "").toLowerCase();
+        const email = (c.email ?? "").toLowerCase();
+        return name.includes(q) || phone.includes(q) || email.includes(q);
+      });
+    }
     if (isSalesAdmin) {
       return [...list].sort((a, b) => {
         const ta = TIER_CONFIG[parseTier(a.experienceText)].order;
@@ -1226,7 +1239,7 @@ export function ReviewClient({ initial, positions }: Props) {
     }
     return list;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queue, activeTab, isSalesAdmin, sourceFilter]);
+  }, [queue, activeTab, isSalesAdmin, sourceFilter, searchQuery]);
 
   // IDs visible in current tab
   const filteredIds = useMemo(() => filtered.map((c) => c.id), [filtered]);
@@ -1659,6 +1672,26 @@ export function ReviewClient({ initial, positions }: Props) {
           );
         })()}
 
+        {/* ── Search bar ── */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="ค้นหาชื่อ, เบอร์โทร, อีเมล..."
+            className="w-full rounded-xl border border-slate-200 bg-white pl-9 pr-9 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-shadow"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 hover:text-slate-600 transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+
         {/* ── Sales Admin tier legend + select-all ── */}
         {isSalesAdmin && (
           <div className="flex items-center gap-2 flex-wrap p-3 rounded-xl bg-blue-50 border border-blue-100">
@@ -1705,7 +1738,11 @@ export function ReviewClient({ initial, positions }: Props) {
         {/* ── Candidate list ── */}
         <div className="space-y-2">
           {filtered.length === 0 ? (
-            <div className="py-12 text-center text-slate-400 text-sm">ไม่มีรายการในตำแหน่งนี้</div>
+            <div className="py-12 text-center text-slate-400 text-sm">
+              {searchQuery.trim()
+                ? `ไม่พบผู้สมัครที่ตรงกับ "${searchQuery}"`
+                : "ไม่มีรายการในตำแหน่งนี้"}
+            </div>
           ) : (
             filtered.map((c) => (
               <CandidateRow
