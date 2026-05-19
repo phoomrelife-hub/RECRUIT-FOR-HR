@@ -834,11 +834,11 @@ function QuickActionsPanel({
 
 export function InboxClient({
   initialConversations,
-  quickReplies,
-  candidatesWithoutConversation,
+  quickReplies: initialQuickReplies,
+  candidatesWithoutConversation: initialCandidatesWOConv,
   currentUser,
-  allTags,
-  hrUsers,
+  allTags: initialAllTags,
+  hrUsers: initialHrUsers,
 }: Props) {
   const [conversations, setConversations] = useState<Conversation[]>(initialConversations);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -867,6 +867,28 @@ export function InboxClient({
   const [showAssignMenu, setShowAssignMenu] = useState(false);
   const [showScheduleForm, setShowScheduleForm] = useState(false);
   const [scheduling, setScheduling] = useState(false);
+
+  // ── Lazy-loaded secondary data ─────────────────────────────────────────────
+  // quickReplies, allTags, hrUsers are fetched after mount to keep TTFB fast.
+  // candidatesWithoutConversation is fetched only when "New Conversation" opens.
+  const [quickReplies, setQuickReplies] = useState<QuickReply[]>(initialQuickReplies);
+  const [allTags, setAllTags] = useState<Tag[]>(initialAllTags);
+  const [hrUsers, setHrUsers] = useState<HRUser[]>(initialHrUsers);
+  const [candidatesWithoutConversation, setCandidatesWithoutConversation] = useState(initialCandidatesWOConv);
+  const [candidatesWOConvLoaded, setCandidatesWOConvLoaded] = useState(initialCandidatesWOConv.length > 0);
+
+  useEffect(() => {
+    // Fetch secondary inbox data (quickReplies, tags, hrUsers) in background after hydration
+    fetch("/api/inbox/init")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data) return;
+        setQuickReplies(data.quickReplies ?? []);
+        setAllTags(data.tags ?? []);
+        setHrUsers(data.hrUsers ?? []);
+      })
+      .catch(() => {/* non-critical */});
+  }, []);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesAreaRef = useRef<HTMLDivElement>(null);
@@ -1020,7 +1042,7 @@ export function InboxClient({
   // ── polling ──
   useEffect(() => {
     if (!activeId) return;
-    pollRef.current = setInterval(() => loadConversation(activeId), 1500);
+    pollRef.current = setInterval(() => loadConversation(activeId), 3000);
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
@@ -1274,7 +1296,20 @@ export function InboxClient({
                 <RefreshCw size={13} />
               </button>
               <button
-                onClick={() => setShowNewConv(!showNewConv)}
+                onClick={() => {
+                  setShowNewConv(!showNewConv);
+                  // Lazy-load candidates without conversations when dialog first opens
+                  if (!showNewConv && !candidatesWOConvLoaded) {
+                    fetch("/api/candidates?noConversation=true&limit=50")
+                      .then((r) => (r.ok ? r.json() : null))
+                      .then((data) => {
+                        if (!data) return;
+                        setCandidatesWithoutConversation(data.candidates ?? []);
+                        setCandidatesWOConvLoaded(true);
+                      })
+                      .catch(() => {/* non-critical */});
+                  }
+                }}
                 title="New conversation"
                 className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-colors"
               >

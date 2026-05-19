@@ -36,6 +36,7 @@ export async function GET(req: Request) {
   const source = searchParams.get("source");
   const search = searchParams.get("search");
   const jobId = searchParams.get("jobId");
+  const noConversation = searchParams.get("noConversation") === "true";
   const page = parseInt(searchParams.get("page") ?? "1");
   const limit = parseInt(searchParams.get("limit") ?? "20");
   const skip = (page - 1) * limit;
@@ -44,6 +45,8 @@ export async function GET(req: Request) {
     ...(status && status !== "ALL" ? { currentStatus: status as any } : {}),
     ...(source && source !== "ALL" ? { sourceChannel: source as any } : {}),
     ...(jobId ? { interestedPositionId: jobId } : {}),
+    // Only return candidates who have no conversation yet (for new-conversation dialog)
+    ...(noConversation ? { conversations: { none: {} } } : {}),
     ...(search
       ? {
           OR: [

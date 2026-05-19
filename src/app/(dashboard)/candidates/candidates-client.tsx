@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { CandidateStatus, SourceChannel, ExperienceStatus } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -115,6 +115,7 @@ export function CandidatesClient({
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const limit = 20;
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchCandidates = useCallback(
     async (opts: { search?: string; status?: string; source?: string; page?: number }) => {
@@ -138,9 +139,13 @@ export function CandidatesClient({
     []
   );
 
-  async function handleSearch(value: string) {
+  function handleSearch(value: string) {
     setSearch(value);
-    await fetchCandidates({ search: value, status: statusFilter, source: sourceFilter, page: 1 });
+    // Debounce: wait 350ms after typing stops before hitting the API
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      fetchCandidates({ search: value, status: statusFilter, source: sourceFilter, page: 1 });
+    }, 350);
   }
 
   async function handleStatusFilter(value: string) {

@@ -5,59 +5,42 @@ import { InboxClient } from "./inbox-client";
 export default async function InboxPage() {
   const session = await auth();
 
-  const [conversations, quickReplies, candidates, allTags, hrUsers] = await Promise.all([
-    db.conversation.findMany({
-      include: {
-        candidate: {
-          select: {
-            id: true,
-            fullName: true,
-            nickname: true,
-            phone: true,
-            lineDisplayName: true,
-            lineProfilePicUrl: true,
-            sourceChannel: true,
-            currentStatus: true,
-            interestedPosition: { select: { id: true, title: true } },
-          },
-        },
-        messages: {
-          orderBy: { createdAt: "desc" },
-          take: 1,
-          select: { id: true, content: true, senderType: true, createdAt: true },
+  // Only fetch conversations server-side — the most critical data for initial render.
+  // Secondary data (quickReplies, tags, hrUsers, candidatesWithoutConversation)
+  // is fetched client-side after hydration to keep TTFB fast.
+  const conversations = await db.conversation.findMany({
+    include: {
+      candidate: {
+        select: {
+          id: true,
+          fullName: true,
+          nickname: true,
+          phone: true,
+          lineDisplayName: true,
+          lineProfilePicUrl: true,
+          sourceChannel: true,
+          currentStatus: true,
+          interestedPosition: { select: { id: true, title: true } },
         },
       },
-      orderBy: [{ unreadCount: "desc" }, { lastMessageAt: "desc" }],
-    }),
-    db.quickReply.findMany({ orderBy: { sortOrder: "asc" } }),
-    db.candidate.findMany({
-      where: { conversations: { none: {} } },
-      select: {
-        id: true,
-        fullName: true,
-        nickname: true,
-        sourceChannel: true,
-        currentStatus: true,
+      messages: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { id: true, content: true, senderType: true, createdAt: true },
       },
-      orderBy: { createdAt: "desc" },
-      take: 50,
-    }),
-    db.tag.findMany({ orderBy: { name: "asc" } }),
-    db.user.findMany({
-      where: { status: "ACTIVE" },
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
-  ]);
+    },
+    orderBy: [{ unreadCount: "desc" }, { lastMessageAt: "desc" }],
+    take: 100,
+  });
 
   return (
     <InboxClient
       initialConversations={conversations as any}
-      quickReplies={quickReplies}
-      candidatesWithoutConversation={candidates}
+      quickReplies={[]}
+      candidatesWithoutConversation={[]}
       currentUser={{ id: session?.user?.id ?? "", name: session?.user?.name ?? "" }}
-      allTags={allTags}
-      hrUsers={hrUsers}
+      allTags={[]}
+      hrUsers={[]}
     />
   );
 }
