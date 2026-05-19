@@ -1,7 +1,63 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Plus, Loader2, X, Trash2, Tag, Lightbulb } from "lucide-react";
+import { Plus, Loader2, X, Trash2, Tag, Lightbulb, Sparkles } from "lucide-react";
+
+// ── Suggested keywords per tag name (Thai HR recruitment context) ─────────────
+const SUGGESTED_KEYWORDS: Record<string, string[]> = {
+  // ทำงานที่ไหน
+  "สนใจ WFH": ["wfh", "work from home", "ทำงานที่บ้าน", "ทำงานออนไลน์", "remote", "ทำที่บ้านได้", "ไม่ต้องเข้าออฟฟิศ", "ยืดหยุ่น", "flexible", "รีโมท", "ทำงานจากบ้าน"],
+  "สนใจ Office": ["เข้าออฟฟิศ", "อยากเข้าออฟฟิศ", "office", "ทำงานที่ออฟฟิศ", "อยากทำงานบริษัท", "เข้างาน", "ออฟฟิศ"],
+
+  // ประสบการณ์
+  "มีประสบการณ์": ["ประสบการณ์", "เคยทำ", "เคยขาย", "เคยทำงาน", "มีประสบการณ์", "experience", "ผ่านมา", "ทำมาก่อน", "เคยผ่าน", "งานเก่า", "ที่เก่า"],
+  "ไม่มีประสบการณ์": ["ไม่มีประสบการณ์", "จบใหม่", "เพิ่งจบ", "fresh grad", "ไม่เคยทำ", "no experience", "เริ่มต้น", "ยังไม่เคย", "ไม่มีงาน"],
+
+  // ความพร้อม
+  "พร้อมเริ่มงาน": ["พร้อมเริ่ม", "เริ่มได้เลย", "ว่างงาน", "พร้อมทันที", "เริ่มได้", "available", "ออกจากงานแล้ว", "ลาออกแล้ว", "ตกงาน", "ไม่มีงานทำ"],
+  "เคสด่วน": ["ด่วน", "รีบ", "urgent", "ต้องการงานด่วน", "เร่งด่วน", "ต้องการเงินด่วน", "รีบหางาน"],
+
+  // เงินเดือน
+  "เงินเดือนเกินบน": ["30000", "35000", "40000", "45000", "50000", "60000", "เงินเดือน 3", "เงินเดือน 4", "เงินเดือน 5", "salary", "สูงมาก", "ขอสูง"],
+
+  // คุณภาพ
+  "คุณภาพดี": ["ดีมาก", "เก่งมาก", "มีทักษะ", "ประสบการณ์ดี", "ผลงานดี", "ยอดดี", "ยอดขายดี", "เคยทำยอดได้"],
+  "Talent Pool": ["ศักยภาพ", "potential", "น่าสนใจ", "เก็บไว้", "ดูแล้วดี", "อนาคตดี"],
+
+  // เอกสาร
+  "รอ Resume": ["ส่งเร็วๆนี้", "จะส่ง", "resume", "cv", "ประวัติ", "ยังไม่มี", "จะส่งให้", "เตรียมไว้"],
+
+  // สาย Content
+  "Content Creator/Live stream": ["content", "creator", "ไลฟ์", "live", "ยิงไลฟ์", "ทำคอนเทนต์", "โซเชียล", "social", "tiktok", "facebook live", "youtube", "ig", "instagram", "คอนเทนต์", "ถ่ายรูป", "ตัดต่อ"],
+
+  // ใหม่ — การตลาด
+  "การตลาด": ["การตลาด", "marketing", "โปรโมต", "ประชาสัมพันธ์", "pr", "advertise", "โฆษณา", "brand", "digital marketing", "มาร์เก็ตติ้ง", "online marketing", "สื่อ"],
+
+  // ใหม่ — มีพาหนะ
+  "มีรถ": ["มีรถ", "ขับรถ", "มอเตอร์ไซค์", "motorcycle", "car", "พาหนะ", "ขับได้", "ใบขับขี่", "มีรถยนต์", "รถส่วนตัว"],
+  "มีพาหนะ": ["มีรถ", "ขับรถ", "มอเตอร์ไซค์", "motorcycle", "car", "พาหนะ", "ขับได้", "ใบขับขี่", "มีรถยนต์", "รถส่วนตัว"],
+
+  // ใหม่ — ภาษา
+  "ภาษาอังกฤษดี": ["ภาษาอังกฤษ", "english", "toeic", "อังกฤษดี", "สื่อสารภาษาอังกฤษ", "communicate in english", "พูดอังกฤษได้", "อ่านภาษาอังกฤษ"],
+
+  // ใหม่ — บริหาร
+  "มีประสบการณ์บริหาร": ["ผู้จัดการ", "manager", "บริหาร", "ดูแลทีม", "supervisor", "team lead", "หัวหน้า", "ควบคุมทีม", "บริหารทีม", "manage"],
+  "หัวหน้าทีม": ["ผู้จัดการ", "manager", "บริหาร", "ดูแลทีม", "supervisor", "team lead", "หัวหน้า", "ควบคุมทีม"],
+
+  // ใหม่ — ทักษะเฉพาะ
+  "ทักษะคอมพิวเตอร์": ["word", "excel", "คอมพิวเตอร์", "ออฟฟิศ", "office", "google sheet", "spreadsheet", "powerpoint", "พิมพ์ดีด", "ใช้คอมได้"],
+  "ทักษะขาย": ["ขาย", "sales", "ปิดการขาย", "โน้มน้าว", "ลูกค้า", "ติดตาม", "follow up", "เซลล์", "ยอดขาย", "ขายของ"],
+};
+
+// ── Tag suggestions (new tags to create) ─────────────────────────────────────
+export const SUGGESTED_NEW_TAGS = [
+  { name: "การตลาด",              color: "#ec4899", keywords: SUGGESTED_KEYWORDS["การตลาด"] },
+  { name: "มีรถ",                  color: "#f59e0b", keywords: SUGGESTED_KEYWORDS["มีรถ"] },
+  { name: "ภาษาอังกฤษดี",         color: "#3b82f6", keywords: SUGGESTED_KEYWORDS["ภาษาอังกฤษดี"] },
+  { name: "มีประสบการณ์บริหาร",   color: "#8b5cf6", keywords: SUGGESTED_KEYWORDS["มีประสบการณ์บริหาร"] },
+  { name: "ทักษะคอมพิวเตอร์",     color: "#06b6d4", keywords: SUGGESTED_KEYWORDS["ทักษะคอมพิวเตอร์"] },
+  { name: "ทักษะขาย",             color: "#10b981", keywords: SUGGESTED_KEYWORDS["ทักษะขาย"] },
+];
 
 interface TaggingRule {
   id: string;
@@ -256,6 +312,38 @@ export function TaggingRulesTab() {
         )}
       </div>
 
+      {/* Suggested new tags section */}
+      {(() => {
+        const existingTagNames = new Set(tags.map((t) => t.name));
+        const missing = SUGGESTED_NEW_TAGS.filter((s) => !existingTagNames.has(s.name));
+        if (missing.length === 0) return null;
+        return (
+          <div className="border border-dashed border-violet-200 rounded-xl p-4 bg-violet-50/40 space-y-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-violet-500" />
+              <p className="text-sm font-medium text-violet-700">Tag ที่แนะนำให้เพิ่ม</p>
+            </div>
+            <p className="text-xs text-violet-500">
+              Tag เหล่านี้ยังไม่มีในระบบ — ไปสร้างที่{" "}
+              <a href="/tags" className="underline font-medium hover:text-violet-700">จัดการแท็ก</a>{" "}
+              แล้วกลับมาตั้งค่า keyword ได้เลย
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {missing.map((s) => (
+                <span
+                  key={s.name}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium text-white"
+                  style={{ backgroundColor: s.color }}
+                >
+                  <Tag className="h-3 w-3" />
+                  {s.name}
+                </span>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Form modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4">
@@ -301,9 +389,25 @@ export function TaggingRulesTab() {
 
             {/* Keywords input */}
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700">
-                คำที่ระบบจะมองหา
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-slate-700">
+                  คำที่ระบบจะมองหา
+                </label>
+                {/* Suggested keywords button */}
+                {selectedTag && SUGGESTED_KEYWORDS[selectedTag.name] && (
+                  <button
+                    onClick={() => {
+                      const suggestions = SUGGESTED_KEYWORDS[selectedTag.name] ?? [];
+                      const newKws = suggestions.filter((kw) => !keywords.includes(kw));
+                      setKeywords((prev) => [...prev, ...newKws]);
+                    }}
+                    className="flex items-center gap-1 text-xs text-violet-600 hover:text-violet-800 font-medium transition-colors"
+                  >
+                    <Sparkles className="h-3 w-3" />
+                    ใส่ keyword แนะนำ
+                  </button>
+                )}
+              </div>
               <p className="text-xs text-slate-400">พิมพ์คำ แล้วกด Enter หรือ , เพื่อเพิ่ม</p>
 
               <div

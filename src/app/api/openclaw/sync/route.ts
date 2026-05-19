@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { getLineProfile, pushMessage } from "@/lib/line";
 import { sanitizeBotReply } from "@/lib/sanitize-bot-reply";
+import { applyKeywordTagging } from "@/lib/auto-tag";
 import { NextResponse } from "next/server";
 
 // OpenClaw calls this endpoint after Daniel-hr sends/receives a LINE message
@@ -168,6 +169,12 @@ export async function POST(req: Request) {
       where: { id: conversation.id },
       data: { lastMessageAt: new Date(), status: "ACTIVE", unreadCount: { increment: 1 } },
     });
+
+    // ── Keyword Auto Tagging ─────────────────────────────────────────────────
+    // Run non-blocking — tagging failure must not break the sync response
+    applyKeywordTagging(candidate.id, userMessage).catch((err) =>
+      console.error("[auto-tag] keyword tagging error:", err)
+    );
   }
 
   // save bot reply if present (skip backfill sentinel)
