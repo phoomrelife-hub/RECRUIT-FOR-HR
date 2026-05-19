@@ -392,7 +392,7 @@ function CandidateCard({
         )}
         {c.conversationId && (
           <Link
-            href={`/inbox/${c.conversationId}`}
+            href={`/inbox?c=${c.conversationId}`}
             className="inline-flex items-center gap-1 text-[10px] bg-blue-50 text-blue-600 rounded px-1.5 py-0.5 border border-blue-100 hover:bg-blue-100 transition-colors"
           >
             <MessageCircle className="h-2.5 w-2.5" />
@@ -505,6 +505,14 @@ export function ShortlistClient({ qualified, scheduled, interviewed, passed }: P
     toast.success(`${getName(c)} มาร์กสัมภาษณ์แล้ว`);
   }
 
+  async function handleRemoveFromShortlist(c: ShortlistCandidate) {
+    if (!confirm(`นำ "${getName(c)}" ออกจาก Shortlist ใช่ไหม? สถานะจะย้ายกลับไป "รอ HR พิจารณา"`)) return;
+    const ok = await moveStatus(c.id, "WAITING_HR_REVIEW");
+    if (!ok) return;
+    setQualifiedList((prev) => prev.filter((x) => x.id !== c.id));
+    toast.success(`นำ "${getName(c)}" ออกจาก Shortlist แล้ว`);
+  }
+
   async function handleCancelInterview(c: ShortlistCandidate) {
     if (!confirm(`ยืนยันยกเลิกนัดสัมภาษณ์ของ "${getName(c)}" ใช่ไหม?`)) return;
     try {
@@ -580,17 +588,27 @@ export function ShortlistClient({ qualified, scheduled, interviewed, passed }: P
               key={c.id}
               c={c}
               actions={
-                <Button
-                  size="sm"
-                  className="w-full h-7 text-xs gap-1 bg-blue-600 hover:bg-blue-700 text-white"
-                  onClick={() => {
-                    setScheduleTarget(c);
-                    setScheduleOpen(true);
-                  }}
-                >
-                  <CalendarDays className="h-3.5 w-3.5" />
-                  นัดสัมภาษณ์
-                </Button>
+                <div className="flex flex-col gap-1.5">
+                  <Button
+                    size="sm"
+                    className="w-full h-7 text-xs gap-1 bg-blue-600 hover:bg-blue-700 text-white"
+                    onClick={() => {
+                      setScheduleTarget(c);
+                      setScheduleOpen(true);
+                    }}
+                  >
+                    <CalendarDays className="h-3.5 w-3.5" />
+                    นัดสัมภาษณ์
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full h-7 text-xs gap-1 border-red-100 text-red-500 hover:bg-red-50 hover:border-red-300"
+                    onClick={() => handleRemoveFromShortlist(c)}
+                  >
+                    ❌ ยกเลิก / นำออก
+                  </Button>
+                </div>
               }
             />
           ))}

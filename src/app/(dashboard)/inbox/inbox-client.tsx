@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 import { th } from "date-fns/locale";
 import {
@@ -876,6 +877,17 @@ export function InboxClient({
   const [hrUsers, setHrUsers] = useState<HRUser[]>(initialHrUsers);
   const [candidatesWithoutConversation, setCandidatesWithoutConversation] = useState(initialCandidatesWOConv);
   const [candidatesWOConvLoaded, setCandidatesWOConvLoaded] = useState(initialCandidatesWOConv.length > 0);
+
+  const searchParams = useSearchParams();
+  const autoSelectDoneRef = useRef(false);
+
+  useEffect(() => {
+    const convId = searchParams.get("c");
+    if (!convId || autoSelectDoneRef.current || conversations.length === 0) return;
+    autoSelectDoneRef.current = true;
+    selectConv(convId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversations, searchParams]);
 
   useEffect(() => {
     // Fetch secondary inbox data (quickReplies, tags, hrUsers) in background after hydration

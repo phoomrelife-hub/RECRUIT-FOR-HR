@@ -202,7 +202,7 @@ function InterviewCard({
 
         {/* Chat / Inbox */}
         <Link
-          href={conversationId ? `/inbox/${conversationId}` : `/inbox`}
+          href={conversationId ? `/inbox?c=${conversationId}` : `/inbox`}
           className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-white hover:text-slate-900 hover:shadow-sm border border-transparent hover:border-slate-200 transition-all"
         >
           <MessageSquare className="h-3.5 w-3.5" />
