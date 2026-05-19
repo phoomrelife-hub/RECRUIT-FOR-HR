@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { db } from "@/lib/db";
 import { getLineProfile, pushMessage } from "@/lib/line";
 import { sanitizeBotReply } from "@/lib/sanitize-bot-reply";
@@ -225,9 +226,18 @@ async function handleInterviewResponse(
 
     if (response === "ไม่สะดวก") {
       try {
+        const token = crypto.randomBytes(24).toString("hex");
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+        await db.candidate.update({
+          where: { id: candidateId },
+          data: { scheduleToken: token, scheduleTokenExpiresAt: expiresAt },
+        });
+
+        const baseUrl = process.env.NEXTAUTH_URL ?? "https://recruit-for-hr.vercel.app";
         await pushMessage(
           lineUserId,
-          `ขอบคุณที่แจ้งให้ทราบนะคะ ${name} 🙏\n\nทางทีมจะติดต่อเพื่อนัดวันและเวลาใหม่ที่สะดวกกว่านี้ให้ค่ะ 📅`
+          `ขอบคุณที่แจ้งให้ทราบนะคะ คุณ${name} 🙏\n\nกรุณาเลือกวันและเวลาสัมภาษณ์ที่สะดวกได้เลยนะคะ 📅\n\n${baseUrl}/schedule/${token}\n\n(ลิงก์มีอายุ 7 วันค่ะ)`
         );
       } catch { /* non-critical */ }
     }
