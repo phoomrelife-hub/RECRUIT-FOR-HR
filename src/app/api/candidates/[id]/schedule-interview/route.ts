@@ -97,6 +97,13 @@ export async function POST(
     },
   });
 
+  // ── Find conversation for inbox saving ──────────────────────────────────
+  const conversation = await db.conversation.findFirst({
+    where: { candidateId: id },
+    orderBy: { lastMessageAt: "desc" },
+    select: { id: true },
+  });
+
   // ── Send LINE push + Quick Reply ─────────────────────────────────────────
   let lineSent = false;
   if (candidate.lineUserId) {
@@ -144,6 +151,22 @@ export async function POST(
         { label: "❌ ไม่สะดวก", text: "ไม่สะดวก" },
       ]);
       lineSent = true;
+
+      // Save to inbox so it appears in the chat view
+      if (conversation) {
+        await db.message.create({
+          data: {
+            conversationId: conversation.id,
+            content: msgText,
+            senderType: "HR",
+            senderId: (session.user as { id?: string })?.id ?? undefined,
+          },
+        });
+        await db.conversation.update({
+          where: { id: conversation.id },
+          data: { lastMessageAt: new Date() },
+        });
+      }
     } catch (err) {
       console.error("LINE push failed:", err);
     }
