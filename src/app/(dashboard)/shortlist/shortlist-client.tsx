@@ -39,6 +39,8 @@ type ShortlistCandidate = {
   currentStatus: string;
   interestedPosition: { title: string } | null;
   latestResponse: string | null; // "confirmed" | "declined" | null
+  interviewId: string | null;
+  conversationId: string | null;
 };
 
 interface Props {
@@ -375,7 +377,7 @@ function CandidateCard({
         )}
       </div>
 
-      <div className="flex gap-1.5 flex-wrap">
+      <div className="flex gap-1.5 flex-wrap items-center">
         {c.phone && (
           <span className="inline-flex items-center gap-1 text-[10px] bg-slate-50 text-slate-500 rounded px-1.5 py-0.5 border border-slate-100">
             <Phone className="h-2.5 w-2.5" />
@@ -387,6 +389,15 @@ function CandidateCard({
             <MessageCircle className="h-2.5 w-2.5" />
             LINE
           </span>
+        )}
+        {c.conversationId && (
+          <Link
+            href={`/inbox/${c.conversationId}`}
+            className="inline-flex items-center gap-1 text-[10px] bg-blue-50 text-blue-600 rounded px-1.5 py-0.5 border border-blue-100 hover:bg-blue-100 transition-colors"
+          >
+            <MessageCircle className="h-2.5 w-2.5" />
+            แชท
+          </Link>
         )}
       </div>
 
@@ -494,6 +505,23 @@ export function ShortlistClient({ qualified, scheduled, interviewed, passed }: P
     toast.success(`${getName(c)} มาร์กสัมภาษณ์แล้ว`);
   }
 
+  async function handleCancelInterview(c: ShortlistCandidate) {
+    if (!confirm(`ยืนยันยกเลิกนัดสัมภาษณ์ของ "${getName(c)}" ใช่ไหม?`)) return;
+    try {
+      if (c.interviewId) {
+        const res = await fetch(`/api/interviews/${c.interviewId}`, { method: "DELETE" });
+        if (!res.ok) throw new Error("ลบนัดไม่สำเร็จ");
+      }
+      const ok = await moveStatus(c.id, "QUALIFIED");
+      if (!ok) return;
+      setScheduledList((prev) => prev.filter((x) => x.id !== c.id));
+      setQualifiedList((prev) => [{ ...c, currentStatus: "QUALIFIED", latestResponse: null, interviewId: null }, ...prev]);
+      toast.success(`ยกเลิกนัด "${getName(c)}" แล้ว`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "เกิดข้อผิดพลาด");
+    }
+  }
+
   // เลื่อนนัด → กลับไป QUALIFIED (นัดใหม่ได้)
   async function handleReschedule(c: ShortlistCandidate) {
     const ok = await moveStatus(c.id, "QUALIFIED");
@@ -580,39 +608,49 @@ export function ShortlistClient({ qualified, scheduled, interviewed, passed }: P
               key={c.id}
               c={c}
               actions={
-                c.latestResponse === "declined" ? (
-                  // ไม่สะดวก → แสดงปุ่มเลื่อนนัดเด่น
+                <div className="flex flex-col gap-1.5">
+                  {c.latestResponse === "declined" ? (
+                    // ไม่สะดวก → แสดงปุ่มเลื่อนนัดเด่น
+                    <Button
+                      size="sm"
+                      className="w-full h-7 text-xs gap-1 bg-red-600 hover:bg-red-700 text-white"
+                      onClick={() => handleReschedule(c)}
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      เลื่อนนัด (นัดใหม่)
+                    </Button>
+                  ) : (
+                    // ปกติ / ยืนยันแล้ว → 2 ปุ่ม
+                    <div className="flex gap-1.5">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 h-7 text-xs gap-1 border-slate-200 text-slate-500 hover:bg-slate-50"
+                        onClick={() => handleReschedule(c)}
+                        title="เลื่อนนัด"
+                      >
+                        <RefreshCw className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 h-7 text-xs gap-1 border-blue-200 text-blue-700 hover:bg-blue-50"
+                        onClick={() => handleMarkInterviewed(c)}
+                      >
+                        <ChevronRight className="h-3.5 w-3.5" />
+                        สัมภาษณ์แล้ว
+                      </Button>
+                    </div>
+                  )}
                   <Button
                     size="sm"
-                    className="w-full h-7 text-xs gap-1 bg-red-600 hover:bg-red-700 text-white"
-                    onClick={() => handleReschedule(c)}
+                    variant="outline"
+                    className="w-full h-7 text-xs gap-1 border-red-100 text-red-500 hover:bg-red-50 hover:border-red-300"
+                    onClick={() => handleCancelInterview(c)}
                   >
-                    <RefreshCw className="h-3.5 w-3.5" />
-                    เลื่อนนัด (นัดใหม่)
+                    ❌ ยกเลิกนัด
                   </Button>
-                ) : (
-                  // ปกติ / ยืนยันแล้ว → 2 ปุ่ม
-                  <div className="flex gap-1.5">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="flex-1 h-7 text-xs gap-1 border-slate-200 text-slate-500 hover:bg-slate-50"
-                      onClick={() => handleReschedule(c)}
-                      title="เลื่อนนัด"
-                    >
-                      <RefreshCw className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="flex-1 h-7 text-xs gap-1 border-blue-200 text-blue-700 hover:bg-blue-50"
-                      onClick={() => handleMarkInterviewed(c)}
-                    >
-                      <ChevronRight className="h-3.5 w-3.5" />
-                      สัมภาษณ์แล้ว
-                    </Button>
-                  </div>
-                )
+                </div>
               }
             />
           ))}

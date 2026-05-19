@@ -21,12 +21,17 @@ export default async function ShortlistPage() {
       phone: true,
       currentStatus: true,
       interestedPosition: { select: { title: true } },
+      conversations: {
+        orderBy: { lastMessageAt: "desc" },
+        take: 1,
+        select: { id: true },
+      },
       // latest SCHEDULED interview → for candidateResponse
       interviews: {
         where: { status: "SCHEDULED" },
         orderBy: { createdAt: "desc" },
         take: 1,
-        select: { candidateResponse: true, respondedAt: true },
+        select: { id: true, candidateResponse: true, respondedAt: true },
       },
     },
     orderBy: { updatedAt: "desc" },
@@ -36,6 +41,8 @@ export default async function ShortlistPage() {
   const withResponse = candidates.map((c) => ({
     ...c,
     latestResponse: c.interviews[0]?.candidateResponse ?? null,
+    interviewId: c.interviews[0]?.id ?? null,
+    conversationId: c.conversations[0]?.id ?? null,
   }));
 
   const qualified   = withResponse.filter((c) => c.currentStatus === "QUALIFIED");
