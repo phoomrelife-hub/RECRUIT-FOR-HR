@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { getCachedOpenJobs } from "@/lib/cached-queries";
 import { CandidatesClient } from "./candidates-client";
 
 export default async function CandidatesPage() {
@@ -26,11 +27,7 @@ export default async function CandidatesPage() {
       take: 20,
     }),
     db.candidate.count(),
-    db.jobPosition.findMany({
-      where: { status: "OPEN" },
-      select: { id: true, title: true },
-      orderBy: { title: "asc" },
-    }),
+    getCachedOpenJobs(),
   ]);
 
   return (

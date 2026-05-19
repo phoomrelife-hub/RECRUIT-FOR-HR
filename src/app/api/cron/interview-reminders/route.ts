@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { pushMessage } from "@/lib/line";
+import { pushMessageWithQuickReply } from "@/lib/line";
 import { NextResponse } from "next/server";
 
 // POST /api/cron/interview-reminders
@@ -94,7 +94,10 @@ export async function GET(req: Request) {
     msgLines.push(``, `ขอให้โชคดีนะคะ 🍀`, `— ทีม Relife Solutions`);
 
     try {
-      await pushMessage(c.lineUserId, msgLines.join("\n"));
+      await pushMessageWithQuickReply(c.lineUserId, msgLines.join("\n"), [
+        { label: "✅ สะดวก",    text: "สะดวก" },
+        { label: "❌ ไม่สะดวก", text: "ไม่สะดวก" },
+      ]);
       // Mark reminder as sent
       await db.interview.update({
         where: { id: iv.id },

@@ -44,6 +44,7 @@ model User {
   hiringDecisions     HiringDecision[]
   auditLogs           AuditLog[]
   sentMessages        Message[]
+  interviewSlots      InterviewSlot[]
 
   @@map("users")
 }
@@ -209,8 +210,11 @@ model Candidate {
   screeningAnswers   ScreeningAnswer[]
   candidateScore     CandidateScore?
   aiSummary          AiSummary?
-  interviews         Interview[]
-  hiringDecision     HiringDecision?
+  interviews             Interview[]
+  hiringDecision         HiringDecision?
+  scheduleToken          String?       @unique @map("schedule_token")
+  scheduleTokenExpiresAt DateTime?     @map("schedule_token_expires_at")
+  interviewSlots         InterviewSlot[]
 
   @@map("candidates")
 }
@@ -925,4 +929,26 @@ model AIConversation {
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@map("ai_conversations")
+}
+
+// ─────────────────────────────────────────────
+// INTERVIEW SLOTS (candidate self-scheduling)
+// ─────────────────────────────────────────────
+
+model InterviewSlot {
+  id            String        @id @default(cuid())
+  date          DateTime      // date of interview (time ignored — use startTime/endTime)
+  startTime     String        @map("start_time")   // "10:00"
+  endTime       String        @map("end_time")     // "11:00"
+  interviewType InterviewType @default(ONSITE) @map("interview_type")
+  location      String?
+  meetingLink   String?       @map("meeting_link")
+  isBooked      Boolean       @default(false) @map("is_booked")
+  bookedById    String?       @map("booked_by_id")
+  bookedBy      Candidate?    @relation(fields: [bookedById], references: [id])
+  createdById   String        @map("created_by_id")
+  createdBy     User          @relation(fields: [createdById], references: [id])
+  createdAt     DateTime      @default(now()) @map("created_at")
+
+  @@map("interview_slots")
 }

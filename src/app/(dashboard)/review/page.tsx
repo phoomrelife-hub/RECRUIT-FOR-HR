@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { getCachedAllJobs } from "@/lib/cached-queries";
 import { ReviewClient } from "./review-client";
 import { ClipboardCheck } from "lucide-react";
 import { fuzzyMatchPosition, extractPositionFromMessage } from "@/lib/position-match";
@@ -34,10 +35,7 @@ export default async function ReviewQueuePage() {
       orderBy: { createdAt: "asc" },
     }),
 
-    db.jobPosition.findMany({
-      select: { id: true, title: true },
-      orderBy: { createdAt: "asc" },
-    }),
+    getCachedAllJobs(),
   ]);
 
   // ── Detect position for unlinked candidates ─────────────────────────────

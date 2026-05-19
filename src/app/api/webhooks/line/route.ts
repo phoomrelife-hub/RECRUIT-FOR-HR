@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { db } from "@/lib/db";
 import { verifyLineSignature, getLineProfile, pushMessage, type LineWebhookPayload } from "@/lib/line";
 import { NextResponse } from "next/server";
@@ -147,16 +148,31 @@ async function handleInterviewResponse(
       data: { candidateResponse, respondedAt: new Date() },
     });
 
-    // If declined: push a follow-up message
+    // If declined: generate a self-scheduling token and send booking link
     if (candidateResponse === "declined") {
       const name = candidate.fullName ?? candidate.nickname ?? candidate.lineDisplayName ?? "คุณ";
       try {
+        const token = crypto.randomBytes(24).toString("hex");
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+        await db.candidate.update({
+          where: { id: candidate.id },
+          data: { scheduleToken: token, scheduleTokenExpiresAt: expiresAt },
+        });
+
+        const baseUrl = process.env.NEXTAUTH_URL ?? "https://recruit-for-hr.vercel.app";
+        const bookingUrl = `${baseUrl}/schedule/${token}`;
+
         await pushMessage(
           lineUserId,
-          `ขอบคุณที่แจ้งให้ทราบนะคะ ${name} 🙏\n\nทางทีมจะติดต่อเพื่อนัดวันและเวลาใหม่ที่สะดวกกว่านี้ให้ค่ะ 📅`
+          `ขอบคุณที่แจ้งให้ทราบนะคะ คุณ${name} 🙏\n\nกรุณาเลือกวันและเวลาสัมภาษณ์ที่สะดวกได้เลยนะคะ 📅\n\n${bookingUrl}\n\n(ลิงก์มีอายุ 7 วันค่ะ)`
         );
       } catch {
-        // non-critical, ignore
+        // non-critical — fall back to plain message
+        await pushMessage(
+          lineUserId,
+          `ขอบคุณที่แจ้งให้ทราบนะคะ ${name} 🙏\nทางทีมจะติดต่อเพื่อนัดวันใหม่ที่สะดวกกว่านี้ให้ค่ะ 📅`
+        ).catch(() => null);
       }
     }
   } catch (err) {

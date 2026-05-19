@@ -101,6 +101,7 @@ src/app/api/
   conversations/[id]/takeover/          — HR takeover / release bot
   quick-replies/                        — list quick replies
   calendar/interviews/                  — GET ?month=YYYY-MM → interviews grouped by Bangkok date
+  inbox/init/                           — GET: returns quickReplies + tags + hrUsers (batch lazy load)
   cron/interview-reminders/             — GET (Vercel cron, CRON_SECRET auth) — daily LINE reminder at 07:00 BKK
   openclaw/webhook/                     — mock incoming message + bot reply
   openclaw/sync/                        — LINE→Recruit sync: candidate msg + LINE profile
@@ -189,9 +190,18 @@ type Tier = "high" | "mid" | "low" | "unspecified" | "none"
 - Server component fetches current month SCHEDULED interviews → passes to CalendarClient
 - Month grid: green highlight = today, violet badge = days with interviews
 - Click day → update daily detail panel (right side)
-- Interview cards: time, avatar, type badge (ONLINE/ONSITE), meeting link or location, candidateResponse badge
+- Interview cards: time range (startTime–endTime), avatar, type badge (ONLINE/ONSITE/PHONE), meeting link or location, candidateResponse badge
+- **Quick Actions** on each card (action bar at bottom):
+  - 👤 โปรไฟล์ → `/candidates/[id]`
+  - 💬 แชท → `/inbox/[conversationId]` (only if candidate has conversation)
+  - 📋 Copy Link (ONLINE only) → copies meetingLink to clipboard with 2s feedback
+  - ▶️ เปิด Meet (ONLINE only) → opens meetingLink in new tab
+  - 🗑️ ลบนัด → DELETE `/api/interviews/[id]` (confirm dialog first)
+- Deletions update state instantly (`days` held in `useState`, `onDeleted` callback from InterviewCard)
+- DB query also selects `endTime` + `candidate.conversations` (latest 1)
 - `GET /api/calendar/interviews?month=YYYY-MM` — Bangkok UTC+7 date grouping
 - Month navigation handled client-side (useRouter + searchParams)
+- InterviewType union: `"ONLINE" | "ONSITE" | "PHONE"`
 
 ## Interview Reminder Cron
 - **Schedule**: `0 0 * * *` UTC = 07:00 Bangkok (defined in `vercel.json`)
@@ -236,13 +246,27 @@ type Tier = "high" | "mid" | "low" | "unspecified" | "none"
 - Status label changed: "ส่งข้อความก่อนนัดสัมภาษณ์" (was "รอคอนเฟิร์มเริ่มงาน")
 - This stage = online interview invitation, not job confirmation
 
-## Schema Changes (this session)
+## Schema Changes
 ```prisma
 model Interview {
-  reminderSentAt  DateTime? @map("reminder_sent_at")  // ← added
+  reminderSentAt  DateTime? @map("reminder_sent_at")  // ← added Phase 13
 }
 model Candidate {
-  maxSalesAmount  Int?  @map("max_sales_amount")       // ← added
+  maxSalesAmount       Int?      @map("max_sales_amount")         // ← added Phase 13
+  // Phase 14 (planned — self-scheduling):
+  scheduleToken        String?   @unique @map("schedule_token")
+  scheduleTokenExpiresAt DateTime? @map("schedule_token_expires_at")
+}
+// Phase 14 (planned — self-scheduling):
+model InterviewSlot {
+  id          String   @id @default(cuid())
+  date        DateTime
+  startTime   DateTime
+  endTime     DateTime
+  label       String?
+  isAvailable Boolean  @default(true) @map("is_available")
+  createdAt   DateTime @default(now()) @map("created_at")
+  @@map("interview_slots")
 }
 ```
 
@@ -294,6 +318,13 @@ npx prisma generate  # regenerate client
   - Notion sidebar in review page: fetch page properties + deep Q&A
   - Auto-qualify rules: expPassTiers + salaryMax + salesMin stored in Setting table
   - Shortlist label: "ส่งข้อความก่อนนัดสัมภาษณ์"
+- [x] Phase 14: Performance + UX Improvements *(2026-05-19)*
+  - **nextjs-toploader**: blue progress bar on all page transitions (`src/app/layout.tsx`)
+  - **Inbox lazy loading**: server page only fetches conversations (take: 100); secondary data (quickReplies, tags, hrUsers) fetched client-side via `/api/inbox/init`; candidatesWithoutConversation lazy-fetched only when "+ New Conversation" clicked
+  - **Candidates search debounce**: 350ms debounce using `useRef<ReturnType<typeof setTimeout>>` in candidates-client.tsx
+  - **Loading skeletons** (`loading.tsx`): candidates/[id], jobs, interviews, reports, screening, settings/ai
+  - **Delete interview button**: trash icon in interview-section.tsx (SCHEDULED interviews only); `DELETE /api/interviews/[id]`; confirm dialog; updates list instantly + router.refresh()
+  - **Calendar quick actions**: action bar on each InterviewCard (Profile, Chat, Copy Link, Open Meet, Delete); deletions update CalendarClient state instantly (days as useState, onDeleted callback)
 
 ## UI Conventions
 - Colors: blue-600 primary, slate-* neutral, green passed, red rejected, yellow waiting
@@ -304,11 +335,13 @@ npx prisma generate  # regenerate client
 
 ## Chat Center Conventions
 - Inbox page uses `h-[calc(100vh-4rem-1.5rem)] -m-6` to fill full viewport
-- Polling: conversation detail 3s; unread count 10s; conversation list 5s
+- Polling: conversation detail **3s**; unread count 10s; conversation list **5s**
 - Conversation list sorted by `lastMessageAt desc`
 - Takeover: HumanTakeover record + SYSTEM message + botEnabled=false
 - HR takeover check: **HumanTakeover records** (not botEnabled field)
 - LINE profile (displayName + pictureUrl) saved to candidate on every sync
+- **Lazy loading** (Phase 14): InboxClient starts with empty quickReplies/tags/hrUsers → fetches `/api/inbox/init` on mount; candidatesWithoutConversation fetched only when "+ New Conversation" clicked (`?noConversation=true`)
+- Inbox server page only queries conversations (take: 100) — secondary data deferred to client
 
 ## Tags Conventions (Phase 4)
 - Tags are global — managed at `/tags`; HR_MANAGER+ create/edit/delete
@@ -443,8 +476,30 @@ wsl -d Ubuntu-24.04 -u graph -- sh -c 'cd /home/graph/.openclaw/workspace-hr/scr
 12. Notion API accepts both hyphenated and non-hyphenated page IDs
 13. Auto-qualify: null salary/sales = skip rule (don't reject just because data is missing)
 
+## Candidate Self-Scheduling (Phase 15 — Planned)
+**Flow**: ผู้สมัครตอบ "ไม่สะดวก" → bot auto-sends booking link → ผู้สมัครเปิด link เลือก slot เอง → ระบบสร้างนัดอัตโนมัติ
+
+**Files to create/modify**:
+- `prisma/schema.prisma` — add `InterviewSlot` model + `scheduleToken`/`scheduleTokenExpiresAt` on Candidate
+- `prisma/migrations/` — `npx prisma migrate dev --name add_interview_slots_and_schedule_token`
+- `src/app/api/interview-slots/route.ts` — GET (list) + POST (create)
+- `src/app/api/interview-slots/[id]/route.ts` — DELETE
+- `src/app/api/schedule/[token]/route.ts` — GET (validate token + list slots) + POST (book slot → creates Interview)
+- `src/app/schedule/[token]/page.tsx` — **public page** (outside `(dashboard)` group) — shows available slots, candidate books one
+- `src/proxy.ts` — add `/schedule` and `/api/schedule` as public routes (bypass auth)
+- `src/app/api/openclaw/sync/route.ts` — in `handleInterviewResponse()`: detect "ไม่สะดวก" → generate token → send LINE booking link
+- Calendar page — add slot management UI (HR ตั้ง slot ล่วงหน้า)
+
+**Token generation**: `crypto.randomBytes(24).toString("hex")`, 7-day expiry
+**Booking link format**: `https://recruit-for-hr.vercel.app/schedule/[token]`
+
+**When candidate books**: POST `/api/schedule/[token]` with `slotId` → creates Interview record + marks slot unavailable + marks token used + sends LINE confirmation
+
 ## Known Issues / TODO
 - [x] ~~**DELETE** `/api/admin/notion-test`~~ — ลบแล้ว (2026-05-10); NOTION_TOKEN อัปเดตใน Vercel แล้ว ทำงานปกติ
 - [x] ~~**Notion 502 in production**~~ — แก้แล้ว: อัปเดต NOTION_TOKEN ใน Vercel (2026-05-10)
 - [x] ~~**LINE bot offline**~~ — แก้แล้ว: ngrok เป็น primary tunnel (static domain ถาวร)
-- [ ] **Candidate self-scheduling** — send link for candidates to pick interview time slots (not implemented)
+- [x] ~~**Candidate self-scheduling**~~ — plan completed (see Phase 15 section above), not yet implemented
+- [ ] **Implement Phase 15**: Candidate self-scheduling (schema + APIs + public page + bot trigger)
+- [ ] **Fix `/api/admin/backfill-address`** — missing `x-admin-secret` header check
+- [ ] **Delete interview audit log** — `DELETE /api/interviews/[id]` should create AuditLog entry

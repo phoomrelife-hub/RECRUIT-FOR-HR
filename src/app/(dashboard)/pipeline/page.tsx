@@ -1,15 +1,11 @@
 import { auth } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { getCachedOpenJobs } from "@/lib/cached-queries";
 import { PipelineClient } from "./pipeline-client";
 
 export default async function PipelinePage() {
   const session = await auth();
 
-  const jobs = await db.jobPosition.findMany({
-    where: { status: "OPEN" },
-    select: { id: true, title: true },
-    orderBy: { title: "asc" },
-  });
+  const jobs = await getCachedOpenJobs();
 
   return (
     <PipelineClient
