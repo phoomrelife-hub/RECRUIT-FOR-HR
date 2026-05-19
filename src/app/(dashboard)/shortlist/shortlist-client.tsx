@@ -513,8 +513,14 @@ export function ShortlistClient({ qualified, scheduled, interviewed, passed }: P
     toast.success(`นำ "${getName(c)}" ออกจาก Shortlist แล้ว`);
   }
 
+  const CANCEL_MSG =
+    "สวัสดีค่ะ 🙏 ขอบคุณมากที่สนใจร่วมงานกับเรานะคะ\n\n" +
+    "ต้องขออภัยด้วยนะคะ ทางบริษัทขอยกเลิกการนัดสัมภาษณ์ในครั้งนี้ " +
+    "เนื่องจากเราได้คัดเลือกผู้ที่เหมาะสมกับตำแหน่งเรียบร้อยแล้วค่ะ 😊\n\n" +
+    "หวังว่าจะมีโอกาสได้ร่วมงานกันในอนาคตนะคะ ขอให้โชคดีเสมอเลยนะคะ ✨";
+
   async function handleCancelInterview(c: ShortlistCandidate) {
-    if (!confirm(`ยืนยันยกเลิกนัดสัมภาษณ์ของ "${getName(c)}" ใช่ไหม?`)) return;
+    if (!confirm(`ยืนยันยกเลิกนัดสัมภาษณ์ของ "${getName(c)}" ใช่ไหม?\n\nระบบจะส่ง LINE แจ้งยกเลิกให้อัตโนมัติ`)) return;
     try {
       if (c.interviewId) {
         const res = await fetch(`/api/interviews/${c.interviewId}`, { method: "DELETE" });
@@ -522,9 +528,21 @@ export function ShortlistClient({ qualified, scheduled, interviewed, passed }: P
       }
       const ok = await moveStatus(c.id, "QUALIFIED");
       if (!ok) return;
+
+      // Send LINE cancellation message if candidate has a conversation
+      let lineSent = false;
+      if (c.conversationId) {
+        const msgRes = await fetch(`/api/conversations/${c.conversationId}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: CANCEL_MSG }),
+        });
+        lineSent = msgRes.ok;
+      }
+
       setScheduledList((prev) => prev.filter((x) => x.id !== c.id));
       setQualifiedList((prev) => [{ ...c, currentStatus: "QUALIFIED", latestResponse: null, interviewId: null }, ...prev]);
-      toast.success(`ยกเลิกนัด "${getName(c)}" แล้ว`);
+      toast.success(lineSent ? `ยกเลิกนัด "${getName(c)}" แล้ว · ส่ง LINE แจ้งเรียบร้อย ✅` : `ยกเลิกนัด "${getName(c)}" แล้ว (ไม่มี LINE)`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "เกิดข้อผิดพลาด");
     }
