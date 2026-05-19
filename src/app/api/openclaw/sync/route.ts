@@ -225,21 +225,10 @@ async function handleInterviewResponse(
     });
 
     if (response === "ไม่สะดวก") {
-      try {
-        const token = crypto.randomBytes(24).toString("hex");
-        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-
-        await db.candidate.update({
-          where: { id: candidateId },
-          data: { scheduleToken: token, scheduleTokenExpiresAt: expiresAt },
-        });
-
-        const baseUrl = process.env.NEXTAUTH_URL ?? "https://recruit-for-hr.vercel.app";
-        await pushMessage(
-          lineUserId,
-          `ขอบคุณที่แจ้งให้ทราบนะคะ คุณ${name} 🙏\n\nกรุณาเลือกวันและเวลาสัมภาษณ์ที่สะดวกได้เลยนะคะ 📅\n\n${baseUrl}/schedule/${token}\n\n(ลิงก์มีอายุ 7 วันค่ะ)`
-        );
-      } catch { /* non-critical */ }
+      await pushMessage(
+        lineUserId,
+        `ขอบคุณที่แจ้งให้ทราบนะคะ คุณ${name} 🙏\nทางทีมจะติดต่อกลับเพื่อนัดวันที่สะดวกให้ค่ะ 😊`
+      ).catch(() => null);
     }
   } catch (err) {
     console.error("handleInterviewResponse error:", err);
