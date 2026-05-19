@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Plus, Calendar, Video, Phone, Building2, ChevronDown, ChevronUp, CheckCircle } from "lucide-react";
+import { Loader2, Plus, Calendar, Video, Phone, Building2, ChevronDown, ChevronUp, CheckCircle, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { useRouter } from "next/navigation";
@@ -104,6 +104,7 @@ export function InterviewSection({ candidateId, jobPositionId, initialInterviews
   const [feedbackScores, setFeedbackScores] = useState<Record<string, typeof initFeedbackScore>>({});
   const [feedbackMeta, setFeedbackMeta] = useState<Record<string, { strengths: string; concerns: string; hrComment: string; finalResult: InterviewResult | "" }>>({});
   const [savingFeedback, setSavingFeedback] = useState<string | null>(null);
+  const [deletingInterview, setDeletingInterview] = useState<string | null>(null);
 
   // Schedule form state
   const [form, setForm] = useState({
@@ -185,6 +186,17 @@ export function InterviewSection({ candidateId, jobPositionId, initialInterviews
     setInterviews((prev) => prev.map((iv) => iv.id === interviewId ? { ...iv, status: InterviewStatus.COMPLETED, feedback } : iv));
     setExpandedFeedback(null);
     toast.success("บันทึก Feedback สำเร็จ");
+    router.refresh();
+  }
+
+  async function deleteInterview(interviewId: string) {
+    if (!confirm("ต้องการลบนัดสัมภาษณ์นี้?")) return;
+    setDeletingInterview(interviewId);
+    const res = await fetch(`/api/interviews/${interviewId}`, { method: "DELETE" });
+    setDeletingInterview(null);
+    if (!res.ok) { toast.error("ลบไม่สำเร็จ"); return; }
+    setInterviews((prev) => prev.filter((iv) => iv.id !== interviewId));
+    toast.success("ลบนัดสัมภาษณ์เรียบร้อย");
     router.refresh();
   }
 
@@ -347,13 +359,27 @@ export function InterviewSection({ candidateId, jobPositionId, initialInterviews
                     )}
                   </div>
                 </div>
-                <button
-                  onClick={() => initFeedbackFor(iv)}
-                  className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 shrink-0 mt-1"
-                >
-                  {iv.feedback ? "แก้ไข Feedback" : "บันทึก Feedback"}
-                  {expandedFeedback === iv.id ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                </button>
+                <div className="flex items-center gap-2 shrink-0 mt-1">
+                  <button
+                    onClick={() => initFeedbackFor(iv)}
+                    className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
+                  >
+                    {iv.feedback ? "แก้ไข Feedback" : "บันทึก Feedback"}
+                    {expandedFeedback === iv.id ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                  </button>
+                  {iv.status === "SCHEDULED" && (
+                    <button
+                      onClick={() => deleteInterview(iv.id)}
+                      disabled={deletingInterview === iv.id}
+                      title="ลบนัดสัมภาษณ์"
+                      className="p-1 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
+                    >
+                      {deletingInterview === iv.id
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        : <Trash2 className="h-3.5 w-3.5" />}
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Feedback Panel */}
