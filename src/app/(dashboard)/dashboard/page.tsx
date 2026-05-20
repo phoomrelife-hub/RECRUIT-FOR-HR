@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { TrendChartInteractive } from "@/components/dashboard/trend-chart-interactive";
+import { LinCharacter } from "@/components/dashboard/lin-character";
 import {
   Users,
   MessageSquare,
@@ -347,6 +348,7 @@ export default async function DashboardPage() {
         </div>
       </div>
 
+      <LinCharacter interviewCount={data.todayInterviews.length} />
     </div>
   );
 }
