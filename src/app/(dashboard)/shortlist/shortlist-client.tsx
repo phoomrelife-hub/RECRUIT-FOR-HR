@@ -453,6 +453,16 @@ export function ShortlistClient({ qualified, scheduled, interviewed, passed }: P
   const [scheduleTarget, setScheduleTarget] = useState<ShortlistCandidate | null>(null);
   const [scheduleOpen, setScheduleOpen] = useState(false);
 
+  const [msgPass, setMsgPass] = useState<string | null>(null);
+  const [msgFail, setMsgFail] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/settings/interview-messages")
+      .then((r) => r.json())
+      .then((d) => { setMsgPass(d.msg_pass); setMsgFail(d.msg_fail); })
+      .catch(() => {});
+  }, []);
+
   // ── Poll for interview responses every 10s ────────────────────────────────
   const pollResponses = useCallback(async () => {
     try {
@@ -557,19 +567,41 @@ export function ShortlistClient({ qualified, scheduled, interviewed, passed }: P
     toast.success(`${getName(c)} ย้ายกลับไปรอนัดใหม่แล้ว`);
   }
 
+  async function sendQualifyMessage(c: ShortlistCandidate, text: string) {
+    if (!c.conversationId || !text) return false;
+    try {
+      const res = await fetch(`/api/conversations/${c.conversationId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: text }),
+      });
+      return res.ok;
+    } catch { return false; }
+  }
+
   async function handleMarkPassed(c: ShortlistCandidate) {
     const ok = await moveStatus(c.id, "PASSED");
     if (!ok) return;
     setInterviewedList((prev) => prev.filter((x) => x.id !== c.id));
     setPassedList((prev) => [{ ...c, currentStatus: "PASSED" }, ...prev]);
-    toast.success(`${getName(c)} ย้ายไปส่งข้อความก่อนนัดสัมภาษณ์แล้ว`);
+    const lineSent = msgPass ? await sendQualifyMessage(c, msgPass) : false;
+    toast.success(
+      lineSent
+        ? `${getName(c)} ผ่านแล้ว · ส่ง LINE เรียบร้อย ✅`
+        : `${getName(c)} ย้ายไปส่งข้อความก่อนนัดสัมภาษณ์แล้ว`
+    );
   }
 
   async function handleReject(c: ShortlistCandidate) {
     const ok = await moveStatus(c.id, "REJECTED");
     if (!ok) return;
     setInterviewedList((prev) => prev.filter((x) => x.id !== c.id));
-    toast.success(`${getName(c)} บันทึกไม่ผ่านแล้ว`);
+    const lineSent = msgFail ? await sendQualifyMessage(c, msgFail) : false;
+    toast.success(
+      lineSent
+        ? `${getName(c)} ไม่ผ่าน · ส่ง LINE เรียบร้อย ✅`
+        : `${getName(c)} บันทึกไม่ผ่านแล้ว`
+    );
   }
 
   const total = qualifiedList.length + scheduledList.length + interviewedList.length + passedList.length;

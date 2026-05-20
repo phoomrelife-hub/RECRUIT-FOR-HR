@@ -343,19 +343,30 @@ function MessageTemplateDialog({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
-  const [msgPass, setMsgPass] = useState("");
-  const [msgFail, setMsgFail] = useState("");
+  const [tab, setTab] = useState<"qualify" | "interview">("qualify");
+
+  // qualify messages
+  const [qPass, setQPass] = useState("");
+  const [qFail, setQFail] = useState("");
+  // interview messages
+  const [iPass, setIPass] = useState("");
+  const [iFail, setIFail] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setLoading(true);
-    fetch("/api/settings/qualify-messages")
-      .then((r) => r.json())
-      .then((d) => {
-        setMsgPass(d.msg_pass ?? "");
-        setMsgFail(d.msg_fail ?? "");
+    Promise.all([
+      fetch("/api/settings/qualify-messages").then((r) => r.json()),
+      fetch("/api/settings/interview-messages").then((r) => r.json()),
+    ])
+      .then(([q, i]) => {
+        setQPass(q.msg_pass ?? "");
+        setQFail(q.msg_fail ?? "");
+        setIPass(i.msg_pass ?? "");
+        setIFail(i.msg_fail ?? "");
       })
       .catch(() => toast.error("โหลดข้อความไม่สำเร็จ"))
       .finally(() => setLoading(false));
@@ -364,12 +375,19 @@ function MessageTemplateDialog({
   async function handleSave() {
     setSaving(true);
     try {
-      const res = await fetch("/api/settings/qualify-messages", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ msg_pass: msgPass, msg_fail: msgFail }),
-      });
-      if (!res.ok) throw new Error("บันทึกไม่สำเร็จ");
+      const [r1, r2] = await Promise.all([
+        fetch("/api/settings/qualify-messages", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ msg_pass: qPass, msg_fail: qFail }),
+        }),
+        fetch("/api/settings/interview-messages", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ msg_pass: iPass, msg_fail: iFail }),
+        }),
+      ]);
+      if (!r1.ok || !r2.ok) throw new Error("บันทึกไม่สำเร็จ");
       toast.success("บันทึกข้อความสำเร็จ");
       onOpenChange(false);
     } catch (err) {
@@ -383,7 +401,6 @@ function MessageTemplateDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/40"
         onClick={() => onOpenChange(false)}
@@ -403,6 +420,30 @@ function MessageTemplateDialog({
           </button>
         </div>
 
+        {/* Tabs */}
+        <div className="flex border-b border-slate-100 px-6 gap-0">
+          <button
+            onClick={() => setTab("qualify")}
+            className={`py-2.5 px-4 text-sm font-medium border-b-2 transition-colors -mb-px ${
+              tab === "qualify"
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            ส่งข้อความผลการพิจารณา
+          </button>
+          <button
+            onClick={() => setTab("interview")}
+            className={`py-2.5 px-4 text-sm font-medium border-b-2 transition-colors -mb-px ${
+              tab === "interview"
+                ? "border-violet-600 text-violet-600"
+                : "border-transparent text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            ส่งข้อความผลการสัมภาษณ์
+          </button>
+        </div>
+
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
           {loading ? (
@@ -410,7 +451,7 @@ function MessageTemplateDialog({
               <Loader2 className="h-5 w-5 animate-spin" />
               <span className="text-sm">กำลังโหลด...</span>
             </div>
-          ) : (
+          ) : tab === "qualify" ? (
             <>
               <div>
                 <label className="flex items-center gap-2 text-sm font-semibold text-teal-700 mb-2">
@@ -418,8 +459,8 @@ function MessageTemplateDialog({
                   ข้อความเมื่อ ✅ ผ่าน
                 </label>
                 <textarea
-                  value={msgPass}
-                  onChange={(e) => setMsgPass(e.target.value)}
+                  value={qPass}
+                  onChange={(e) => setQPass(e.target.value)}
                   rows={7}
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-400 resize-none leading-relaxed"
                 />
@@ -430,8 +471,35 @@ function MessageTemplateDialog({
                   ข้อความเมื่อ ❌ ไม่ผ่าน
                 </label>
                 <textarea
-                  value={msgFail}
-                  onChange={(e) => setMsgFail(e.target.value)}
+                  value={qFail}
+                  onChange={(e) => setQFail(e.target.value)}
+                  rows={7}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-red-300 resize-none leading-relaxed"
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <label className="flex items-center gap-2 text-sm font-semibold text-violet-700 mb-2">
+                  <CheckCircle className="h-4 w-4" />
+                  ข้อความเมื่อ ✅ ผ่านสัมภาษณ์
+                </label>
+                <textarea
+                  value={iPass}
+                  onChange={(e) => setIPass(e.target.value)}
+                  rows={7}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-400 resize-none leading-relaxed"
+                />
+              </div>
+              <div>
+                <label className="flex items-center gap-2 text-sm font-semibold text-red-600 mb-2">
+                  <XCircle className="h-4 w-4" />
+                  ข้อความเมื่อ ❌ ไม่ผ่านสัมภาษณ์
+                </label>
+                <textarea
+                  value={iFail}
+                  onChange={(e) => setIFail(e.target.value)}
                   rows={7}
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-red-300 resize-none leading-relaxed"
                 />
