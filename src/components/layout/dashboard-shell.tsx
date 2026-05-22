@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { Sidebar } from "./Sidebar";
-import { Topbar } from "./Topbar";
+import { Sidebar } from "./sidebar";
+import { Topbar } from "./topbar";
 import { UserRole } from "@prisma/client";
 
 interface DashboardShellProps {
