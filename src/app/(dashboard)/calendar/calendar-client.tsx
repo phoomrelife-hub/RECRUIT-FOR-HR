@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   Video, MapPin, Clock, CalendarDays, LayoutGrid,
   ChevronLeft, ChevronRight, Trash2, Copy, Check,
-  MessageSquare, User, Loader2, Phone,
+  MessageSquare, User, Loader2, Phone, ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -46,9 +46,81 @@ function toDateKey(y: number, m: number, d: number) {
   return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
+const THAI_MONTHS_SHORT = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+
 function todayKey() {
   const now = new Date();
   return toDateKey(now.getFullYear(), now.getMonth() + 1, now.getDate());
+}
+
+// ── Month/Year Picker Popover ─────────────────────────────────────────────────
+function MonthYearPicker({
+  year, month, onSelect,
+}: {
+  year: number;
+  month: number;
+  onSelect: (y: number, m: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pickerYear, setPickerYear] = useState(year);
+  const nowYear = new Date().getFullYear();
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => { setPickerYear(year); setOpen((v) => !v); }}
+        className="flex items-center gap-1 text-base font-bold text-slate-800 hover:text-blue-600 transition-colors"
+      >
+        {THAI_MONTHS_FULL[month - 1]} {year + 543}
+        <ChevronDown className="h-4 w-4 text-slate-400" />
+      </button>
+
+      {open && (
+        <>
+          {/* backdrop */}
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-8 z-20 w-64 rounded-xl border border-slate-200 bg-white shadow-lg p-3">
+            {/* Year selector */}
+            <div className="flex items-center justify-between mb-3">
+              <button
+                onClick={() => setPickerYear((y) => y - 1)}
+                className="p-1 rounded-md hover:bg-slate-100 text-slate-500"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <span className="text-sm font-semibold text-slate-700">{pickerYear + 543}</span>
+              <button
+                onClick={() => setPickerYear((y) => y + 1)}
+                disabled={pickerYear >= nowYear + 1}
+                className="p-1 rounded-md hover:bg-slate-100 text-slate-500 disabled:opacity-30"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+            {/* Month grid */}
+            <div className="grid grid-cols-3 gap-1">
+              {THAI_MONTHS_SHORT.map((label, i) => {
+                const m = i + 1;
+                const isActive = pickerYear === year && m === month;
+                const isNow = pickerYear === nowYear && m === new Date().getMonth() + 1;
+                return (
+                  <button
+                    key={m}
+                    onClick={() => { onSelect(pickerYear, m); setOpen(false); }}
+                    className={`py-1.5 rounded-lg text-xs font-medium transition-colors
+                      ${isActive ? "bg-blue-600 text-white" : isNow ? "bg-blue-50 text-blue-700 border border-blue-200" : "hover:bg-slate-100 text-slate-600"}
+                    `}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 
 // ── Response badge ────────────────────────────────────────────────────────────
@@ -474,11 +546,17 @@ export function CalendarClient({ days: initialDays, year, month }: Props) {
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
             <div>
-              <h2 className="text-base font-bold text-slate-800">
-                {THAI_MONTHS_FULL[curMonth - 1]} {curYear + 543}
-              </h2>
+              <MonthYearPicker
+                year={curYear}
+                month={curMonth}
+                onSelect={async (y, m) => {
+                  const delta = (y - curYear) * 12 + (m - curMonth);
+                  if (delta === 0) return;
+                  await navigateMonth(delta);
+                }}
+              />
               <p className="text-xs text-slate-400 mt-0.5">
-                {Object.keys(days).length > 0
+                {loadingMonth ? "กำลังโหลด..." : Object.keys(days).length > 0
                   ? `มีนัด ${Object.values(days).reduce((s, v) => s + v.length, 0)} รายการเดือนนี้`
                   : "ไม่มีนัดสัมภาษณ์เดือนนี้"}
               </p>
