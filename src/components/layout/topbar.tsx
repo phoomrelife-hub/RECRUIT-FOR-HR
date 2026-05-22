@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { Bell, LogOut, User, MessageSquare, Bot } from "lucide-react";
+import { Bell, LogOut, User, MessageSquare, Bot, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { UserRole } from "@prisma/client";
 import { useState, useEffect, useCallback } from "react";
@@ -23,6 +23,7 @@ interface TopbarProps {
   userName: string;
   userEmail: string;
   userRole: UserRole;
+  onMenuClick?: () => void;
 }
 
 const roleBadgeMap: Record<UserRole, { label: string; variant: "default" | "secondary" | "outline" }> = {
@@ -58,7 +59,7 @@ function candidateName(c: UnreadConv["candidate"]) {
   return c.fullName ?? c.lineDisplayName ?? c.nickname ?? "ไม่ระบุชื่อ";
 }
 
-export function Topbar({ userName, userEmail, userRole }: TopbarProps) {
+export function Topbar({ userName, userEmail, userRole, onMenuClick }: TopbarProps) {
   const { label, variant } = roleBadgeMap[userRole];
   const [unreadConvs, setUnreadConvs] = useState<UnreadConv[]>([]);
   const [bellOpen, setBellOpen] = useState(false);
@@ -83,8 +84,16 @@ export function Topbar({ userName, userEmail, userRole }: TopbarProps) {
   const totalUnread = unreadConvs.reduce((s, c) => s + c.unreadCount, 0);
 
   return (
-    <header className="fixed left-64 right-0 top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-6">
-      <div />
+    <header className="fixed left-0 right-0 top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-4 md:left-64 md:px-6">
+      {/* Hamburger — mobile only */}
+      <button
+        onClick={onMenuClick}
+        className="md:hidden rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+        aria-label="เปิดเมนู"
+      >
+        <Menu className="h-5 w-5" />
+      </button>
+      <div className="hidden md:block" />
 
       <div className="flex items-center gap-3">
         {/* Notification Bell */}

@@ -7,12 +7,15 @@ import { cn } from "@/lib/utils";
 import { navSections } from "@/lib/nav";
 import { UserRole } from "@prisma/client";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { X } from "lucide-react";
 
 interface SidebarProps {
   userRole: UserRole;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
-export function Sidebar({ userRole }: SidebarProps) {
+export function Sidebar({ userRole, isOpen = false, onClose }: SidebarProps) {
   const pathname = usePathname();
   const [inboxUnread, setInboxUnread] = useState(0);
 
@@ -30,6 +33,12 @@ export function Sidebar({ userRole }: SidebarProps) {
     return () => clearInterval(interval);
   }, []);
 
+  // Close sidebar on route change (mobile)
+  useEffect(() => {
+    onClose?.();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
   const filteredSections = navSections
     .map((section) => ({
       ...section,
@@ -38,8 +47,16 @@ export function Sidebar({ userRole }: SidebarProps) {
     .filter((section) => section.items.length > 0);
 
   return (
-    <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r border-slate-200 bg-white">
-      <div className="flex h-16 items-center border-b border-slate-200 px-6">
+    <aside
+      className={cn(
+        "fixed left-0 top-0 z-40 h-screen w-64 border-r border-slate-200 bg-white transition-transform duration-200",
+        // Desktop: always visible
+        "md:translate-x-0",
+        // Mobile: slide in/out
+        isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+      )}
+    >
+      <div className="flex h-16 items-center justify-between border-b border-slate-200 px-6">
         <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600">
             <span className="text-sm font-bold text-white">R</span>
@@ -49,6 +66,13 @@ export function Sidebar({ userRole }: SidebarProps) {
             <p className="text-xs text-slate-500">ATS System</p>
           </div>
         </div>
+        {/* Close button — mobile only */}
+        <button
+          onClick={onClose}
+          className="md:hidden rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+        >
+          <X className="h-5 w-5" />
+        </button>
       </div>
 
       <ScrollArea className="h-[calc(100vh-4rem)]">
