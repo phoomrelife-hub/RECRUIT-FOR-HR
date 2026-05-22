@@ -370,10 +370,34 @@ function WeekView({
 // ── Main Component ────────────────────────────────────────────────────────────
 export function CalendarClient({ days: initialDays, year, month }: Props) {
   const today = todayKey();
+  const [curYear, setCurYear] = useState(year);
+  const [curMonth, setCurMonth] = useState(month);
   const [days, setDays] = useState<Record<string, InterviewEntry[]>>(initialDays);
+  const [loadingMonth, setLoadingMonth] = useState(false);
   const [selectedKey, setSelectedKey] = useState<string>(today);
   const [viewMode, setViewMode] = useState<"month" | "week">("month");
   const [weekAnchor, setWeekAnchor] = useState<string>(today);
+
+  async function navigateMonth(deltaMonths: number) {
+    const dt = new Date(curYear, curMonth - 1 + deltaMonths, 1);
+    const y = dt.getFullYear();
+    const m = dt.getMonth() + 1;
+    const monthStr = `${y}-${String(m).padStart(2, "0")}`;
+    setLoadingMonth(true);
+    try {
+      const res = await fetch(`/api/calendar/interviews?month=${monthStr}`);
+      const data = await res.json();
+      setDays(data.days ?? {});
+      setCurYear(y);
+      setCurMonth(m);
+      // select first day of new month
+      setSelectedKey(toDateKey(y, m, 1));
+    } catch {
+      toast.error("โหลดข้อมูลไม่สำเร็จ");
+    } finally {
+      setLoadingMonth(false);
+    }
+  }
 
   // Remove a deleted interview from local state
   const handleDeleted = useCallback((interviewId: string) => {
@@ -405,13 +429,13 @@ export function CalendarClient({ days: initialDays, year, month }: Props) {
 
   // Build calendar grid
   const { cells } = useMemo(() => {
-    const daysInMonth = new Date(year, month, 0).getDate();
-    const firstDow = new Date(year, month - 1, 1).getDay();
+    const daysInMonth = new Date(curYear, curMonth, 0).getDate();
+    const firstDow = new Date(curYear, curMonth - 1, 1).getDay();
     const cells: (number | null)[] = Array(firstDow).fill(null);
     for (let d = 1; d <= daysInMonth; d++) cells.push(d);
     while (cells.length % 7 !== 0) cells.push(null);
     return { cells };
-  }, [year, month]);
+  }, [curYear, curMonth]);
 
   const selectedInterviews = days[selectedKey] ?? [];
 
@@ -448,15 +472,47 @@ export function CalendarClient({ days: initialDays, year, month }: Props) {
       {/* ── Month Grid ── */}
       {viewMode === "month" && (
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100">
-            <h2 className="text-base font-bold text-slate-800">
-              {THAI_MONTHS_FULL[month - 1]} {year + 543}
-            </h2>
-            <p className="text-xs text-slate-400 mt-0.5">
-              {Object.keys(days).length > 0
-                ? `มีนัด ${Object.values(days).reduce((s, v) => s + v.length, 0)} รายการเดือนนี้`
-                : "ไม่มีนัดสัมภาษณ์เดือนนี้"}
-            </p>
+          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-slate-800">
+                {THAI_MONTHS_FULL[curMonth - 1]} {curYear + 543}
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {Object.keys(days).length > 0
+                  ? `มีนัด ${Object.values(days).reduce((s, v) => s + v.length, 0)} รายการเดือนนี้`
+                  : "ไม่มีนัดสัมภาษณ์เดือนนี้"}
+              </p>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => navigateMonth(-1)}
+                disabled={loadingMonth}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors disabled:opacity-40"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <button
+                onClick={async () => {
+                  const now = new Date();
+                  const ty = now.getFullYear(), tm = now.getMonth() + 1;
+                  if (curYear === ty && curMonth === tm) { setSelectedKey(today); return; }
+                  const delta = (ty - curYear) * 12 + (tm - curMonth);
+                  await navigateMonth(delta);
+                  setSelectedKey(today);
+                }}
+                disabled={loadingMonth}
+                className="px-2 py-1 rounded-md text-xs text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors disabled:opacity-40"
+              >
+                {loadingMonth ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "วันนี้"}
+              </button>
+              <button
+                onClick={() => navigateMonth(1)}
+                disabled={loadingMonth}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors disabled:opacity-40"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-7 border-b border-slate-100">
@@ -472,7 +528,7 @@ export function CalendarClient({ days: initialDays, year, month }: Props) {
               if (!day) {
                 return <div key={`empty-${idx}`} className="h-14 border-b border-r border-slate-50 last:border-r-0" />;
               }
-              const key = toDateKey(year, month, day);
+              const key = toDateKey(curYear, curMonth, day);
               const isToday = key === today;
               const isSelected = key === selectedKey;
               const count = days[key]?.length ?? 0;
