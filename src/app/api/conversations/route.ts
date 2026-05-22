@@ -42,6 +42,7 @@ export async function GET(req: Request) {
           sourceChannel: true,
           currentStatus: true,
           interestedPosition: { select: { id: true, title: true } },
+          tags: { select: { tagId: true } },
         },
       },
       messages: {

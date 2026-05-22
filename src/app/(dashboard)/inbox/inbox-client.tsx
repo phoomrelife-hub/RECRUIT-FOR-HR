@@ -58,6 +58,7 @@ interface Candidate {
   sourceChannel: string;
   currentStatus: string;
   interestedPosition?: { id: string; title: string } | null;
+  tags?: { tagId: string }[];
 }
 
 interface Conversation {
@@ -854,6 +855,7 @@ export function InboxClient({
   const [filterBot, setFilterBot] = useState<string>("ALL"); // ALL | BOT | HR
   const [filterUnread, setFilterUnread] = useState(false);
   const [filterCandidateStatus, setFilterCandidateStatus] = useState<string>("ALL");
+  const [filterTagId, setFilterTagId] = useState<string>("ALL");
   const [sortBy, setSortBy] = useState<"LATEST" | "UNREAD_FIRST">("LATEST");
   const [search, setSearch] = useState("");
   const [showNewConv, setShowNewConv] = useState(false);
@@ -920,6 +922,10 @@ export function InboxClient({
       if (filterBot === "HR" && c.botEnabled) return false;
       if (filterUnread && c.unreadCount === 0) return false;
       if (filterCandidateStatus !== "ALL" && c.candidate.currentStatus !== filterCandidateStatus) return false;
+      if (filterTagId !== "ALL") {
+        const hasTags = c.candidate.tags?.some((t) => t.tagId === filterTagId);
+        if (!hasTags) return false;
+      }
       if (search) {
         const q = search.toLowerCase();
         const cand = c.candidate;
@@ -1366,7 +1372,7 @@ export function InboxClient({
             ))}
           </div>
 
-          {/* Candidate pipeline status filter */}
+          {/* Candidate pipeline status + tag filters */}
           <div className="flex items-center gap-2">
             <SlidersHorizontal size={11} className="text-slate-400 flex-shrink-0" />
             <select
@@ -1384,6 +1390,27 @@ export function InboxClient({
               ))}
             </select>
           </div>
+
+          {/* Tag filter */}
+          {allTags.length > 0 && (
+            <div className="flex items-center gap-2">
+              <TagIcon size={11} className="text-slate-400 flex-shrink-0" />
+              <select
+                value={filterTagId}
+                onChange={(e) => setFilterTagId(e.target.value)}
+                className={`flex-1 text-[11px] border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 appearance-none cursor-pointer transition-colors ${
+                  filterTagId !== "ALL"
+                    ? "border-violet-400 bg-violet-50 text-violet-700 font-medium"
+                    : "border-slate-200 text-slate-600"
+                }`}
+              >
+                <option value="ALL">ทุก Tag</option>
+                {allTags.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Advanced filters row */}
           <div className="flex flex-wrap gap-1 items-center">
@@ -1460,13 +1487,13 @@ export function InboxClient({
           </div>
 
           {/* Active filter count badge */}
-          {(filterChannel !== "ALL" || filterBot !== "ALL" || filterUnread || search || filterCandidateStatus !== "ALL") && (
+          {(filterChannel !== "ALL" || filterBot !== "ALL" || filterUnread || search || filterCandidateStatus !== "ALL" || filterTagId !== "ALL") && (
             <div className="flex items-center justify-between">
               <span className="text-[10px] text-slate-400">
                 แสดง {filtered.length} จาก {conversations.length} การสนทนา
               </span>
               <button
-                onClick={() => { setFilterChannel("ALL"); setFilterBot("ALL"); setFilterUnread(false); setSearch(""); setFilterStatus("ALL"); setFilterCandidateStatus("ALL"); setSortBy("LATEST"); }}
+                onClick={() => { setFilterChannel("ALL"); setFilterBot("ALL"); setFilterUnread(false); setSearch(""); setFilterStatus("ALL"); setFilterCandidateStatus("ALL"); setFilterTagId("ALL"); setSortBy("LATEST"); }}
                 className="text-[10px] text-blue-500 hover:text-blue-700 font-medium"
               >
                 ล้างทั้งหมด
