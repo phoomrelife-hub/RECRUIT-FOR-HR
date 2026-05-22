@@ -44,6 +44,7 @@ const candidateStatusColor: Record<CandidateStatus, string> = {
   INTERVIEW_SCHEDULED: "bg-purple-100 text-purple-700",
   INTERVIEWED: "bg-indigo-100 text-indigo-700",
   PASSED: "bg-green-100 text-green-700",
+  HIRED: "bg-teal-100 text-teal-700",
   REJECTED: "bg-red-100 text-red-600",
   TALENT_POOL: "bg-cyan-100 text-cyan-700",
   CLOSED: "bg-slate-100 text-slate-400",

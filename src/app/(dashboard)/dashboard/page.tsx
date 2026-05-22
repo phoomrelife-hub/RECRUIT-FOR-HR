@@ -43,6 +43,7 @@ const statusLabels: Partial<Record<CandidateStatus, string>> = {
   INTERVIEW_SCHEDULED: "นัดสัมภาษณ์",
   INTERVIEWED:         "สัมภาษณ์แล้ว",
   PASSED:              "ผ่านการคัดเลือก",
+  HIRED:               "นัดหมายเริ่มงาน",
   REJECTED:            "ไม่ผ่าน",
   TALENT_POOL:         "Talent Pool",
   CLOSED:              "ปิด",

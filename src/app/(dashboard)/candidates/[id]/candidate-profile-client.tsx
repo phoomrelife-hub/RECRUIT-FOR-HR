@@ -23,6 +23,7 @@ const statusColor: Record<CandidateStatus, string> = {
   INTERVIEW_SCHEDULED: "bg-purple-100 text-purple-700",
   INTERVIEWED: "bg-indigo-100 text-indigo-700",
   PASSED: "bg-green-100 text-green-700",
+  HIRED: "bg-teal-100 text-teal-700",
   REJECTED: "bg-red-100 text-red-600",
   TALENT_POOL: "bg-cyan-100 text-cyan-700",
   CLOSED: "bg-slate-100 text-slate-400",
@@ -30,7 +31,7 @@ const statusColor: Record<CandidateStatus, string> = {
 
 const pipelineStages: CandidateStatus[] = [
   "NEW_APPLICANT", "BOT_SCREENING", "WAITING_HR_REVIEW", "NEED_MORE_INFO",
-  "QUALIFIED", "INTERVIEW_SCHEDULED", "INTERVIEWED", "PASSED", "REJECTED",
+  "QUALIFIED", "INTERVIEW_SCHEDULED", "INTERVIEWED", "PASSED", "HIRED", "REJECTED",
   "TALENT_POOL", "CLOSED",
 ];
 
