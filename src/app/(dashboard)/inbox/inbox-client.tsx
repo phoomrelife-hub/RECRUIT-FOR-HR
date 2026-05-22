@@ -19,6 +19,7 @@ import {
   Tag as TagIcon,
   UserCheck,
   ArrowUpDown,
+  ArrowLeft,
   ChevronDown,
   Calendar,
   CheckCircle2,
@@ -1279,10 +1280,15 @@ export function InboxClient({
   const totalUnread = conversations.reduce((sum, c) => sum + c.unreadCount, 0);
 
   return (
-    <div className="flex h-[calc(100vh-4rem-1.5rem)] -m-6 overflow-hidden bg-slate-50">
+    <div className="flex h-[calc(100vh-4rem-1.5rem)] -m-4 md:-m-6 overflow-hidden bg-slate-50">
 
       {/* ── Left Panel: Conversation List ─────────────────────── */}
-      <div className="w-80 flex-shrink-0 bg-white border-r border-slate-200 flex flex-col">
+      {/* Mobile: full width when no active conv; hidden when chat is open */}
+      {/* Desktop: always show as fixed-width sidebar */}
+      <div className={`
+        flex-shrink-0 bg-white border-r border-slate-200 flex flex-col
+        ${activeId ? "hidden md:flex md:w-80" : "w-full md:w-80"}
+      `}>
         {/* Header */}
         <div className="p-3 border-b border-slate-200 space-y-2">
           {/* Title row */}
@@ -1579,6 +1585,13 @@ export function InboxClient({
           {/* Chat Header */}
           <div className="h-16 bg-white border-b border-slate-200 px-4 flex items-center justify-between flex-shrink-0">
             <div className="flex items-center gap-3 min-w-0">
+              {/* Back button — mobile only */}
+              <button
+                onClick={() => { setActiveId(null); activeIdRef.current = null; setActiveConv(null); }}
+                className="md:hidden -ml-1 p-1.5 text-slate-500 hover:bg-slate-100 rounded-lg flex-shrink-0"
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </button>
               <CandidateAvatar c={activeConv.candidate} size="md" />
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
@@ -1782,8 +1795,9 @@ export function InboxClient({
         </div>
       )}
 
-      {/* ── Right Panel: Quick Actions ─────────────────────────── */}
+      {/* ── Right Panel: Quick Actions (desktop only) ───────────── */}
       {activeConv && !isLoadingConv && (
+        <div className="hidden lg:contents">
         <QuickActionsPanel
           conv={activeConv}
           candidateTags={candidateTags}
@@ -1804,6 +1818,7 @@ export function InboxClient({
           onSetShowScheduleForm={setShowScheduleForm}
           onScheduleInterview={scheduleInterview}
         />
+        </div>
       )}
     </div>
   );

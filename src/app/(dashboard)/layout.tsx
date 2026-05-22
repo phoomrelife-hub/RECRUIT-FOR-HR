@@ -1,7 +1,6 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { Sidebar } from "@/components/layout/sidebar";
-import { Topbar } from "@/components/layout/topbar";
+import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { UserRole } from "@prisma/client";
 
 export default async function DashboardLayout({
@@ -14,15 +13,13 @@ export default async function DashboardLayout({
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <Sidebar userRole={session.user.role as UserRole} />
-      <Topbar
+      <DashboardShell
         userName={session.user.name ?? ""}
         userEmail={session.user.email ?? ""}
         userRole={session.user.role as UserRole}
-      />
-      <main className="ml-64 pt-16">
-        <div className="p-6">{children}</div>
-      </main>
+      >
+        {children}
+      </DashboardShell>
     </div>
   );
 }
