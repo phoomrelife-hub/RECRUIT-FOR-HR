@@ -1063,168 +1063,161 @@ function CandidateRow({
   const isLoading = !!loading[c.id];
   const tier: Tier | null = showTier ? parseTier(c.experienceText) : null;
 
+  const avatar = c.lineProfilePicUrl ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={c.lineProfilePicUrl} alt={name} className="h-10 w-10 rounded-full object-cover border-2 border-green-200 shrink-0" />
+  ) : (
+    <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center border-2 border-slate-200 shrink-0">
+      <span className="text-slate-500 font-semibold text-sm">{name.charAt(0).toUpperCase()}</span>
+    </div>
+  );
+
+  const badges = (
+    <>
+      {c.lineUserId && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 text-[10px] font-semibold px-1.5 py-0.5">
+          <MessageCircle className="h-2.5 w-2.5" /> LINE
+        </span>
+      )}
+      {c.sourceChannel === "JOBBKK" && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-red-100 text-red-700 text-[10px] font-semibold px-1.5 py-0.5">
+          <Mail className="h-2.5 w-2.5" /> JobBKK
+        </span>
+      )}
+      {c.sourceChannel === "JOBTHAI" && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 text-orange-700 text-[10px] font-semibold px-1.5 py-0.5">
+          <Mail className="h-2.5 w-2.5" /> JobThai
+        </span>
+      )}
+      {tier && (
+        <span className={`inline-flex items-center rounded-full border text-[10px] font-semibold px-2 py-0.5 ${TIER_CONFIG[tier].color}`}>
+          {TIER_CONFIG[tier].label}
+        </span>
+      )}
+    </>
+  );
+
+  const subInfo = (
+    <div className="flex items-center gap-3 mt-0.5 text-xs text-slate-500 flex-wrap">
+      {c.phone && (
+        <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{c.phone}</span>
+      )}
+      {!c.lineUserId && c.email && (
+        <span className="flex items-center gap-1 text-slate-400"><Mail className="h-3 w-3" />{c.email}</span>
+      )}
+      {showTier && c.experienceText && (
+        <span className="text-slate-400 truncate max-w-[260px]" title={c.experienceText}>
+          {c.experienceText.length > 50 ? c.experienceText.slice(0, 50) + "…" : c.experienceText}
+        </span>
+      )}
+      {!showTier && c.interestedPosition && (
+        <span className="text-slate-400">{c.interestedPosition.title}</span>
+      )}
+      {!showTier && !c.interestedPosition && c.detectedPosition && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-medium px-2 py-0.5">
+          💡 น่าจะเป็น: {c.detectedPosition.title}
+        </span>
+      )}
+    </div>
+  );
+
+  const checkbox = (
+    <button
+      onClick={() => onToggle(c.id)}
+      className={`shrink-0 h-5 w-5 rounded border-2 flex items-center justify-center transition-colors ${
+        selected ? "bg-blue-600 border-blue-600" : "border-slate-300 hover:border-blue-400"
+      }`}
+      aria-label={selected ? "ยกเลิกการเลือก" : "เลือก"}
+    >
+      {selected && (
+        <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+        </svg>
+      )}
+    </button>
+  );
+
   return (
     <>
-      <div
-        className={`flex items-center gap-3 rounded-xl border bg-white px-4 py-3 shadow-sm hover:border-slate-300 transition-colors ${
-          selected ? "border-blue-400 bg-blue-50/40" : "border-slate-200"
-        }`}
-      >
-        {/* Checkbox */}
-        <button
-          onClick={() => onToggle(c.id)}
-          className={`shrink-0 h-5 w-5 rounded border-2 flex items-center justify-center transition-colors ${
-            selected
-              ? "bg-blue-600 border-blue-600"
-              : "border-slate-300 hover:border-blue-400"
-          }`}
-          aria-label={selected ? "ยกเลิกการเลือก" : "เลือก"}
-        >
-          {selected && (
-            <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-          )}
-        </button>
-
-        {/* Avatar */}
-        <div className="shrink-0">
-          {c.lineProfilePicUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={c.lineProfilePicUrl}
-              alt={name}
-              className="h-10 w-10 rounded-full object-cover border-2 border-green-200"
-            />
-          ) : (
-            <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center border-2 border-slate-200 shrink-0">
-              <span className="text-slate-500 font-semibold text-sm">
-                {name.charAt(0).toUpperCase()}
-              </span>
+      {/* ── Mobile card ── */}
+      <div className={`sm:hidden rounded-xl border bg-white shadow-sm transition-colors ${selected ? "border-blue-400 bg-blue-50/40" : "border-slate-200"}`}>
+        <div className="flex items-start gap-3 px-3 pt-3 pb-2">
+          {checkbox}
+          {avatar}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-semibold text-slate-900 text-sm">{name}</span>
+              {badges}
             </div>
-          )}
+            {subInfo}
+          </div>
+          {/* Detail + profile icons */}
+          <div className="flex gap-1 shrink-0">
+            <button
+              onClick={() => setSheetOpen(true)}
+              className="h-8 w-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 border border-slate-200 transition-colors"
+              title="รายละเอียด"
+            >
+              <FileText className="h-4 w-4" />
+            </button>
+            <Link href={`/candidates/${c.id}`} target="_blank">
+              <button className="h-8 w-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 border border-slate-200 transition-colors">
+                <ExternalLink className="h-4 w-4" />
+              </button>
+            </Link>
+          </div>
         </div>
+        {/* Pass / Fail — full-width tap targets */}
+        <div className="flex border-t border-slate-100">
+          <button
+            disabled={isLoading}
+            onClick={() => onQualify(c, "pass")}
+            className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-semibold text-teal-700 hover:bg-teal-50 active:bg-teal-100 border-r border-slate-100 rounded-bl-xl transition-colors disabled:opacity-50"
+          >
+            {loading[c.id] === "pass" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+            ผ่าน
+          </button>
+          <button
+            disabled={isLoading}
+            onClick={() => onQualify(c, "fail")}
+            className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-semibold text-red-600 hover:bg-red-50 active:bg-red-100 rounded-br-xl transition-colors disabled:opacity-50"
+          >
+            {loading[c.id] === "fail" ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+            ไม่ผ่าน
+          </button>
+        </div>
+      </div>
 
-        {/* Info */}
+      {/* ── Desktop row ── */}
+      <div className={`hidden sm:flex items-center gap-3 rounded-xl border bg-white px-4 py-3 shadow-sm hover:border-slate-300 transition-colors ${selected ? "border-blue-400 bg-blue-50/40" : "border-slate-200"}`}>
+        {checkbox}
+        <div className="shrink-0">{avatar}</div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-semibold text-slate-900 text-sm">{name}</span>
-            {c.lineUserId && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 text-[10px] font-semibold px-1.5 py-0.5">
-                <MessageCircle className="h-2.5 w-2.5" /> LINE
-              </span>
-            )}
-            {c.sourceChannel === "JOBBKK" && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-red-100 text-red-700 text-[10px] font-semibold px-1.5 py-0.5">
-                <Mail className="h-2.5 w-2.5" /> JobBKK
-              </span>
-            )}
-            {c.sourceChannel === "JOBTHAI" && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 text-orange-700 text-[10px] font-semibold px-1.5 py-0.5">
-                <Mail className="h-2.5 w-2.5" /> JobThai
-              </span>
-            )}
-            {tier && (
-              <span
-                className={`inline-flex items-center rounded-full border text-[10px] font-semibold px-2 py-0.5 ${TIER_CONFIG[tier].color}`}
-              >
-                {TIER_CONFIG[tier].label}
-              </span>
-            )}
+            {badges}
           </div>
-          <div className="flex items-center gap-3 mt-0.5 text-xs text-slate-500 flex-wrap">
-            {c.phone && (
-              <span className="flex items-center gap-1">
-                <Phone className="h-3 w-3" />
-                {c.phone}
-              </span>
-            )}
-            {!c.lineUserId && c.email && (
-              <span className="flex items-center gap-1 text-slate-400">
-                <Mail className="h-3 w-3" />
-                {c.email}
-              </span>
-            )}
-            {showTier && c.experienceText && (
-              <span className="text-slate-400 truncate max-w-[260px]" title={c.experienceText}>
-                {c.experienceText.length > 50
-                  ? c.experienceText.slice(0, 50) + "…"
-                  : c.experienceText}
-              </span>
-            )}
-            {!showTier && c.interestedPosition && (
-              <span className="text-slate-400">{c.interestedPosition.title}</span>
-            )}
-            {!showTier && !c.interestedPosition && c.detectedPosition && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-medium px-2 py-0.5">
-                💡 น่าจะเป็น: {c.detectedPosition.title}
-              </span>
-            )}
-          </div>
+          {subInfo}
         </div>
-
-        {/* Actions */}
         <div className="flex items-center gap-2 shrink-0">
-          {/* Detail button */}
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 px-3 text-xs gap-1 text-slate-600 border-slate-200"
-            onClick={() => setSheetOpen(true)}
-          >
-            <FileText className="h-3.5 w-3.5" />
-            รายละเอียด
+          <Button size="sm" variant="outline" className="h-8 px-3 text-xs gap-1 text-slate-600 border-slate-200" onClick={() => setSheetOpen(true)}>
+            <FileText className="h-3.5 w-3.5" />รายละเอียด
           </Button>
           <Link href={`/candidates/${c.id}`} target="_blank">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-slate-400 hover:text-slate-600"
-            >
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-slate-600">
               <ExternalLink className="h-3.5 w-3.5" />
             </Button>
           </Link>
-          <Button
-            size="sm"
-            className="bg-teal-600 hover:bg-teal-700 text-white h-8 px-3 text-xs"
-            disabled={isLoading}
-            onClick={() => onQualify(c, "pass")}
-          >
-            {loading[c.id] === "pass" ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <>
-                <CheckCircle className="h-3.5 w-3.5 mr-1" />
-                ผ่าน
-              </>
-            )}
+          <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white h-8 px-3 text-xs" disabled={isLoading} onClick={() => onQualify(c, "pass")}>
+            {loading[c.id] === "pass" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><CheckCircle className="h-3.5 w-3.5 mr-1" />ผ่าน</>}
           </Button>
-          <Button
-            size="sm"
-            variant="destructive"
-            className="h-8 px-3 text-xs"
-            disabled={isLoading}
-            onClick={() => onQualify(c, "fail")}
-          >
-            {loading[c.id] === "fail" ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <>
-                <XCircle className="h-3.5 w-3.5 mr-1" />
-                ไม่ผ่าน
-              </>
-            )}
+          <Button size="sm" variant="destructive" className="h-8 px-3 text-xs" disabled={isLoading} onClick={() => onQualify(c, "fail")}>
+            {loading[c.id] === "fail" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><XCircle className="h-3.5 w-3.5 mr-1" />ไม่ผ่าน</>}
           </Button>
         </div>
       </div>
 
-      <DetailSheet
-        c={c}
-        open={sheetOpen}
-        onOpenChange={setSheetOpen}
-        positions={positions}
-        onPositionChange={onPositionChange}
-      />
+      <DetailSheet c={c} open={sheetOpen} onOpenChange={setSheetOpen} positions={positions} onPositionChange={onPositionChange} />
     </>
   );
 }
@@ -1797,78 +1790,79 @@ export function ReviewClient({ initial, positions }: Props) {
       )}
 
       <div className="space-y-4">
-        {/* ── Tab bar + gear button ── */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={() => setActiveTab(ALL_TAB)}
-            className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium border transition-colors ${
-              activeTab === ALL_TAB
-                ? "bg-slate-800 text-white border-slate-800"
-                : "bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:text-slate-800"
-            }`}
-          >
-            ทั้งหมด
-            <span className={`rounded-full px-1.5 py-0 text-[10px] font-bold ${activeTab === ALL_TAB ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600"}`}>
-              {queue.length}
-            </span>
-          </button>
-          {tabs.map(([title, count]) => {
-            const isActive = activeTab === title;
-            const isSA = title.toLowerCase().includes("sales admin");
-            return (
-              <button
-                key={title}
-                onClick={() => setActiveTab(title)}
-                className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium border transition-colors ${
-                  isActive
-                    ? isSA
-                      ? "bg-blue-600 text-white border-blue-600"
-                      : "bg-slate-800 text-white border-slate-800"
-                    : "bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:text-slate-800"
-                }`}
-              >
-                {title}
-                <span className={`rounded-full px-1.5 py-0 text-[10px] font-bold ${isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600"}`}>
-                  {count}
-                </span>
-              </button>
-            );
-          })}
+        {/* ── Tab bar + toolbar ── */}
+        <div className="flex items-center gap-2">
+          {/* Scrollable tab strip */}
+          <div className="flex-1 flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none min-w-0">
+            <button
+              onClick={() => setActiveTab(ALL_TAB)}
+              className={`shrink-0 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs sm:text-sm font-medium border transition-colors ${
+                activeTab === ALL_TAB
+                  ? "bg-slate-800 text-white border-slate-800"
+                  : "bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:text-slate-800"
+              }`}
+            >
+              ทั้งหมด
+              <span className={`rounded-full px-1.5 py-0 text-[10px] font-bold ${activeTab === ALL_TAB ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600"}`}>
+                {queue.length}
+              </span>
+            </button>
+            {tabs.map(([title, count]) => {
+              const isActive = activeTab === title;
+              const isSA = title.toLowerCase().includes("sales admin");
+              return (
+                <button
+                  key={title}
+                  onClick={() => setActiveTab(title)}
+                  className={`shrink-0 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs sm:text-sm font-medium border transition-colors ${
+                    isActive
+                      ? isSA ? "bg-blue-600 text-white border-blue-600" : "bg-slate-800 text-white border-slate-800"
+                      : "bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:text-slate-800"
+                  }`}
+                >
+                  {title}
+                  <span className={`rounded-full px-1.5 py-0 text-[10px] font-bold ${isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600"}`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
 
-          {/* Right-side buttons */}
-          <div className="ml-auto flex items-center gap-2">
+          {/* Toolbar — icon+label on desktop, icon-only on mobile */}
+          <div className="flex items-center gap-1.5 shrink-0">
             <button
               onClick={handleAutoQualifyPreview}
               disabled={aqLoading}
-              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-medium border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors disabled:opacity-50"
               title="Auto-Qualify"
             >
               {aqLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
-              Auto-Qualify
+              <span className="hidden sm:inline">Auto-Qualify</span>
             </button>
             <button
               onClick={() => setAqSettingsOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium border border-slate-200 bg-white text-slate-500 hover:text-slate-700 hover:border-slate-400 transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-medium border border-slate-200 bg-white text-slate-500 hover:text-slate-700 hover:border-slate-400 transition-colors"
               title="ตั้งกฎ Auto-Qualify"
             >
               <SlidersHorizontal className="h-4 w-4" />
-              กฎ
+              <span className="hidden sm:inline">กฎ</span>
             </button>
             <button
               onClick={() => setTemplateOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium border border-slate-200 bg-white text-slate-500 hover:text-slate-700 hover:border-slate-400 transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-medium border border-slate-200 bg-white text-slate-500 hover:text-slate-700 hover:border-slate-400 transition-colors"
               title="ตั้งค่าข้อความแจ้งผล LINE"
             >
               <Settings2 className="h-4 w-4" />
-              LINE
+              <span className="hidden sm:inline">LINE</span>
             </button>
             <button
               onClick={() => setEmailQualifyOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 hover:border-red-300 transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-medium border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 hover:border-red-300 transition-colors"
               title="ตั้งค่า Email แจ้งผล JobBKK/JobThai"
             >
               <Mail className="h-4 w-4" />
-              Email
+              <span className="hidden sm:inline">Email</span>
             </button>
           </div>
         </div>
@@ -1909,8 +1903,8 @@ export function ReviewClient({ initial, positions }: Props) {
           );
         })()}
 
-        {/* ── Search + Location filter (one row) ── */}
-        <div className="flex items-center gap-2">
+        {/* ── Search + Location filter ── */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
           {/* Search */}
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
