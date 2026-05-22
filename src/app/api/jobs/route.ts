@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { syncPositionsMd } from "@/lib/sync-positions";
 
 const createJobSchema = z.object({
   title: z.string().min(1),
@@ -58,6 +59,9 @@ export async function POST(req: Request) {
     },
     include: { _count: { select: { candidates: true } } },
   });
+
+  // Sync POSITIONS.md so bot knows about the new position
+  if (job.status === "OPEN") syncPositionsMd();
 
   return NextResponse.json(job, { status: 201 });
 }

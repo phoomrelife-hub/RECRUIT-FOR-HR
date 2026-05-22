@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { syncPositionsMd } from "@/lib/sync-positions";
 
 const updateJobSchema = z.object({
   title: z.string().min(1).optional(),
@@ -57,6 +58,9 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     include: { _count: { select: { candidates: true } } },
   });
 
+  // Sync POSITIONS.md whenever a job changes (open/close/edit)
+  syncPositionsMd();
+
   return NextResponse.json(job);
 }
 
@@ -68,5 +72,9 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
 
   const { id } = await params;
   await db.jobPosition.delete({ where: { id } });
+
+  // Sync POSITIONS.md after deletion
+  syncPositionsMd();
+
   return NextResponse.json({ success: true });
 }
