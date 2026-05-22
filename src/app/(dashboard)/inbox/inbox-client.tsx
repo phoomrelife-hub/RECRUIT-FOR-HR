@@ -859,6 +859,7 @@ export function InboxClient({
   const [filterTagId, setFilterTagId] = useState<string>("ALL");
   const [sortBy, setSortBy] = useState<"LATEST" | "UNREAD_FIRST">("LATEST");
   const [search, setSearch] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
   const [showNewConv, setShowNewConv] = useState(false);
   const [takingOver, setTakingOver] = useState(false);
   const [linePushError, setLinePushError] = useState<string | null>(null);
@@ -1378,132 +1379,156 @@ export function InboxClient({
             ))}
           </div>
 
-          {/* Candidate pipeline status + tag filters */}
-          <div className="flex items-center gap-2">
-            <SlidersHorizontal size={11} className="text-slate-400 flex-shrink-0" />
-            <select
-              value={filterCandidateStatus}
-              onChange={(e) => setFilterCandidateStatus(e.target.value)}
-              className={`flex-1 text-[11px] border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 appearance-none cursor-pointer transition-colors ${
-                filterCandidateStatus !== "ALL"
-                  ? "border-blue-400 bg-blue-50 text-blue-700 font-medium"
-                  : "border-slate-200 text-slate-600"
-              }`}
-            >
-              <option value="ALL">ทุกสถานะผู้สมัคร</option>
-              {STATUS_ORDER.map((s) => (
-                <option key={s} value={s}>{statusLabel[s]}</option>
-              ))}
-            </select>
-          </div>
+          {/* Filter toggle row */}
+          {(() => {
+            const activeFilterCount = [
+              filterChannel !== "ALL",
+              filterBot !== "ALL",
+              filterUnread,
+              filterCandidateStatus !== "ALL",
+              filterTagId !== "ALL",
+              sortBy !== "LATEST",
+            ].filter(Boolean).length;
+            return (
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setShowFilters(!showFilters)}
+                  className={`flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 rounded-lg border font-medium transition-colors flex-1 ${
+                    showFilters || activeFilterCount > 0
+                      ? "bg-blue-50 border-blue-300 text-blue-700"
+                      : "border-slate-200 text-slate-500 hover:bg-slate-50"
+                  }`}
+                >
+                  <SlidersHorizontal size={11} />
+                  กรอง
+                  {activeFilterCount > 0 && (
+                    <span className="ml-auto bg-blue-600 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                      {activeFilterCount}
+                    </span>
+                  )}
+                  <ChevronDown size={11} className={`ml-auto transition-transform ${showFilters ? "rotate-180" : ""} ${activeFilterCount > 0 ? "ml-0" : ""}`} />
+                </button>
+                <button
+                  onClick={() => setSortBy(sortBy === "LATEST" ? "UNREAD_FIRST" : "LATEST")}
+                  className={`flex items-center gap-1 text-[11px] px-2.5 py-1.5 rounded-lg border font-medium transition-colors flex-shrink-0 ${
+                    sortBy === "UNREAD_FIRST"
+                      ? "bg-slate-700 text-white border-slate-700"
+                      : "border-slate-200 text-slate-500 hover:bg-slate-50"
+                  }`}
+                  title={sortBy === "LATEST" ? "เรียงตามเวลา" : "เรียงยังไม่อ่านก่อน"}
+                >
+                  <ArrowUpDown size={11} />
+                  {sortBy === "UNREAD_FIRST" ? "ยังไม่อ่าน" : "ล่าสุด"}
+                </button>
+              </div>
+            );
+          })()}
 
-          {/* Tag filter */}
-          {allTags.length > 0 && (
-            <div className="flex items-center gap-2">
-              <TagIcon size={11} className="text-slate-400 flex-shrink-0" />
-              <select
-                value={filterTagId}
-                onChange={(e) => setFilterTagId(e.target.value)}
-                className={`flex-1 text-[11px] border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 appearance-none cursor-pointer transition-colors ${
-                  filterTagId !== "ALL"
-                    ? "border-violet-400 bg-violet-50 text-violet-700 font-medium"
-                    : "border-slate-200 text-slate-600"
-                }`}
-              >
-                <option value="ALL">ทุก Tag</option>
-                {allTags.map((t) => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
+          {/* Expanded filter panel */}
+          {showFilters && (
+            <div className="space-y-2 pt-1 border-t border-slate-100">
+              {/* Candidate status */}
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-slate-400 w-10 flex-shrink-0">สถานะ</span>
+                <select
+                  value={filterCandidateStatus}
+                  onChange={(e) => setFilterCandidateStatus(e.target.value)}
+                  className={`flex-1 text-[11px] border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 appearance-none cursor-pointer ${
+                    filterCandidateStatus !== "ALL"
+                      ? "border-blue-400 bg-blue-50 text-blue-700 font-medium"
+                      : "border-slate-200 text-slate-600"
+                  }`}
+                >
+                  <option value="ALL">ทุกสถานะ</option>
+                  {STATUS_ORDER.map((s) => (
+                    <option key={s} value={s}>{statusLabel[s]}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Tag */}
+              {allTags.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-slate-400 w-10 flex-shrink-0">Tag</span>
+                  <select
+                    value={filterTagId}
+                    onChange={(e) => setFilterTagId(e.target.value)}
+                    className={`flex-1 text-[11px] border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 appearance-none cursor-pointer ${
+                      filterTagId !== "ALL"
+                        ? "border-violet-400 bg-violet-50 text-violet-700 font-medium"
+                        : "border-slate-200 text-slate-600"
+                    }`}
+                  >
+                    <option value="ALL">ทุก Tag</option>
+                    {allTags.map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Channel + Mode + Unread chips */}
+              <div className="flex flex-wrap gap-1">
+                {(["LINE", "FACEBOOK"] as const).map((ch) => (
+                  <button
+                    key={ch}
+                    onClick={() => setFilterChannel(filterChannel === ch ? "ALL" : ch)}
+                    className={`text-[10px] px-2 py-1 rounded-lg font-medium border transition-colors ${
+                      filterChannel === ch
+                        ? ch === "LINE"
+                          ? "bg-green-500 text-white border-green-500"
+                          : "bg-blue-600 text-white border-blue-600"
+                        : "border-slate-200 text-slate-500 hover:bg-slate-50"
+                    }`}
+                  >
+                    {ch === "FACEBOOK" ? "Facebook" : "LINE"}
+                  </button>
                 ))}
-              </select>
-            </div>
-          )}
+                <button
+                  onClick={() => setFilterBot(filterBot === "BOT" ? "ALL" : "BOT")}
+                  className={`text-[10px] px-2 py-1 rounded-lg font-medium border transition-colors flex items-center gap-1 ${
+                    filterBot === "BOT"
+                      ? "bg-amber-500 text-white border-amber-500"
+                      : "border-slate-200 text-slate-500 hover:bg-slate-50"
+                  }`}
+                >
+                  <Bot size={10} /> บอท
+                </button>
+                <button
+                  onClick={() => setFilterBot(filterBot === "HR" ? "ALL" : "HR")}
+                  className={`text-[10px] px-2 py-1 rounded-lg font-medium border transition-colors flex items-center gap-1 ${
+                    filterBot === "HR"
+                      ? "bg-purple-600 text-white border-purple-600"
+                      : "border-slate-200 text-slate-500 hover:bg-slate-50"
+                  }`}
+                >
+                  <User size={10} /> HR Mode
+                </button>
+                <button
+                  onClick={() => setFilterUnread(!filterUnread)}
+                  className={`text-[10px] px-2 py-1 rounded-lg font-medium border transition-colors flex items-center gap-1 ${
+                    filterUnread
+                      ? "bg-red-500 text-white border-red-500"
+                      : "border-slate-200 text-slate-500 hover:bg-slate-50"
+                  }`}
+                >
+                  <Circle size={8} className={filterUnread ? "fill-white" : "fill-slate-400"} />
+                  ยังไม่อ่าน
+                </button>
+              </div>
 
-          {/* Advanced filters row */}
-          <div className="flex flex-wrap gap-1 items-center">
-            {/* Channel chips */}
-            {(["ALL", "LINE", "FACEBOOK"] as const).map((ch) => (
-              <button
-                key={ch}
-                onClick={() => setFilterChannel(ch)}
-                className={`text-[10px] px-2 py-0.5 rounded-full font-medium border transition-colors ${
-                  filterChannel === ch
-                    ? ch === "LINE"
-                      ? "bg-green-500 text-white border-green-500"
-                      : ch === "FACEBOOK"
-                      ? "bg-blue-600 text-white border-blue-600"
-                      : "bg-slate-700 text-white border-slate-700"
-                    : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
-                }`}
-              >
-                {ch === "ALL" ? "ทุก channel" : ch === "FACEBOOK" ? "FB" : ch}
-              </button>
-            ))}
-
-            {/* Divider */}
-            <span className="text-slate-200">|</span>
-
-            {/* Bot status */}
-            <button
-              onClick={() => setFilterBot(filterBot === "BOT" ? "ALL" : "BOT")}
-              className={`text-[10px] px-2 py-0.5 rounded-full font-medium border transition-colors flex items-center gap-1 ${
-                filterBot === "BOT"
-                  ? "bg-amber-500 text-white border-amber-500"
-                  : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
-              }`}
-            >
-              <Bot size={10} /> บอท
-            </button>
-            <button
-              onClick={() => setFilterBot(filterBot === "HR" ? "ALL" : "HR")}
-              className={`text-[10px] px-2 py-0.5 rounded-full font-medium border transition-colors flex items-center gap-1 ${
-                filterBot === "HR"
-                  ? "bg-purple-600 text-white border-purple-600"
-                  : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
-              }`}
-            >
-              <User size={10} /> HR
-            </button>
-
-            {/* Unread toggle */}
-            <button
-              onClick={() => setFilterUnread(!filterUnread)}
-              className={`text-[10px] px-2 py-0.5 rounded-full font-medium border transition-colors flex items-center gap-1 ${
-                filterUnread
-                  ? "bg-red-500 text-white border-red-500"
-                  : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
-              }`}
-            >
-              <Circle size={8} className={filterUnread ? "fill-white" : "fill-slate-400"} />
-              ยังไม่อ่าน
-            </button>
-
-            {/* Sort button */}
-            <button
-              onClick={() => setSortBy(sortBy === "LATEST" ? "UNREAD_FIRST" : "LATEST")}
-              className={`ml-auto text-[10px] px-2 py-0.5 rounded-full font-medium border transition-colors flex items-center gap-1 ${
-                sortBy === "UNREAD_FIRST"
-                  ? "bg-slate-700 text-white border-slate-700"
-                  : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
-              }`}
-              title={sortBy === "LATEST" ? "เรียงตามเวลา" : "เรียงยังไม่อ่านก่อน"}
-            >
-              <ArrowUpDown size={10} />
-              {sortBy === "UNREAD_FIRST" ? "ยังไม่อ่านก่อน" : "ล่าสุด"}
-            </button>
-          </div>
-
-          {/* Active filter count badge */}
-          {(filterChannel !== "ALL" || filterBot !== "ALL" || filterUnread || search || filterCandidateStatus !== "ALL" || filterTagId !== "ALL") && (
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] text-slate-400">
-                แสดง {filtered.length} จาก {conversations.length} การสนทนา
-              </span>
-              <button
-                onClick={() => { setFilterChannel("ALL"); setFilterBot("ALL"); setFilterUnread(false); setSearch(""); setFilterStatus("ALL"); setFilterCandidateStatus("ALL"); setFilterTagId("ALL"); setSortBy("LATEST"); }}
-                className="text-[10px] text-blue-500 hover:text-blue-700 font-medium"
-              >
-                ล้างทั้งหมด
-              </button>
+              {/* Result count + clear */}
+              <div className="flex items-center justify-between pt-0.5">
+                <span className="text-[10px] text-slate-400">
+                  {filtered.length} จาก {conversations.length} การสนทนา
+                </span>
+                <button
+                  onClick={() => { setFilterChannel("ALL"); setFilterBot("ALL"); setFilterUnread(false); setSearch(""); setFilterStatus("ALL"); setFilterCandidateStatus("ALL"); setFilterTagId("ALL"); setSortBy("LATEST"); setShowFilters(false); }}
+                  className="text-[10px] text-blue-500 hover:text-blue-700 font-medium"
+                >
+                  ล้างทั้งหมด
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -1623,36 +1648,37 @@ export function InboxClient({
               </div>
             </div>
 
-            <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              {/* Bot status badge — icon only on mobile */}
               <div className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium ${activeConv.botEnabled ? "bg-indigo-100 text-indigo-700" : "bg-orange-100 text-orange-700"}`}>
                 <Bot size={12} />
-                {activeConv.botEnabled ? "บอทดูแลอยู่" : "HR รับแชท"}
+                <span className="hidden sm:inline">{activeConv.botEnabled ? "บอทดูแลอยู่" : "HR รับแชท"}</span>
               </div>
 
               {activeConv.botEnabled ? (
                 <button
                   onClick={() => handleTakeover("TAKE_OVER")}
                   disabled={takingOver}
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50 transition-colors font-medium"
+                  className="flex items-center gap-1 text-xs px-2.5 py-1.5 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50 transition-colors font-medium"
                 >
                   <User size={12} />
-                  รับแชท
+                  <span className="hidden sm:inline">รับแชท</span>
                 </button>
               ) : (
                 <button
                   onClick={() => handleTakeover("RELEASE")}
                   disabled={takingOver}
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 disabled:opacity-50 transition-colors font-medium"
+                  className="flex items-center gap-1 text-xs px-2.5 py-1.5 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 disabled:opacity-50 transition-colors font-medium"
                 >
                   <Bot size={12} />
-                  คืนให้บอท
+                  <span className="hidden sm:inline">คืนให้บอท</span>
                 </button>
               )}
 
               <button
                 onClick={() => setShowSimulate(!showSimulate)}
                 title="OpenClaw Mock"
-                className={`p-1.5 rounded-lg transition-colors ${showSimulate ? "bg-amber-100 text-amber-700" : "text-slate-400 hover:bg-slate-100"}`}
+                className={`p-1.5 rounded-lg transition-colors hidden sm:flex ${showSimulate ? "bg-amber-100 text-amber-700" : "text-slate-400 hover:bg-slate-100"}`}
               >
                 <Sparkles size={14} />
               </button>
