@@ -23,7 +23,7 @@ const updateCandidateSchema = z.object({
   portfolioUrl: z.string().optional().nullable(),
   currentStatus: z.enum([
     "NEW_APPLICANT", "BOT_SCREENING", "WAITING_HR_REVIEW", "NEED_MORE_INFO",
-    "QUALIFIED", "INTERVIEW_SCHEDULED", "INTERVIEWED", "PASSED", "REJECTED",
+    "QUALIFIED", "INTERVIEW_SCHEDULED", "INTERVIEWED", "PASSED", "HIRED", "REJECTED",
     "TALENT_POOL", "CLOSED",
   ]).optional(),
   statusReason: z.string().optional(),
