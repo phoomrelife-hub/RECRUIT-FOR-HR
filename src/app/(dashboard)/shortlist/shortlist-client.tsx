@@ -82,6 +82,8 @@ function Avatar({ c }: { c: ShortlistCandidate }) {
 
 type InterviewType = "onsite" | "online";
 
+type JobOption = { id: string; title: string };
+
 function ScheduleDialog({
   candidate,
   open,
@@ -102,10 +104,25 @@ function ScheduleDialog({
   const [positionLabel, setPositionLabel] = useState("");
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(false);
+  const [jobOptions, setJobOptions] = useState<JobOption[]>([]);
 
-  // pre-fill position when candidate changes
   const name = candidate ? getName(candidate) : "";
   const candidatePosition = candidate?.interestedPosition?.title ?? "";
+
+  // fetch job positions once on mount
+  useEffect(() => {
+    fetch("/api/jobs")
+      .then((r) => r.json())
+      .then((data: JobOption[]) => {
+        if (Array.isArray(data)) setJobOptions(data);
+      })
+      .catch(() => {});
+  }, []);
+
+  // pre-fill position when candidate changes
+  useEffect(() => {
+    if (candidate) setPositionLabel(candidate.interestedPosition?.title ?? "");
+  }, [candidate]);
 
   function resetForm() {
     setType("onsite");
@@ -123,10 +140,16 @@ function ScheduleDialog({
     if (!candidate) return;
     setLoading(true);
     try {
-      const body =
-        type === "online"
-          ? { type, date, startTime, meetingLink, interviewer: interviewer || undefined, positionLabel: positionLabel || candidatePosition || undefined, note: note || undefined }
-          : { type, date, startTime, location: location || undefined, note: note || undefined };
+      const body = {
+        type,
+        date,
+        startTime,
+        positionLabel: positionLabel || candidatePosition || undefined,
+        note: note || undefined,
+        ...(type === "online"
+          ? { meetingLink, interviewer: interviewer || undefined }
+          : { location: location || undefined }),
+      };
 
       const res = await fetch(`/api/candidates/${candidate.id}/schedule-interview`, {
         method: "POST",
@@ -194,13 +217,26 @@ function ScheduleDialog({
             <label className="text-sm font-medium text-slate-700 block mb-1">
               ตำแหน่งที่สัมภาษณ์
             </label>
-            <input
-              type="text"
-              value={positionLabel}
-              onChange={(e) => setPositionLabel(e.target.value)}
-              placeholder={candidatePosition || "เช่น Sales Admin"}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            {jobOptions.length > 0 ? (
+              <select
+                value={positionLabel}
+                onChange={(e) => setPositionLabel(e.target.value)}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                <option value="">— เลือกตำแหน่ง —</option>
+                {jobOptions.map((j) => (
+                  <option key={j.id} value={j.title}>{j.title}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={positionLabel}
+                onChange={(e) => setPositionLabel(e.target.value)}
+                placeholder={candidatePosition || "เช่น Sales Admin"}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            )}
           </div>
 
           {/* ── Online-only: ผู้สัมภาษณ์ ── */}
