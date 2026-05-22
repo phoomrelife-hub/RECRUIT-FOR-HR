@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   AlertCircle,
+  Archive,
   CalendarDays,
   CheckCircle2,
   ChevronRight,
@@ -48,6 +49,7 @@ interface Props {
   scheduled: ShortlistCandidate[];
   interviewed: ShortlistCandidate[];
   passed: ShortlistCandidate[];
+  hired: ShortlistCandidate[];
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -444,11 +446,12 @@ function Column({
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export function ShortlistClient({ qualified, scheduled, interviewed, passed }: Props) {
+export function ShortlistClient({ qualified, scheduled, interviewed, passed, hired }: Props) {
   const [qualifiedList, setQualifiedList] = useState(qualified);
   const [scheduledList, setScheduledList] = useState(scheduled);
   const [interviewedList, setInterviewedList] = useState(interviewed);
   const [passedList, setPassedList] = useState(passed);
+  const [hiredList, setHiredList] = useState(hired);
 
   const [scheduleTarget, setScheduleTarget] = useState<ShortlistCandidate | null>(null);
   const [scheduleOpen, setScheduleOpen] = useState(false);
@@ -604,15 +607,32 @@ export function ShortlistClient({ qualified, scheduled, interviewed, passed }: P
     );
   }
 
+  async function handleMarkHired(c: ShortlistCandidate) {
+    const ok = await moveStatus(c.id, "HIRED");
+    if (!ok) return;
+    setPassedList((prev) => prev.filter((x) => x.id !== c.id));
+    setHiredList((prev) => [{ ...c, currentStatus: "HIRED" }, ...prev]);
+    toast.success(`${getName(c)} ย้ายไปนัดหมายเริ่มงานแล้ว 🎉`);
+  }
+
+  async function handleArchive(c: ShortlistCandidate) {
+    if (!confirm(`Archive "${getName(c)}" ใช่ไหม?\n\nผู้สมัครจะหายจาก Shortlist แต่ข้อมูลยังอยู่ในระบบ`)) return;
+    const ok = await moveStatus(c.id, "CLOSED");
+    if (!ok) return;
+    setHiredList((prev) => prev.filter((x) => x.id !== c.id));
+    toast.success(`${getName(c)} ถูก Archive แล้ว`);
+  }
+
   const [activeTab, setActiveTab] = useState(0);
 
-  const total = qualifiedList.length + scheduledList.length + interviewedList.length + passedList.length;
+  const total = qualifiedList.length + scheduledList.length + interviewedList.length + passedList.length + hiredList.length;
 
   const TABS = [
-    { label: "ผ่านการพิจารณา", color: "emerald", count: qualifiedList.length },
-    { label: "นัดแล้ว",         color: "blue",    count: scheduledList.length },
-    { label: "สัมภาษณ์แล้ว",   color: "violet",  count: interviewedList.length },
-    { label: "ส่งข้อความก่อนนัด", color: "amber", count: passedList.length },
+    { label: "ผ่านการพิจารณา",      color: "emerald", count: qualifiedList.length },
+    { label: "นัดแล้ว",              color: "blue",    count: scheduledList.length },
+    { label: "สัมภาษณ์แล้ว",        color: "violet",  count: interviewedList.length },
+    { label: "ส่งข้อความก่อนนัด",   color: "amber",   count: passedList.length },
+    { label: "นัดหมายเริ่มงาน",     color: "teal",    count: hiredList.length },
   ] as const;
 
   const TAB_ACTIVE: Record<string, string> = {
@@ -620,6 +640,7 @@ export function ShortlistClient({ qualified, scheduled, interviewed, passed }: P
     blue:    "border-blue-500 text-blue-700 bg-blue-50",
     violet:  "border-violet-500 text-violet-700 bg-violet-50",
     amber:   "border-amber-500 text-amber-700 bg-amber-50",
+    teal:    "border-teal-500 text-teal-700 bg-teal-50",
   };
 
   const qualifiedContent = (
@@ -741,12 +762,47 @@ export function ShortlistClient({ qualified, scheduled, interviewed, passed }: P
   const passedContent = (
     <>
       {passedList.map((c) => (
-        <CandidateCard key={c.id} c={c} />
+        <CandidateCard
+          key={c.id}
+          c={c}
+          actions={
+            <Button
+              size="sm"
+              className="w-full h-7 text-xs gap-1 bg-teal-600 hover:bg-teal-700 text-white"
+              onClick={() => handleMarkHired(c)}
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+              นัดหมายเริ่มงาน
+            </Button>
+          }
+        />
       ))}
     </>
   );
 
-  const tabContents = [qualifiedContent, scheduledContent, interviewedContent, passedContent];
+  const hiredContent = (
+    <>
+      {hiredList.map((c) => (
+        <CandidateCard
+          key={c.id}
+          c={c}
+          actions={
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full h-7 text-xs gap-1 border-slate-300 text-slate-500 hover:bg-slate-100"
+              onClick={() => handleArchive(c)}
+            >
+              <Archive className="h-3.5 w-3.5" />
+              Archive
+            </Button>
+          }
+        />
+      ))}
+    </>
+  );
+
+  const tabContents = [qualifiedContent, scheduledContent, interviewedContent, passedContent, hiredContent];
 
   return (
     <div className="space-y-4">
@@ -797,12 +853,14 @@ export function ShortlistClient({ qualified, scheduled, interviewed, passed }: P
             activeTab === 0 ? "bg-emerald-500 text-white" :
             activeTab === 1 ? "bg-blue-500 text-white" :
             activeTab === 2 ? "bg-violet-500 text-white" :
-                              "bg-amber-500 text-white"
+            activeTab === 3 ? "bg-amber-500 text-white" :
+                              "bg-teal-600 text-white"
           }`}>
             {activeTab === 0 && <UserCheck className="h-4 w-4" />}
             {activeTab === 1 && <CalendarDays className="h-4 w-4" />}
             {activeTab === 2 && <MessageCircle className="h-4 w-4" />}
             {activeTab === 3 && <Trophy className="h-4 w-4" />}
+            {activeTab === 4 && <CheckCircle2 className="h-4 w-4" />}
             <span className="font-semibold text-sm">{TABS[activeTab].label}</span>
             <span className="ml-auto text-xs font-bold opacity-75 bg-white/30 rounded-full px-2 py-0.5">
               {TABS[activeTab].count}
@@ -819,8 +877,8 @@ export function ShortlistClient({ qualified, scheduled, interviewed, passed }: P
         </div>
       </div>
 
-      {/* ── Desktop: 4-column grid ───────────────────────────────── */}
-      <div className="hidden sm:grid sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      {/* ── Desktop: 5-column grid ───────────────────────────────── */}
+      <div className="hidden sm:grid sm:grid-cols-2 xl:grid-cols-5 gap-4">
         <Column
           title="ผ่านการพิจารณา"
           color="bg-emerald-500 text-white"
@@ -855,6 +913,15 @@ export function ShortlistClient({ qualified, scheduled, interviewed, passed }: P
           count={passedList.length}
         >
           {passedContent}
+        </Column>
+
+        <Column
+          title="นัดหมายเริ่มงาน"
+          color="bg-teal-600 text-white"
+          icon={<CheckCircle2 className="h-4 w-4" />}
+          count={hiredList.length}
+        >
+          {hiredContent}
         </Column>
       </div>
 

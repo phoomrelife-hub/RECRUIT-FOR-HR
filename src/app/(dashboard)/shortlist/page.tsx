@@ -8,7 +8,7 @@ export default async function ShortlistPage() {
   const candidates = await db.candidate.findMany({
     where: {
       currentStatus: {
-        in: ["QUALIFIED", "INTERVIEW_SCHEDULED", "INTERVIEWED", "PASSED"],
+        in: ["QUALIFIED", "INTERVIEW_SCHEDULED", "INTERVIEWED", "PASSED", "HIRED"],
       },
     },
     select: {
@@ -49,6 +49,7 @@ export default async function ShortlistPage() {
   const scheduled   = withResponse.filter((c) => c.currentStatus === "INTERVIEW_SCHEDULED");
   const interviewed = withResponse.filter((c) => c.currentStatus === "INTERVIEWED");
   const passed      = withResponse.filter((c) => c.currentStatus === "PASSED");
+  const hired       = withResponse.filter((c) => c.currentStatus === "HIRED");
 
   return (
     <ShortlistClient
@@ -56,6 +57,7 @@ export default async function ShortlistPage() {
       scheduled={scheduled as any}
       interviewed={interviewed as any}
       passed={passed as any}
+      hired={hired as any}
     />
   );
 }
