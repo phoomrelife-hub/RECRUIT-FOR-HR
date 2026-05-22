@@ -30,6 +30,7 @@ const candidateStatusLabel: Record<CandidateStatus, string> = {
   INTERVIEW_SCHEDULED: "Interview Set",
   INTERVIEWED: "Interviewed",
   PASSED: "Passed",
+  HIRED: "Hired",
   REJECTED: "Rejected",
   TALENT_POOL: "Talent Pool",
   CLOSED: "Closed",
