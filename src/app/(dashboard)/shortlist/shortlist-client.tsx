@@ -604,10 +604,152 @@ export function ShortlistClient({ qualified, scheduled, interviewed, passed }: P
     );
   }
 
+  const [activeTab, setActiveTab] = useState(0);
+
   const total = qualifiedList.length + scheduledList.length + interviewedList.length + passedList.length;
 
+  const TABS = [
+    { label: "ผ่านการพิจารณา", color: "emerald", count: qualifiedList.length },
+    { label: "นัดแล้ว",         color: "blue",    count: scheduledList.length },
+    { label: "สัมภาษณ์แล้ว",   color: "violet",  count: interviewedList.length },
+    { label: "ส่งข้อความก่อนนัด", color: "amber", count: passedList.length },
+  ] as const;
+
+  const TAB_ACTIVE: Record<string, string> = {
+    emerald: "border-emerald-500 text-emerald-700 bg-emerald-50",
+    blue:    "border-blue-500 text-blue-700 bg-blue-50",
+    violet:  "border-violet-500 text-violet-700 bg-violet-50",
+    amber:   "border-amber-500 text-amber-700 bg-amber-50",
+  };
+
+  const qualifiedContent = (
+    <>
+      {qualifiedList.map((c) => (
+        <CandidateCard
+          key={c.id}
+          c={c}
+          actions={
+            <div className="flex flex-col gap-1.5">
+              <Button
+                size="sm"
+                className="w-full h-7 text-xs gap-1 bg-blue-600 hover:bg-blue-700 text-white"
+                onClick={() => { setScheduleTarget(c); setScheduleOpen(true); }}
+              >
+                <CalendarDays className="h-3.5 w-3.5" />
+                นัดสัมภาษณ์
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full h-7 text-xs gap-1 border-red-100 text-red-500 hover:bg-red-50 hover:border-red-300"
+                onClick={() => handleRemoveFromShortlist(c)}
+              >
+                ❌ ยกเลิก / นำออก
+              </Button>
+            </div>
+          }
+        />
+      ))}
+    </>
+  );
+
+  const scheduledContent = (
+    <>
+      {scheduledList.map((c) => (
+        <CandidateCard
+          key={c.id}
+          c={c}
+          actions={
+            <div className="flex flex-col gap-1.5">
+              {c.latestResponse === "declined" ? (
+                <Button
+                  size="sm"
+                  className="w-full h-7 text-xs gap-1 bg-red-600 hover:bg-red-700 text-white"
+                  onClick={() => handleReschedule(c)}
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  เลื่อนนัด (นัดใหม่)
+                </Button>
+              ) : (
+                <div className="flex gap-1.5">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1 h-7 text-xs gap-1 border-slate-200 text-slate-500 hover:bg-slate-50"
+                    onClick={() => handleReschedule(c)}
+                    title="เลื่อนนัด"
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1 h-7 text-xs gap-1 border-blue-200 text-blue-700 hover:bg-blue-50"
+                    onClick={() => handleMarkInterviewed(c)}
+                  >
+                    <ChevronRight className="h-3.5 w-3.5" />
+                    สัมภาษณ์แล้ว
+                  </Button>
+                </div>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full h-7 text-xs gap-1 border-red-100 text-red-500 hover:bg-red-50 hover:border-red-300"
+                onClick={() => handleCancelInterview(c)}
+              >
+                ❌ ยกเลิกนัด
+              </Button>
+            </div>
+          }
+        />
+      ))}
+    </>
+  );
+
+  const interviewedContent = (
+    <>
+      {interviewedList.map((c) => (
+        <CandidateCard
+          key={c.id}
+          c={c}
+          actions={
+            <div className="flex gap-1.5">
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-1 h-7 text-xs gap-1 border-red-200 text-red-600 hover:bg-red-50"
+                onClick={() => handleReject(c)}
+              >
+                ❌ ไม่ผ่าน
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-1 h-7 text-xs gap-1 border-violet-200 text-violet-700 hover:bg-violet-50"
+                onClick={() => handleMarkPassed(c)}
+              >
+                ✅ ผ่าน
+              </Button>
+            </div>
+          }
+        />
+      ))}
+    </>
+  );
+
+  const passedContent = (
+    <>
+      {passedList.map((c) => (
+        <CandidateCard key={c.id} c={c} />
+      ))}
+    </>
+  );
+
+  const tabContents = [qualifiedContent, scheduledContent, interviewedContent, passedContent];
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Header */}
       <div>
         <div className="flex items-center gap-2">
@@ -624,151 +766,95 @@ export function ShortlistClient({ qualified, scheduled, interviewed, passed }: P
         </p>
       </div>
 
-      {/* 4 Columns */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        {/* ผ่านการพิจารณา */}
+      {/* ── Mobile: Tab bar + single section ─────────────────────── */}
+      <div className="sm:hidden">
+        {/* Scrollable tab strip */}
+        <div className="flex overflow-x-auto gap-1 pb-1 -mx-4 px-4 scrollbar-none">
+          {TABS.map((tab, i) => (
+            <button
+              key={i}
+              onClick={() => setActiveTab(i)}
+              className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-semibold transition-colors whitespace-nowrap ${
+                activeTab === i
+                  ? TAB_ACTIVE[tab.color]
+                  : "border-slate-200 text-slate-500 bg-white hover:bg-slate-50"
+              }`}
+            >
+              {tab.label}
+              <span className={`text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center ${
+                activeTab === i ? "bg-white/60" : "bg-slate-100 text-slate-600"
+              }`}>
+                {tab.count}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {/* Active section */}
+        <div className="mt-3">
+          {/* Section header bar */}
+          <div className={`rounded-t-lg px-3 py-2.5 flex items-center gap-2 ${
+            activeTab === 0 ? "bg-emerald-500 text-white" :
+            activeTab === 1 ? "bg-blue-500 text-white" :
+            activeTab === 2 ? "bg-violet-500 text-white" :
+                              "bg-amber-500 text-white"
+          }`}>
+            {activeTab === 0 && <UserCheck className="h-4 w-4" />}
+            {activeTab === 1 && <CalendarDays className="h-4 w-4" />}
+            {activeTab === 2 && <MessageCircle className="h-4 w-4" />}
+            {activeTab === 3 && <Trophy className="h-4 w-4" />}
+            <span className="font-semibold text-sm">{TABS[activeTab].label}</span>
+            <span className="ml-auto text-xs font-bold opacity-75 bg-white/30 rounded-full px-2 py-0.5">
+              {TABS[activeTab].count}
+            </span>
+          </div>
+          <div className="bg-slate-50 rounded-b-lg border border-t-0 border-slate-200 p-2 space-y-2 min-h-[120px]">
+            {tabContents[activeTab]}
+            {TABS[activeTab].count === 0 && (
+              <div className="flex items-center justify-center h-20 text-xs text-slate-400">
+                ยังไม่มีรายการ
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Desktop: 4-column grid ───────────────────────────────── */}
+      <div className="hidden sm:grid sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <Column
           title="ผ่านการพิจารณา"
           color="bg-emerald-500 text-white"
           icon={<UserCheck className="h-4 w-4" />}
           count={qualifiedList.length}
         >
-          {qualifiedList.map((c) => (
-            <CandidateCard
-              key={c.id}
-              c={c}
-              actions={
-                <div className="flex flex-col gap-1.5">
-                  <Button
-                    size="sm"
-                    className="w-full h-7 text-xs gap-1 bg-blue-600 hover:bg-blue-700 text-white"
-                    onClick={() => {
-                      setScheduleTarget(c);
-                      setScheduleOpen(true);
-                    }}
-                  >
-                    <CalendarDays className="h-3.5 w-3.5" />
-                    นัดสัมภาษณ์
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="w-full h-7 text-xs gap-1 border-red-100 text-red-500 hover:bg-red-50 hover:border-red-300"
-                    onClick={() => handleRemoveFromShortlist(c)}
-                  >
-                    ❌ ยกเลิก / นำออก
-                  </Button>
-                </div>
-              }
-            />
-          ))}
+          {qualifiedContent}
         </Column>
 
-        {/* นัดแล้ว */}
         <Column
           title="นัดแล้ว"
           color="bg-blue-500 text-white"
           icon={<CalendarDays className="h-4 w-4" />}
           count={scheduledList.length}
         >
-          {scheduledList.map((c) => (
-            <CandidateCard
-              key={c.id}
-              c={c}
-              actions={
-                <div className="flex flex-col gap-1.5">
-                  {c.latestResponse === "declined" ? (
-                    // ไม่สะดวก → แสดงปุ่มเลื่อนนัดเด่น
-                    <Button
-                      size="sm"
-                      className="w-full h-7 text-xs gap-1 bg-red-600 hover:bg-red-700 text-white"
-                      onClick={() => handleReschedule(c)}
-                    >
-                      <RefreshCw className="h-3.5 w-3.5" />
-                      เลื่อนนัด (นัดใหม่)
-                    </Button>
-                  ) : (
-                    // ปกติ / ยืนยันแล้ว → 2 ปุ่ม
-                    <div className="flex gap-1.5">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="flex-1 h-7 text-xs gap-1 border-slate-200 text-slate-500 hover:bg-slate-50"
-                        onClick={() => handleReschedule(c)}
-                        title="เลื่อนนัด"
-                      >
-                        <RefreshCw className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="flex-1 h-7 text-xs gap-1 border-blue-200 text-blue-700 hover:bg-blue-50"
-                        onClick={() => handleMarkInterviewed(c)}
-                      >
-                        <ChevronRight className="h-3.5 w-3.5" />
-                        สัมภาษณ์แล้ว
-                      </Button>
-                    </div>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="w-full h-7 text-xs gap-1 border-red-100 text-red-500 hover:bg-red-50 hover:border-red-300"
-                    onClick={() => handleCancelInterview(c)}
-                  >
-                    ❌ ยกเลิกนัด
-                  </Button>
-                </div>
-              }
-            />
-          ))}
+          {scheduledContent}
         </Column>
 
-        {/* สัมภาษณ์แล้ว */}
         <Column
           title="สัมภาษณ์แล้ว"
           color="bg-violet-500 text-white"
           icon={<MessageCircle className="h-4 w-4" />}
           count={interviewedList.length}
         >
-          {interviewedList.map((c) => (
-            <CandidateCard
-              key={c.id}
-              c={c}
-              actions={
-                <div className="flex gap-1.5">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="flex-1 h-7 text-xs gap-1 border-red-200 text-red-600 hover:bg-red-50"
-                    onClick={() => handleReject(c)}
-                  >
-                    ❌ ไม่ผ่าน
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="flex-1 h-7 text-xs gap-1 border-violet-200 text-violet-700 hover:bg-violet-50"
-                    onClick={() => handleMarkPassed(c)}
-                  >
-                    ✅ ผ่าน
-                  </Button>
-                </div>
-              }
-            />
-          ))}
+          {interviewedContent}
         </Column>
 
-        {/* ส่งข้อความก่อนนัดสัมภาษณ์ */}
         <Column
           title="ส่งข้อความก่อนนัดสัมภาษณ์"
           color="bg-amber-500 text-white"
           icon={<Trophy className="h-4 w-4" />}
           count={passedList.length}
         >
-          {passedList.map((c) => (
-            <CandidateCard key={c.id} c={c} />
-          ))}
+          {passedContent}
         </Column>
       </div>
 
