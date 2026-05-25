@@ -308,14 +308,15 @@ function MessageMedia({ msg, isRight }: { msg: Message; isRight: boolean }) {
         {/* Lightbox */}
         {imgOpen && (
           <div
-            className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+            className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-2"
             onClick={() => setImgOpen(false)}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={effectiveMediaUrl}
               alt="รูปภาพ"
-              className="max-w-full max-h-full object-contain rounded-lg"
+              className="rounded-lg object-contain"
+              style={{ maxWidth: "95vw", maxHeight: "92vh" }}
               onClick={(e) => e.stopPropagation()}
             />
             <button
