@@ -424,12 +424,12 @@ SUBMIT_SCREENING_ANSWERS, SCORE_CANDIDATE, GENERATE_AI_SUMMARY
 - `SourceChannel` enum includes `WEBSITE` (purple badge)
 - `/daniel` page — real-time stats, live conversations, connection config
 
-## OpenClaw Middleware (WSL) — หลิน Bot
-> ⚠️ **หลินรันอยู่บน WSL (เครื่อง local) ไม่ใช่ VPS**
-> VPS `194.233.91.166` = Hermes AI agent (คนละระบบ)
-> การแก้ไขบทสนทนา/rules/soul ของหลิน → แก้ที่ WSL บนเครื่อง local เท่านั้น
+## OpenClaw Middleware — หลิน Bot
+> ✅ **OpenClaw + workspace-hr อยู่บน VPS `194.233.91.166`** (ไม่ใช่ WSL local)
+> แก้ไขไฟล์หลิน → SSH เข้า VPS แล้วแก้ที่นั่น หรือผ่าน Recruit OS UI (Bot Rules tab)
 
-**Path**: `\\wsl.localhost\Ubuntu-24.04\home\graph\.openclaw\workspace-hr\scripts\`
+**Path บน VPS**: `/root/.openclaw/workspace-hr/` (หรือ `/home/graph/.openclaw/workspace-hr/`)
+**เข้าถึง**: `ssh hermes-vps` → แก้ไฟล์ใน workspace-hr โดยตรง
 
 - **middleware.py** (port 18788) — receives LINE webhooks, 3s debounce, forwards to OpenClaw (18789)
   - image/file → forward to OpenClaw for OCR
@@ -465,7 +465,9 @@ SUBMIT_SCREENING_ANSWERS, SCORE_CANDIDATE, GENERATE_AI_SUMMARY
 
 **To restart middleware + tunnel**:
 ```bash
-wsl -d Ubuntu-24.04 -u graph -- sh -c 'cd /home/graph/.openclaw/workspace-hr/scripts && bash start-tunnel.sh'
+# SSH เข้า VPS ก่อน
+ssh hermes-vps
+cd /root/.openclaw/workspace-hr/scripts && bash start-tunnel.sh
 ```
 
 **Tunnel troubleshooting**:
