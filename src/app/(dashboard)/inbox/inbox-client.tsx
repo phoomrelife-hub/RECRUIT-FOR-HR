@@ -287,7 +287,7 @@ function MessageMedia({ msg, isRight }: { msg: Message; isRight: boolean }) {
       <>
         {/* Thumbnail */}
         <div
-          className={`rounded-xl overflow-hidden border cursor-pointer hover:opacity-90 transition-opacity ${
+          className={`relative rounded-xl overflow-hidden border cursor-zoom-in hover:opacity-90 transition-opacity ${
             isRight ? "border-blue-400" : "border-slate-200"
           }`}
           onClick={() => setImgOpen(true)}
@@ -296,7 +296,7 @@ function MessageMedia({ msg, isRight }: { msg: Message; isRight: boolean }) {
           <img
             src={effectiveMediaUrl}
             alt="รูปภาพ"
-            className="max-w-[200px] max-h-[200px] object-cover block"
+            className="max-w-[260px] max-h-[260px] object-cover block"
             onError={(e) => {
               (e.target as HTMLImageElement).style.display = "none";
               (e.target as HTMLImageElement).parentElement!.innerHTML =
