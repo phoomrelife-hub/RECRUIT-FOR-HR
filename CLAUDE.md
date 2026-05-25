@@ -102,6 +102,7 @@ src/app/api/
   quick-replies/                        — list quick replies
   calendar/interviews/                  — GET ?month=YYYY-MM → interviews grouped by Bangkok date
   inbox/init/                           — GET: returns quickReplies + tags + hrUsers (batch lazy load)
+  candidates/auto-tag-positions/        — POST: backfill position tags for all candidates (⚠️ no auth)
   cron/interview-reminders/             — GET (Vercel cron, CRON_SECRET auth) — daily LINE reminder at 07:00 BKK
   openclaw/webhook/                     — mock incoming message + bot reply
   openclaw/sync/                        — LINE→Recruit sync: candidate msg + LINE profile
@@ -325,16 +326,24 @@ npx prisma generate  # regenerate client
   - **Loading skeletons** (`loading.tsx`): candidates/[id], jobs, interviews, reports, screening, settings/ai
   - **Delete interview button**: trash icon in interview-section.tsx (SCHEDULED interviews only); `DELETE /api/interviews/[id]`; confirm dialog; updates list instantly + router.refresh()
   - **Calendar quick actions**: action bar on each InterviewCard (Profile, Chat, Copy Link, Open Meet, Delete); deletions update CalendarClient state instantly (days as useState, onDeleted callback)
+- [x] Phase 14.1: Mobile Responsive + Jobs→Bot Sync *(2026-05-25)*
+  - **Mobile layout**: `DashboardShell` client component holds `sidebarOpen` state; Sidebar slides in as drawer + overlay; Topbar hamburger button; auto-close on route change
+  - **Inbox mobile**: list-or-chat toggle (not side-by-side); back button (ArrowLeft) in chat header; QuickActionsPanel hidden below `lg` breakpoint; `-m-4 md:-m-6`
+  - **Content padding**: `p-4 md:p-6` (was always `p-6`)
+  - **⚠️ Case sensitivity**: Vercel/Linux is case-sensitive — git tracks `sidebar.tsx`/`topbar.tsx` (lowercase); always import with matching case
+  - **syncPositionsMd()**: `src/lib/sync-positions.ts` — auto-updates `openclaw.file.POSITIONS.md` in Setting table + sets dirty flag whenever job is created/updated/deleted; uses `<!-- AUTO_POSITIONS_START/END -->` markers to preserve manual content (form links etc.)
+  - **Jobs → Bot sync**: POST/PUT/DELETE `/api/jobs` and `/api/jobs/[id]` all call `syncPositionsMd()` after DB change
 
 ## UI Conventions
 - Colors: blue-600 primary, slate-* neutral, green passed, red rejected, yellow waiting
 - Cards: `border-slate-200` border
 - All pages: `space-y-6` layout, h1 + subtitle pattern
-- Sidebar: fixed left-64, Topbar: fixed top h-16, Content: `ml-64 pt-16 p-6`
+- Sidebar: fixed left-64 desktop / slide-in drawer mobile; Topbar: fixed top h-16, `left-0 md:left-64`; Content: `md:ml-64 pt-16 p-4 md:p-6`
+- **DashboardShell** (`src/components/layout/dashboard-shell.tsx`): client component wrapping Sidebar + Topbar + main; holds `sidebarOpen` state
 - English labels + Thai content/descriptions
 
 ## Chat Center Conventions
-- Inbox page uses `h-[calc(100vh-4rem-1.5rem)] -m-6` to fill full viewport
+- Inbox page uses `h-[calc(100vh-4rem-1.5rem)] -m-4 md:-m-6` to fill full viewport
 - Polling: conversation detail **3s**; unread count 10s; conversation list **5s**
 - Conversation list sorted by `lastMessageAt desc`
 - Takeover: HumanTakeover record + SYSTEM message + botEnabled=false
@@ -503,3 +512,7 @@ wsl -d Ubuntu-24.04 -u graph -- sh -c 'cd /home/graph/.openclaw/workspace-hr/scr
 - [ ] **Implement Phase 15**: Candidate self-scheduling (schema + APIs + public page + bot trigger)
 - [ ] **Fix `/api/admin/backfill-address`** — missing `x-admin-secret` header check
 - [ ] **Delete interview audit log** — `DELETE /api/interviews/[id]` should create AuditLog entry
+- [ ] **Fix `/api/candidates/auto-tag-positions`** — no auth, anyone can call this endpoint
+- [ ] **Auto-tag dangling tagId** — if Tag deleted, AiTaggingRule.tagId becomes stale → tag silently not applied; add validation in settings UI
+- [ ] **Mobile polish** — pages load OK on mobile but layout still messy; needs per-page responsive pass (tables, grids, filter bars, stat cards)
+- [ ] **Implement Phase 15**: Candidate self-scheduling
