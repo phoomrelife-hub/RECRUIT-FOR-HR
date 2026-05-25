@@ -428,7 +428,7 @@ SUBMIT_SCREENING_ANSWERS, SCORE_CANDIDATE, GENERATE_AI_SUMMARY
 > ✅ **OpenClaw + workspace-hr อยู่บน VPS `194.233.91.166`** (ไม่ใช่ WSL local)
 > แก้ไขไฟล์หลิน → SSH เข้า VPS แล้วแก้ที่นั่น หรือผ่าน Recruit OS UI (Bot Rules tab)
 
-**Path บน VPS**: `/root/.openclaw/workspace-hr/` (หรือ `/home/graph/.openclaw/workspace-hr/`)
+**Path บน VPS**: `/home/admin/.openclaw/workspace-hr/`
 **เข้าถึง**: `ssh hermes-vps` → แก้ไฟล์ใน workspace-hr โดยตรง
 
 - **middleware.py** (port 18788) — receives LINE webhooks, 3s debounce, forwards to OpenClaw (18789)
