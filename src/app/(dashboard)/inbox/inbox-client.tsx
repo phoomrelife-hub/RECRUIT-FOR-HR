@@ -29,6 +29,8 @@ import {
   Image as ImageIcon,
   Paperclip,
   CheckCheck,
+  Download,
+  ZoomIn,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -259,6 +261,13 @@ function SimulatePanel({
 function MessageMedia({ msg, isRight }: { msg: Message; isRight: boolean }) {
   const [imgOpen, setImgOpen] = useState(false);
 
+  useEffect(() => {
+    if (!imgOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setImgOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [imgOpen]);
+
   const rawContent = msg.content ?? "";
 
   // ── Classify message type by messageType field OR content pattern ──────────
@@ -287,7 +296,7 @@ function MessageMedia({ msg, isRight }: { msg: Message; isRight: boolean }) {
       <>
         {/* Thumbnail */}
         <div
-          className={`relative rounded-xl overflow-hidden border cursor-zoom-in hover:opacity-90 transition-opacity ${
+          className={`relative group rounded-xl overflow-hidden border cursor-zoom-in transition-all hover:shadow-lg ${
             isRight ? "border-blue-400" : "border-slate-200"
           }`}
           onClick={() => setImgOpen(true)}
@@ -303,28 +312,64 @@ function MessageMedia({ msg, isRight }: { msg: Message; isRight: boolean }) {
                 '<span class="text-xs text-slate-400 p-2 block">รูปหมดอายุแล้ว (LINE เก็บ 7 วัน)</span>';
             }}
           />
+          {/* hover overlay hint */}
+          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+            <ZoomIn size={28} className="text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow" />
+          </div>
         </div>
 
-        {/* Lightbox */}
+        {/* Image Viewer — Google Drive style */}
         {imgOpen && (
           <div
-            className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-2"
-            onClick={() => setImgOpen(false)}
+            className="fixed inset-0 z-[100] flex flex-col"
+            style={{ background: "rgba(0,0,0,0.92)" }}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={effectiveMediaUrl}
-              alt="รูปภาพ"
-              className="rounded-lg object-contain"
-              style={{ maxWidth: "95vw", maxHeight: "92vh" }}
-              onClick={(e) => e.stopPropagation()}
-            />
-            <button
+            {/* Top toolbar */}
+            <div className="flex items-center justify-between px-4 py-3 flex-shrink-0" style={{ background: "rgba(0,0,0,0.6)" }}>
+              <div className="flex items-center gap-2 text-white/70 text-sm">
+                <ImageIcon size={16} />
+                <span>รูปภาพจากผู้สมัคร</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <a
+                  href={effectiveMediaUrl}
+                  download
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-white/80 hover:text-white text-sm px-3 py-1.5 rounded-md hover:bg-white/10 transition-colors"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Download size={16} />
+                  <span>ดาวน์โหลด</span>
+                </a>
+                <button
+                  onClick={() => setImgOpen(false)}
+                  className="flex items-center justify-center w-9 h-9 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+                >
+                  <X size={22} />
+                </button>
+              </div>
+            </div>
+
+            {/* Image area — click backdrop to close */}
+            <div
+              className="flex-1 flex items-center justify-center p-4 cursor-zoom-out"
               onClick={() => setImgOpen(false)}
-              className="absolute top-4 right-4 text-white bg-black/50 rounded-full p-1 hover:bg-black/80"
             >
-              <X size={20} />
-            </button>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={effectiveMediaUrl}
+                alt="รูปภาพ"
+                className="rounded object-contain select-none"
+                style={{ maxWidth: "90vw", maxHeight: "calc(100vh - 120px)", boxShadow: "0 8px 40px rgba(0,0,0,0.6)" }}
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
+
+            {/* Bottom hint */}
+            <div className="text-center text-white/30 text-xs pb-3 flex-shrink-0">
+              คลิกที่ว่างเพื่อปิด
+            </div>
           </div>
         )}
       </>
