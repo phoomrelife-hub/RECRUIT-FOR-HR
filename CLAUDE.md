@@ -424,7 +424,11 @@ SUBMIT_SCREENING_ANSWERS, SCORE_CANDIDATE, GENERATE_AI_SUMMARY
 - `SourceChannel` enum includes `WEBSITE` (purple badge)
 - `/daniel` page — real-time stats, live conversations, connection config
 
-## OpenClaw Middleware (WSL)
+## OpenClaw Middleware (WSL) — หลิน Bot
+> ⚠️ **หลินรันอยู่บน WSL (เครื่อง local) ไม่ใช่ VPS**
+> VPS `194.233.91.166` = Hermes AI agent (คนละระบบ)
+> การแก้ไขบทสนทนา/rules/soul ของหลิน → แก้ที่ WSL บนเครื่อง local เท่านั้น
+
 **Path**: `\\wsl.localhost\Ubuntu-24.04\home\graph\.openclaw\workspace-hr\scripts\`
 
 - **middleware.py** (port 18788) — receives LINE webhooks, 3s debounce, forwards to OpenClaw (18789)
@@ -469,6 +473,24 @@ wsl -d Ubuntu-24.04 -u graph -- sh -c 'cd /home/graph/.openclaw/workspace-hr/scr
 - serveo.net ไม่ stable (process ตายเร็ว)
 - start-tunnel.sh: ngrok primary → cloudflared fallback
 - ถ้า Cloudflare ล่ม: ngrok รับต่อได้เลย URL ไม่เปลี่ยน
+
+## VPS — Hermes AI Agent (คนละระบบจากหลิน)
+> ⚠️ **อย่าสับสนกับ WSL** — VPS = Hermes, WSL local = หลิน (OpenClaw)
+
+- **IP**: `194.233.91.166` (root)
+- **SSH config**: `~/.ssh/config` → `Host hermes-vps` ใช้ key `~/.ssh/id_ed25519_hermes`
+- **เข้าถึง**: VS Code → `Ctrl+Shift+P` → Remote-SSH: Connect to Host → `hermes-vps`
+- **Hermes path**: `/root/.hermes/` — agents, memories, skills, plugins, sessions
+- **Hermes binary**: `/usr/local/bin/hermes` (จริงๆ รันผ่าน Python venv `/usr/local/lib/hermes-agent/venv/`)
+- **Web UI**: `http://127.0.0.1:9119` (ดูผ่าน SSH tunnel: `ssh -L 9119:localhost:9119 hermes-vps`)
+- **systemd service**: `hermes.service` — enabled + running 24/7 (auto-start on boot)
+  ```bash
+  systemctl status hermes
+  systemctl restart hermes
+  tail -f /var/log/hermes.log
+  ```
+- **channel_directory.json**: `/root/.hermes/channel_directory.json` — Telegram DM ID `8298363344`
+- **Obsidian sync**: ยังไม่ได้ implement — แผนใช้ Syncthing + Obsidian Local REST API
 
 ## Important Rules
 1. shadcn uses `@base-ui/react` — `render` prop not `asChild`; Select `onValueChange: (v: string | null) => void`
