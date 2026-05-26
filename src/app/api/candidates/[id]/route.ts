@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { autoTagByPosition } from "@/lib/auto-tag";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { CandidateStatus } from "@prisma/client";
+import { CandidateStatus, InterviewStatus } from "@prisma/client";
 
 const updateCandidateSchema = z.object({
   nickname: z.string().optional().nullable(),
@@ -116,6 +116,15 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         detail: { from: current.currentStatus, to: currentStatus },
       },
     });
+
+    // When candidate is marked INTERVIEWED, complete all their SCHEDULED interviews
+    // so they no longer appear on the calendar (which only shows SCHEDULED)
+    if (currentStatus === "INTERVIEWED") {
+      await db.interview.updateMany({
+        where: { candidateId: id, status: InterviewStatus.SCHEDULED },
+        data: { status: InterviewStatus.COMPLETED },
+      });
+    }
   } else {
     await db.auditLog.create({
       data: {
