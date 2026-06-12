@@ -14,6 +14,9 @@ const loginSchema = z.object({
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: PrismaAdapter(db),
+  // Railway (non-Vercel) does not auto-trust the host; required to avoid
+  // Auth.js v5 UntrustedHost error behind Railway's proxy/healthcheck.
+  trustHost: true,
   session: { strategy: "jwt" },
   pages: {
     signIn: "/login",
