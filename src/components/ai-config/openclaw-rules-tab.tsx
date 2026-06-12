@@ -39,7 +39,7 @@ const FILE_META: Record<WorkspaceFile, { emoji: string; title: string; desc: str
   },
 };
 
-const CONFIG_URL = "https://recruit-for-hr.vercel.app/api/openclaw/config";
+const CONFIG_URL = `${process.env.NEXT_PUBLIC_APP_URL ?? "https://recruit-for-hr.vercel.app"}/api/openclaw/config`;
 
 export function OpenClawRulesTab() {
   const [activeFile, setActiveFile] = useState<WorkspaceFile>("SOUL.md");

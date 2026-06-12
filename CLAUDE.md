@@ -34,6 +34,7 @@ NEXT_PUBLIC_SUPABASE_URL=https://xynzirkumyqsxiuyiyut.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 AUTH_SECRET=...
 NEXTAUTH_URL=https://recruit-for-hr.vercel.app  ← production (localhost:3000 for local dev)
+NEXT_PUBLIC_APP_URL=https://<your-app>.up.railway.app  ← public base URL (Railway); used by openclaw config fetch in UI
 ANTHROPIC_API_KEY=sk-ant-...   ← required for AI Summary (Phase 6)
 WEBHOOK_FORM_SECRET=...        ← shared secret for /api/webhooks/form
 WEBHOOK_QUALIFY_SECRET=...     ← shared secret for /api/webhooks/qualify

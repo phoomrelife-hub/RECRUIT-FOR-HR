@@ -53,7 +53,7 @@ export async function askAI(messages: KimiMessage[], config: AiProviderConfig): 
 
   // OpenRouter requires extra headers
   if (config.provider === "openrouter") {
-    headers["HTTP-Referer"] = "https://recruit-for-hr.vercel.app";
+    headers["HTTP-Referer"] = process.env.NEXTAUTH_URL ?? "https://recruit-for-hr.vercel.app";
     headers["X-Title"] = "Relife Recruit Bot";
   }
 
