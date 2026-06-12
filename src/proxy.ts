@@ -16,6 +16,12 @@ export const proxy = auth((req) => {
 
   if (isApiAuth) return NextResponse.next();
 
+  // health check — Railway probes this; must return 200 without a session
+  if (req.nextUrl.pathname === "/api/health") return NextResponse.next();
+
+  // cron endpoint — self-fetched by instrumentation.ts; route checks CRON_SECRET
+  if (req.nextUrl.pathname.startsWith("/api/cron")) return NextResponse.next();
+
   // public webhook endpoints — no auth required
   if (req.nextUrl.pathname.startsWith("/api/webhooks")) return NextResponse.next();
 
