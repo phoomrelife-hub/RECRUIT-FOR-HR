@@ -6,6 +6,6 @@ buildCommand = "npm run build"
 NODE_VERSION = "20.19.0"
 
 [deploy]
-startCommand = "npm start"
+startCommand = "npx next start -H 0.0.0.0 -p ${PORT:-3000}"
 healthcheckPath = "/api/health"
 restartPolicyType = "on_failure"
