@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { pushMessage } from "@/lib/line";
+import { notifyCandidate } from "@/lib/notify";
 import { NextResponse } from "next/server";
 import type { CandidateStatus } from "@prisma/client";
 import {
@@ -104,10 +104,10 @@ async function processOne(
     data: { lastMessageAt: new Date(), status: "ACTIVE" },
   });
 
-  // Send LINE push
-  if (candidate.lineUserId) {
+  // Send chat message (LINE or Facebook)
+  if (candidate.lineUserId || candidate.facebookUserId) {
     try {
-      await pushMessage(candidate.lineUserId, messageText);
+      await notifyCandidate(candidate, messageText);
     } catch {
       // non-critical — don't fail the whole batch
     }

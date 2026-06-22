@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
-import { verifyFbSignature, getVerifyToken, getFbProfile, FbWebhookPayload } from "@/lib/facebook";
+import { verifyFbSignature, getVerifyToken, getFbProfile, sendFbMessage, FbWebhookPayload } from "@/lib/facebook";
 
 // VPS bridge — forwards the FB message to middleware.py /fb/webhook, where it is
 // wrapped as a synthetic LINE event and answered by the same OpenClaw (หลิน) brain.
@@ -80,12 +80,14 @@ export async function POST(req: Request) {
       const facebookUserId = event.sender.id;
       const messageText    = event.message.text;
       const messageId      = event.message.mid;
+      // Quick-reply taps carry the real intent in payload; text is the chip title.
+      const quickReplyPayload = event.message.quick_reply?.payload;
 
       // Extra guard: never process a message whose sender is the recipient (self)
       if (event.recipient?.id === facebookUserId) continue;
 
       try {
-        await handleFbMessage(facebookUserId, messageText, messageId);
+        await handleFbMessage(facebookUserId, messageText, messageId, quickReplyPayload);
       } catch (err) {
         console.error("[FB webhook] error processing message:", err);
       }
@@ -97,7 +99,7 @@ export async function POST(req: Request) {
 
 // ─── Core message handler ─────────────────────────────────────────────────────
 
-async function handleFbMessage(facebookUserId: string, text: string, externalId: string) {
+async function handleFbMessage(facebookUserId: string, text: string, externalId: string, quickReplyPayload?: string) {
   // fetch Messenger profile (name + picture) — null on failure
   const fbProfile = await getFbProfile(facebookUserId);
 
@@ -181,10 +183,53 @@ async function handleFbMessage(facebookUserId: string, text: string, externalId:
     data: { lastMessageAt: new Date(), status: "ACTIVE", unreadCount: { increment: 1 } },
   });
 
+  // Interview confirmation quick reply (สะดวก / ไม่สะดวก) — handle here, skip the bot.
+  // Use the quick-reply payload when present (the visible chip title has an emoji).
+  const intent = (quickReplyPayload ?? text).trim();
+  if ((intent === "สะดวก" || intent === "ไม่สะดวก") && candidate.currentStatus === "INTERVIEW_SCHEDULED") {
+    await handleFbInterviewResponse(candidate, intent as "สะดวก" | "ไม่สะดวก");
+    return;
+  }
+
   // Hand off to the VPS bot bridge (same OpenClaw brain as LINE). The bridge
   // debounces, runs the agent, and delivers the reply via Graph API + syncs it
   // back here through /api/openclaw/sync. Skip if HR has disabled the bot.
   if (conversation.botEnabled) {
     await forwardToBotBridge(facebookUserId, text, externalId);
+  }
+}
+
+// ─── Interview confirmation (สะดวก / ไม่สะดวก) for Facebook ─────────────────────
+// Mirrors the LINE handler in /api/openclaw/sync. Records the candidate's
+// response and, on ไม่สะดวก, replies that the team will follow up.
+async function handleFbInterviewResponse(
+  candidate: { id: string; facebookUserId: string | null; fullName: string | null; nickname: string | null },
+  response: "สะดวก" | "ไม่สะดวก",
+) {
+  try {
+    const interview = await db.interview.findFirst({
+      where: { candidateId: candidate.id, status: "SCHEDULED" },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!interview || interview.candidateResponse) return; // already answered
+
+    await db.interview.update({
+      where: { id: interview.id },
+      data: {
+        candidateResponse: response === "สะดวก" ? "confirmed" : "declined",
+        respondedAt: new Date(),
+      },
+    });
+
+    if (response === "ไม่สะดวก" && candidate.facebookUserId) {
+      const name = candidate.fullName ?? candidate.nickname ?? "คุณ";
+      await sendFbMessage(
+        candidate.facebookUserId,
+        `ขอบคุณที่แจ้งให้ทราบนะคะ คุณ${name} 🙏\nทางทีมจะติดต่อกลับเพื่อนัดวันที่สะดวกให้ค่ะ 😊`,
+        "CONFIRMED_EVENT_UPDATE",
+      ).catch(() => null);
+    }
+  } catch (err) {
+    console.error("[FB webhook] interview response error:", err);
   }
 }

@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { pushMessage } from "@/lib/line";
+import { notifyCandidate } from "@/lib/notify";
 import { NextResponse } from "next/server";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -159,6 +159,7 @@ export async function POST(
       nickname: true,
       lineDisplayName: true,
       lineUserId: true,
+      facebookUserId: true,
       interviews: {
         where: { candidateResponse: "declined", status: "SCHEDULED" },
         orderBy: { createdAt: "desc" },
@@ -198,15 +199,16 @@ export async function POST(
     data: { scheduleToken: null, scheduleTokenExpiresAt: null },
   });
 
-  // LINE confirmation
-  if (candidate.lineUserId) {
+  // confirmation on the candidate's channel (LINE or Facebook)
+  if (candidate.lineUserId || candidate.facebookUserId) {
     const name = candidate.fullName ?? candidate.nickname ?? candidate.lineDisplayName ?? "คุณ";
     const TH_MONTHS = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
     const thDate = `${da} ${TH_MONTHS[mo - 1]} ${yr + 543}`;
 
-    await pushMessage(
-      candidate.lineUserId,
-      `✅ ยืนยันนัดสัมภาษณ์ใหม่แล้วค่ะ คุณ${name} 🎉\n\n📅 วันที่: ${thDate}\n🕐 เวลา: ${startTime} - ${endTime} น.\n\nรอพบกันในวันนั้นนะคะ 😊\n— ทีม Relife Solutions`
+    await notifyCandidate(
+      candidate,
+      `✅ ยืนยันนัดสัมภาษณ์ใหม่แล้วค่ะ คุณ${name} 🎉\n\n📅 วันที่: ${thDate}\n🕐 เวลา: ${startTime} - ${endTime} น.\n\nรอพบกันในวันนั้นนะคะ 😊\n— ทีม Relife Solutions`,
+      { fbTag: "CONFIRMED_EVENT_UPDATE" }
     ).catch(() => null); // non-critical
   }
 

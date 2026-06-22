@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { pushMessage } from "@/lib/line";
+import { notifyCandidate } from "@/lib/notify";
 import { NextResponse } from "next/server";
 import { parseTier, type Tier } from "@/lib/experience-tier";
 import type { CandidateStatus } from "@prisma/client";
@@ -185,9 +185,9 @@ async function processOne(
   });
   await db.conversation.update({ where: { id: conv.id }, data: { lastMessageAt: new Date(), status: "ACTIVE" } });
 
-  // LINE push
-  if (candidate.lineUserId) {
-    try { await pushMessage(candidate.lineUserId, messageText); } catch { /* non-critical */ }
+  // chat push (LINE or Facebook)
+  if (candidate.lineUserId || candidate.facebookUserId) {
+    try { await notifyCandidate(candidate, messageText); } catch { /* non-critical */ }
   }
 
   // Notion patch

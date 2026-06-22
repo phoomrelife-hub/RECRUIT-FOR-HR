@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
-import { pushMessageWithQuickReply } from "@/lib/line";
+import { notifyCandidateWithQuickReply } from "@/lib/notify";
 import { NextResponse } from "next/server";
 
 // POST /api/candidates/[id]/schedule-interview
@@ -48,6 +48,7 @@ export async function POST(
       nickname: true,
       lineDisplayName: true,
       lineUserId: true,
+      facebookUserId: true,
       currentStatus: true,
       interestedPositionId: true,
       interestedPosition: { select: { title: true } },
@@ -106,7 +107,7 @@ export async function POST(
 
   // ── Send LINE push + Quick Reply ─────────────────────────────────────────
   let lineSent = false;
-  if (candidate.lineUserId) {
+  if (candidate.lineUserId || candidate.facebookUserId) {
     let msgText: string;
 
     if (type === "online") {
@@ -146,10 +147,10 @@ export async function POST(
     }
 
     try {
-      await pushMessageWithQuickReply(candidate.lineUserId, msgText, [
+      await notifyCandidateWithQuickReply(candidate, msgText, [
         { label: "✅ สะดวก",     text: "สะดวก" },
         { label: "❌ ไม่สะดวก", text: "ไม่สะดวก" },
-      ]);
+      ], { fbTag: "CONFIRMED_EVENT_UPDATE" });
       lineSent = true;
 
       // Save to inbox so it appears in the chat view

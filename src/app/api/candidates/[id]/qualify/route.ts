@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { pushMessage } from "@/lib/line";
+import { notifyCandidate } from "@/lib/notify";
 import { sendEmail, renderEmailTemplate } from "@/lib/gmail";
 import { NextResponse } from "next/server";
 import {
@@ -105,16 +105,16 @@ export async function POST(
     data: { lastMessageAt: new Date(), status: "ACTIVE" },
   });
 
-  // ── send LINE push (LINE candidates) ─────────────────────────────────────
+  // ── send chat message (LINE or Facebook, whichever the candidate uses) ────
   let lineSent = false;
   let lineError: string | null = null;
-  if (!isEmailSource && candidate.lineUserId) {
+  if (!isEmailSource && (candidate.lineUserId || candidate.facebookUserId)) {
     try {
-      await pushMessage(candidate.lineUserId, messageText);
-      lineSent = true;
+      const ch = await notifyCandidate(candidate, messageText);
+      lineSent = ch !== null;
     } catch (err) {
       lineError = err instanceof Error ? err.message : String(err);
-      console.error("[qualify] LINE push failed:", lineError);
+      console.error("[qualify] chat push failed:", lineError);
     }
   }
 

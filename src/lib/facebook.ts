@@ -92,7 +92,15 @@ export async function getFbProfile(psid: string): Promise<FbProfile | null> {
 
 // ─── Send message ────────────────────────────────────────────────────────────
 
-export async function sendFbMessage(recipientId: string, text: string): Promise<void> {
+// Optional Messenger message tag. Needed to message a user outside the 24-hour
+// window (e.g. qualify result / interview invite sent days later). ACCOUNT_UPDATE
+// covers application-status updates; without a tag Meta only allows RESPONSE
+// within 24h of the user's last message.
+export type FbMessageTag = "ACCOUNT_UPDATE" | "CONFIRMED_EVENT_UPDATE" | "POST_PURCHASE_UPDATE" | "HUMAN_AGENT";
+
+type FbQuickReplyItem = { label: string; text: string };
+
+async function postFbMessage(recipientId: string, message: unknown, tag?: FbMessageTag): Promise<void> {
   const { pageAccessToken } = await getCredentials();
   if (!pageAccessToken) throw new Error("Facebook Page Access Token not configured");
 
@@ -101,7 +109,10 @@ export async function sendFbMessage(recipientId: string, text: string): Promise<
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       recipient: { id: recipientId },
-      message: { text },
+      message,
+      ...(tag
+        ? { messaging_type: "MESSAGE_TAG", tag }
+        : { messaging_type: "RESPONSE" }),
     }),
   });
 
@@ -111,12 +122,38 @@ export async function sendFbMessage(recipientId: string, text: string): Promise<
   }
 }
 
+export async function sendFbMessage(recipientId: string, text: string, tag?: FbMessageTag): Promise<void> {
+  await postFbMessage(recipientId, { text }, tag);
+}
+
+/** Send text with Messenger quick-reply chips (e.g. สะดวก / ไม่สะดวก). */
+export async function sendFbMessageWithQuickReplies(
+  recipientId: string,
+  text: string,
+  items: FbQuickReplyItem[],
+  tag?: FbMessageTag,
+): Promise<void> {
+  await postFbMessage(
+    recipientId,
+    {
+      text,
+      quick_replies: items.map((it) => ({
+        content_type: "text",
+        title: it.label.slice(0, 20),
+        payload: it.text,
+      })),
+    },
+    tag,
+  );
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface FbMessage {
   mid: string;
   text?: string;
   is_echo?: boolean;
+  quick_reply?: { payload: string };
 }
 
 export interface FbMessagingEvent {

@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { pushMessageWithQuickReply } from "@/lib/line";
+import { notifyCandidateWithQuickReply } from "@/lib/notify";
 import { NextResponse } from "next/server";
 
 // POST /api/cron/interview-reminders
@@ -47,6 +47,7 @@ export async function GET(req: Request) {
           nickname: true,
           lineDisplayName: true,
           lineUserId: true,
+          facebookUserId: true,
           interestedPosition: { select: { title: true } },
         },
       },
@@ -71,7 +72,7 @@ export async function GET(req: Request) {
     const name = c.fullName ?? c.nickname ?? c.lineDisplayName ?? "คุณ";
     const isOnline = iv.interviewType === "ONLINE";
 
-    if (!c.lineUserId) {
+    if (!c.lineUserId && !c.facebookUserId) {
       skipped++;
       continue;
     }
@@ -94,10 +95,10 @@ export async function GET(req: Request) {
     msgLines.push(``, `ขอให้โชคดีนะคะ 🍀`, `— ทีม Relife Solutions`);
 
     try {
-      await pushMessageWithQuickReply(c.lineUserId, msgLines.join("\n"), [
+      await notifyCandidateWithQuickReply(c, msgLines.join("\n"), [
         { label: "✅ สะดวก",    text: "สะดวก" },
         { label: "❌ ไม่สะดวก", text: "ไม่สะดวก" },
-      ]);
+      ], { fbTag: "CONFIRMED_EVENT_UPDATE" });
       // Mark reminder as sent
       await db.interview.update({
         where: { id: iv.id },
