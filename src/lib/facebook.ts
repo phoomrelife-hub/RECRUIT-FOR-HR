@@ -100,26 +100,33 @@ export type FbMessageTag = "ACCOUNT_UPDATE" | "CONFIRMED_EVENT_UPDATE" | "POST_P
 
 type FbQuickReplyItem = { label: string; text: string };
 
+async function rawSendFb(token: string, recipientId: string, message: unknown, extra: object): Promise<Response> {
+  return fetch(`${GRAPH_API}/me/messages?access_token=${token}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ recipient: { id: recipientId }, message, ...extra }),
+  });
+}
+
 async function postFbMessage(recipientId: string, message: unknown, tag?: FbMessageTag): Promise<void> {
   const { pageAccessToken } = await getCredentials();
   if (!pageAccessToken) throw new Error("Facebook Page Access Token not configured");
 
-  const res = await fetch(`${GRAPH_API}/me/messages?access_token=${pageAccessToken}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      recipient: { id: recipientId },
-      message,
-      ...(tag
-        ? { messaging_type: "MESSAGE_TAG", tag }
-        : { messaging_type: "RESPONSE" }),
-    }),
-  });
+  // Always try RESPONSE first — it works for anyone within the 24h window and
+  // needs no special permission. Only if that fails because the window has
+  // closed do we retry with a message tag (which requires App Review and a
+  // currently-supported tag; ACCOUNT_UPDATE is deprecated by Meta).
+  const res = await rawSendFb(pageAccessToken, recipientId, message, { messaging_type: "RESPONSE" });
+  if (res.ok) return;
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Facebook send failed: ${res.status} ${err}`);
+  const err = await res.text();
+  const outsideWindow = /outside.*allowed window|2018278|messaging window|24-hour|24 hour/i.test(err);
+  if (tag && outsideWindow) {
+    const res2 = await rawSendFb(pageAccessToken, recipientId, message, { messaging_type: "MESSAGE_TAG", tag });
+    if (res2.ok) return;
+    throw new Error(`Facebook send failed (tag ${tag}): ${res2.status} ${await res2.text()}`);
   }
+  throw new Error(`Facebook send failed: ${res.status} ${err}`);
 }
 
 export async function sendFbMessage(recipientId: string, text: string, tag?: FbMessageTag): Promise<void> {

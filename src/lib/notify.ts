@@ -13,9 +13,10 @@ export type NotifyRecipient = {
 
 export type NotifyChannel = "LINE" | "FACEBOOK" | null;
 
-// Default tag for proactive HR notifications (qualify result, interview invite,
-// reminders) so they can reach FB candidates outside the 24-hour window.
-const DEFAULT_FB_TAG: FbMessageTag = "ACCOUNT_UPDATE";
+// Note: Facebook sends try RESPONSE first (works within the 24h window with no
+// special permission). A `fbTag` is only used as a fallback when the window has
+// closed — and most legacy tags (e.g. ACCOUNT_UPDATE) are now deprecated by Meta,
+// so reliable out-of-window delivery needs App Review + the HUMAN_AGENT feature.
 
 /** Send a plain text message to a candidate on whichever channel they use. */
 export async function notifyCandidate(
@@ -24,7 +25,7 @@ export async function notifyCandidate(
   opts?: { fbTag?: FbMessageTag },
 ): Promise<NotifyChannel> {
   if (c.facebookUserId) {
-    await sendFbMessage(c.facebookUserId, text, opts?.fbTag ?? DEFAULT_FB_TAG);
+    await sendFbMessage(c.facebookUserId, text, opts?.fbTag);
     return "FACEBOOK";
   }
   if (c.lineUserId) {
@@ -42,7 +43,7 @@ export async function notifyCandidateWithQuickReply(
   opts?: { fbTag?: FbMessageTag },
 ): Promise<NotifyChannel> {
   if (c.facebookUserId) {
-    await sendFbMessageWithQuickReplies(c.facebookUserId, text, items, opts?.fbTag ?? DEFAULT_FB_TAG);
+    await sendFbMessageWithQuickReplies(c.facebookUserId, text, items, opts?.fbTag);
     return "FACEBOOK";
   }
   if (c.lineUserId) {
