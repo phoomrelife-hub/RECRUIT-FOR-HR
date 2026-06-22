@@ -116,6 +116,7 @@ export async function sendFbMessage(recipientId: string, text: string): Promise<
 export interface FbMessage {
   mid: string;
   text?: string;
+  is_echo?: boolean;
 }
 
 export interface FbMessagingEvent {

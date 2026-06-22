@@ -70,14 +70,18 @@ export async function POST(req: Request) {
 
   for (const entry of payload.entry ?? []) {
     for (const event of entry.messaging ?? []) {
-      // Only handle text messages (skip echoes, delivery receipts, etc.)
+      // Skip echoes — messages the Page itself sent (e.g. the bot's own reply).
+      // Without this, the bot's reply re-enters as a new inbound message → loop.
+      if (event.message?.is_echo) continue;
+
+      // Only handle text messages (skip delivery/read receipts, etc.)
       if (!event.message?.text || event.message.text === "") continue;
 
       const facebookUserId = event.sender.id;
       const messageText    = event.message.text;
       const messageId      = event.message.mid;
 
-      // Skip messages sent by the page itself (echo)
+      // Extra guard: never process a message whose sender is the recipient (self)
       if (event.recipient?.id === facebookUserId) continue;
 
       try {
