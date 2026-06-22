@@ -33,7 +33,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const lineUserId = typeof body.lineUserId === "string" ? body.lineUserId.trim() : "";
+  // entry.646211752 carries the channel user id, prefilled by the bot:
+  // a LINE userId ("U" + hex) or a Facebook PSID (all digits).
+  const submittedId = typeof body.lineUserId === "string" ? body.lineUserId.trim() : "";
+  const isFb = /^\d+$/.test(submittedId);
   const name = typeof body.name === "string" ? body.name.trim() : "";
   const phone = typeof body.phone === "string" ? body.phone.trim() : undefined;
   const positionTitle = typeof body.position === "string" ? body.position.trim() : undefined;
@@ -42,8 +45,8 @@ export async function POST(req: Request) {
   const notionPageId = typeof body.notionPageId === "string" ? body.notionPageId.trim() : undefined;
   const experienceText = typeof body.experienceText === "string" ? body.experienceText.trim() : undefined;
 
-  if (!lineUserId) {
-    return NextResponse.json({ error: "lineUserId is required" }, { status: 400 });
+  if (!submittedId) {
+    return NextResponse.json({ error: "user id is required" }, { status: 400 });
   }
 
   // ── look up job position (fuzzy match) ───────────────────────────────────
@@ -58,18 +61,22 @@ export async function POST(req: Request) {
   }
 
   // ── find or upsert candidate ──────────────────────────────────────────────
-  const existing = await db.candidate.findUnique({ where: { lineUserId } });
+  const existing = isFb
+    ? await db.candidate.findUnique({ where: { facebookUserId: submittedId } })
+    : await db.candidate.findUnique({ where: { lineUserId: submittedId } });
+
+  const placeholderName = isFb ? "Facebook User" : "LINE User";
 
   let candidate;
   if (!existing) {
-    // New candidate created from form submission (no prior LINE conversation)
+    // New candidate created from form submission (no prior conversation)
     candidate = await db.candidate.create({
       data: {
-        lineUserId,
-        nickname: name || "LINE User",
+        ...(isFb ? { facebookUserId: submittedId } : { lineUserId: submittedId }),
+        nickname: name || placeholderName,
         fullName: name || null,
         phone: phone ?? null,
-        sourceChannel: "LINE",
+        sourceChannel: isFb ? "FACEBOOK" : "LINE",
         currentStatus: "WAITING_HR_REVIEW",
         interestedPositionId: interestedPositionId ?? null,
         resumeUrl: resumeUrl ?? null,
@@ -96,7 +103,7 @@ export async function POST(req: Request) {
       where: { id: existing.id },
       data: {
         ...(name ? { fullName: name } : {}),
-        ...(name && existing.nickname === "LINE User" ? { nickname: name } : {}),
+        ...(name && existing.nickname === placeholderName ? { nickname: name } : {}),
         ...(phone ? { phone } : {}),
         ...(interestedPositionId ? { interestedPositionId } : {}),
         ...(resumeUrl ? { resumeUrl } : {}),
@@ -125,7 +132,7 @@ export async function POST(req: Request) {
   });
   if (!conv) {
     await db.conversation.create({
-      data: { candidateId: candidate.id, channel: "LINE" },
+      data: { candidateId: candidate.id, channel: isFb ? "FACEBOOK" : "LINE" },
     });
   }
 
