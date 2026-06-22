@@ -1,8 +1,29 @@
 import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
-import { verifyFbSignature, getVerifyToken, sendFbMessage, FbWebhookPayload } from "@/lib/facebook";
-import { sendToDaniel } from "@/lib/openclaw-client";
-import { sanitizeBotReply } from "@/lib/sanitize-bot-reply";
+import { verifyFbSignature, getVerifyToken, getFbProfile, FbWebhookPayload } from "@/lib/facebook";
+
+// VPS bridge — forwards the FB message to middleware.py /fb/webhook, where it is
+// wrapped as a synthetic LINE event and answered by the same OpenClaw (หลิน) brain.
+// The bot reply is delivered straight to Messenger by outbound_dedup.py (Graph API).
+const FB_BRIDGE_URL =
+  process.env.FB_BRIDGE_URL ?? "https://doorway-armless-roamer.ngrok-free.dev/fb/webhook";
+const FB_BRIDGE_SECRET = process.env.FB_BRIDGE_SECRET ?? "";
+
+async function forwardToBotBridge(psid: string, text: string, mid: string) {
+  try {
+    await fetch(FB_BRIDGE_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(FB_BRIDGE_SECRET ? { "X-FB-Bridge-Secret": FB_BRIDGE_SECRET } : {}),
+      },
+      body: JSON.stringify({ psid, text, mid }),
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch (err) {
+    console.error("[FB webhook] bridge forward failed:", err);
+  }
+}
 
 // ─── GET — Webhook verification challenge ────────────────────────────────────
 
@@ -73,6 +94,9 @@ export async function POST(req: Request) {
 // ─── Core message handler ─────────────────────────────────────────────────────
 
 async function handleFbMessage(facebookUserId: string, text: string, externalId: string) {
+  // fetch Messenger profile (name + picture) — null on failure
+  const fbProfile = await getFbProfile(facebookUserId);
+
   // find or create candidate
   let candidate = await db.candidate.findUnique({
     where: { facebookUserId },
@@ -81,13 +105,31 @@ async function handleFbMessage(facebookUserId: string, text: string, externalId:
   if (!candidate) {
     candidate = await db.candidate.create({
       data: {
-        nickname: "Facebook User",
+        // lineProfilePicUrl is reused as the generic avatar source in the UI
+        nickname: fbProfile?.name || "Facebook User",
+        lineProfilePicUrl: fbProfile?.profilePicUrl ?? null,
         facebookUserId,
         sourceChannel: "FACEBOOK",
         currentStatus: "NEW_APPLICANT",
       },
       include: { interestedPosition: { select: { title: true } } },
     });
+  } else if (fbProfile && (fbProfile.name || fbProfile.profilePicUrl)) {
+    // refresh name/picture if we got a profile and the candidate still has the placeholder
+    const data: { nickname?: string; lineProfilePicUrl?: string } = {};
+    if (fbProfile.name && (!candidate.nickname || candidate.nickname === "Facebook User")) {
+      data.nickname = fbProfile.name;
+    }
+    if (fbProfile.profilePicUrl && !candidate.lineProfilePicUrl) {
+      data.lineProfilePicUrl = fbProfile.profilePicUrl;
+    }
+    if (Object.keys(data).length) {
+      candidate = await db.candidate.update({
+        where: { id: candidate.id },
+        data,
+        include: { interestedPosition: { select: { title: true } } },
+      });
+    }
   }
 
   // find or create active conversation
@@ -135,42 +177,10 @@ async function handleFbMessage(facebookUserId: string, text: string, externalId:
     data: { lastMessageAt: new Date(), status: "ACTIVE", unreadCount: { increment: 1 } },
   });
 
-  // Bot reply via OpenClaw only (if botEnabled)
+  // Hand off to the VPS bot bridge (same OpenClaw brain as LINE). The bridge
+  // debounces, runs the agent, and delivers the reply via Graph API + syncs it
+  // back here through /api/openclaw/sync. Skip if HR has disabled the bot.
   if (conversation.botEnabled) {
-    try {
-      const ocReply = await sendToDaniel({
-        conversationId: conversation.id,
-        candidateId: candidate.id,
-        message: text,
-        channel: "FACEBOOK",
-        context: {
-          candidateName: candidate.nickname ?? candidate.fullName,
-          position: candidate.interestedPosition?.title ?? null,
-          status: candidate.currentStatus,
-        },
-      });
-
-      if (ocReply?.reply) {
-        const botReply = sanitizeBotReply(ocReply.reply);
-
-        await sendFbMessage(facebookUserId, botReply);
-        await db.message.create({
-          data: { conversationId: conversation.id, content: botReply, senderType: "BOT" },
-        });
-        await db.conversation.update({
-          where: { id: conversation.id },
-          data: { lastMessageAt: new Date() },
-        });
-
-        if (ocReply.handoff) {
-          await db.conversation.update({
-            where: { id: conversation.id },
-            data: { botEnabled: false },
-          });
-        }
-      }
-    } catch (err) {
-      console.error("[FB webhook] bot reply failed:", err);
-    }
+    await forwardToBotBridge(facebookUserId, text, externalId);
   }
 }

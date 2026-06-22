@@ -25,9 +25,12 @@ export const GET = auth(async (req) => {
 
 // ─── PUT — save credentials ──────────────────────────────────────────────────
 
+// Only verifyToken is required (needed for Meta webhook verification).
+// Page Access Token + App Secret can be filled in later — only the provided
+// fields are written, so saving the verify token alone is allowed.
 const putSchema = z.object({
-  pageAccessToken: z.string().min(1),
-  appSecret:       z.string().min(1),
+  pageAccessToken: z.string().optional(),
+  appSecret:       z.string().optional(),
   verifyToken:     z.string().min(1),
 });
 
@@ -44,23 +47,14 @@ export const PUT = auth(async (req) => {
 
   const { pageAccessToken, appSecret, verifyToken } = parsed.data;
 
-  await Promise.all([
-    db.setting.upsert({
-      where: { key: "facebook.page_access_token" },
-      update: { value: pageAccessToken },
-      create: { key: "facebook.page_access_token", value: pageAccessToken },
-    }),
-    db.setting.upsert({
-      where: { key: "facebook.app_secret" },
-      update: { value: appSecret },
-      create: { key: "facebook.app_secret", value: appSecret },
-    }),
-    db.setting.upsert({
-      where: { key: "facebook.verify_token" },
-      update: { value: verifyToken },
-      create: { key: "facebook.verify_token", value: verifyToken },
-    }),
-  ]);
+  const upsert = (key: string, value: string) =>
+    db.setting.upsert({ where: { key }, update: { value }, create: { key, value } });
+
+  const ops = [upsert("facebook.verify_token", verifyToken)];
+  if (pageAccessToken) ops.push(upsert("facebook.page_access_token", pageAccessToken));
+  if (appSecret)       ops.push(upsert("facebook.app_secret", appSecret));
+
+  await Promise.all(ops);
 
   return NextResponse.json({ ok: true });
 });

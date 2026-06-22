@@ -7,7 +7,11 @@ export default async function IntegrationsPage() {
   const session = await auth();
   if (!session?.user || session.user.role !== "SUPER_ADMIN") redirect("/dashboard");
 
-  const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+  // Webhooks are always hit by external services (LINE/Meta) on the public
+  // production host — never on the local auth domain. Use the public app URL,
+  // not NEXTAUTH_URL (which is localhost during dev).
+  const baseUrl =
+    process.env.NEXT_PUBLIC_APP_URL ?? "https://recruit-for-hr-product.up.railway.app";
   const lineWebhookUrl     = `${baseUrl}/api/webhooks/line`;
   const facebookWebhookUrl = `${baseUrl}/api/webhooks/facebook`;
 

@@ -37,6 +37,7 @@ export default function IntegrationsClient({
   const [fbVerify, setFbVerify] = useState("");
   const [showFbToken, setShowFbToken] = useState(false);
   const [showFbSecret, setShowFbSecret] = useState(false);
+  const [showFbVerify, setShowFbVerify] = useState(false);
   const [fbSaving, setFbSaving] = useState(false);
   const [fbError, setFbError] = useState("");
   const [fbCopied, setFbCopied] = useState(false);
@@ -84,13 +85,17 @@ export default function IntegrationsClient({
 
   // ── Facebook handlers ──
   async function handleFbSave() {
-    if (!fbToken || !fbSecret || !fbVerify) { setFbError("กรุณากรอกข้อมูลให้ครบ"); return; }
+    if (!fbVerify) { setFbError("กรุณากรอก Verify Token (อย่างน้อย)"); return; }
     setFbSaving(true); setFbError("");
     try {
       const res = await fetch("/api/integrations/facebook", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pageAccessToken: fbToken, appSecret: fbSecret, verifyToken: fbVerify }),
+        body: JSON.stringify({
+          verifyToken: fbVerify,
+          ...(fbToken ? { pageAccessToken: fbToken } : {}),
+          ...(fbSecret ? { appSecret: fbSecret } : {}),
+        }),
       });
       if (!res.ok) throw new Error();
       setFbConfigured(true); setFbEditing(false); setFbToken(""); setFbSecret(""); setFbVerify("");
@@ -238,13 +243,7 @@ export default function IntegrationsClient({
       </div>
 
       {/* ── Facebook Messenger ────────────────────────────────────────────── */}
-      <div className="relative bg-white border border-slate-200 rounded-xl p-6 space-y-5 overflow-hidden">
-        {/* Coming Soon overlay */}
-        <div className="absolute inset-0 bg-white/80 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center gap-2 rounded-xl">
-          <span className="bg-amber-100 text-amber-700 text-xs font-semibold px-3 py-1 rounded-full border border-amber-200 uppercase tracking-wide">Coming Soon</span>
-          <p className="text-sm text-slate-500">Facebook Messenger integration จะเปิดใช้งานใน Phase ถัดไป</p>
-        </div>
-
+      <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-lg">f</div>
@@ -253,9 +252,15 @@ export default function IntegrationsClient({
               <p className="text-sm text-slate-500">รับ-ส่งข้อความจาก candidate ผ่าน Facebook Page</p>
             </div>
           </div>
-          <span className="flex items-center gap-1.5 text-sm text-slate-500 font-medium bg-slate-100 px-3 py-1 rounded-full">
-            <XCircle className="w-4 h-4" /> ยังไม่ได้เชื่อมต่อ
-          </span>
+          {fbConfigured ? (
+            <span className="flex items-center gap-1.5 text-sm text-green-600 font-medium bg-green-50 px-3 py-1 rounded-full">
+              <CheckCircle className="w-4 h-4" /> เชื่อมต่อแล้ว
+            </span>
+          ) : (
+            <span className="flex items-center gap-1.5 text-sm text-slate-500 font-medium bg-slate-100 px-3 py-1 rounded-full">
+              <XCircle className="w-4 h-4" /> ยังไม่ได้เชื่อมต่อ
+            </span>
+          )}
         </div>
 
         <div>
@@ -269,10 +274,45 @@ export default function IntegrationsClient({
           <p className="text-xs text-slate-400 mt-1">Copy URL นี้ไปใส่ใน Meta Developer Console → Webhooks → Callback URL</p>
         </div>
 
-        <button disabled
-          className="w-full py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg opacity-40 cursor-not-allowed">
-          เชื่อมต่อ Facebook
-        </button>
+        {!fbEditing && !fbConfigured && (
+          <button onClick={() => setFbEditing(true)}
+            className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
+            เชื่อมต่อ Facebook
+          </button>
+        )}
+        {!fbEditing && fbConfigured && (
+          <div className="flex gap-2">
+            <button onClick={() => setFbEditing(true)}
+              className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
+              แก้ไข Credentials
+            </button>
+            <button onClick={handleFbDisconnect}
+              className="flex items-center gap-1.5 px-4 py-2.5 border border-red-200 text-red-500 hover:bg-red-50 text-sm font-medium rounded-lg transition-colors">
+              <Trash2 className="w-4 h-4" /> ยกเลิก
+            </button>
+          </div>
+        )}
+        {fbEditing && (
+          <div className="space-y-4 border-t border-slate-100 pt-4">
+            <PasswordField label="Page Access Token (กรอกทีหลังได้)" value={fbToken} onChange={setFbToken}
+              show={showFbToken} onToggle={() => setShowFbToken(!showFbToken)} placeholder="เว้นว่างไว้ก่อนได้" />
+            <PasswordField label="App Secret (กรอกทีหลังได้)" value={fbSecret} onChange={setFbSecret}
+              show={showFbSecret} onToggle={() => setShowFbSecret(!showFbSecret)} placeholder="เว้นว่างไว้ก่อนได้" />
+            <PasswordField label="Verify Token (จำเป็น)" value={fbVerify} onChange={setFbVerify}
+              show={showFbVerify} onToggle={() => setShowFbVerify(!showFbVerify)} placeholder="ตั้งค่า Verify Token (สตริงอะไรก็ได้)" />
+            {fbError && <p className="text-sm text-red-500">{fbError}</p>}
+            <div className="flex gap-2">
+              <button onClick={handleFbSave} disabled={fbSaving}
+                className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors">
+                {fbSaving ? "กำลังบันทึก..." : "บันทึก"}
+              </button>
+              <button onClick={() => { setFbEditing(false); setFbToken(""); setFbSecret(""); setFbVerify(""); setFbError(""); }}
+                className="px-4 py-2.5 border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-medium rounded-lg transition-colors">
+                ยกเลิก
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-sm text-blue-700 space-y-1">
           <p className="font-medium">วิธีตั้งค่า</p>

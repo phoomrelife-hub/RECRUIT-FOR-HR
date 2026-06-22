@@ -37,6 +37,59 @@ export async function getVerifyToken(): Promise<string> {
   return verifyToken;
 }
 
+// ─── User profile ────────────────────────────────────────────────────────────
+
+export type FbProfile = {
+  name: string;
+  profilePicUrl?: string;
+};
+
+/**
+ * Fetch a Messenger user's profile by PSID via the Graph API.
+ * Works for people who have messaged the Page (page-scoped). Returns null on
+ * any failure so the caller can fall back to a default name.
+ */
+export async function getFbProfile(psid: string): Promise<FbProfile | null> {
+  const { pageAccessToken } = await getCredentials();
+  if (!pageAccessToken) return null;
+
+  // ① User Profile API — gives name + profile_pic, but requires Advanced Access
+  //    (pages_messaging App Review). Fails with code 100/subcode 33 in dev mode.
+  try {
+    const res = await fetch(
+      `${GRAPH_API}/${psid}?fields=first_name,last_name,profile_pic&access_token=${pageAccessToken}`
+    );
+    if (res.ok) {
+      const data = (await res.json()) as {
+        first_name?: string;
+        last_name?: string;
+        profile_pic?: string;
+      };
+      const name = [data.first_name, data.last_name].filter(Boolean).join(" ").trim();
+      if (name || data.profile_pic) return { name, profilePicUrl: data.profile_pic };
+    }
+  } catch {
+    /* fall through to conversations lookup */
+  }
+
+  // ② Fallback — Conversations API (page inbox). Returns the participant's name
+  //    for Page admins WITHOUT App Review. No profile picture available this way.
+  try {
+    const res = await fetch(
+      `${GRAPH_API}/me/conversations?user_id=${psid}&fields=participants&access_token=${pageAccessToken}`
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      data?: { participants?: { data?: { id: string; name?: string }[] } }[];
+    };
+    const participant = data.data?.[0]?.participants?.data?.find((p) => p.id === psid);
+    if (participant?.name) return { name: participant.name };
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 // ─── Send message ────────────────────────────────────────────────────────────
 
 export async function sendFbMessage(recipientId: string, text: string): Promise<void> {

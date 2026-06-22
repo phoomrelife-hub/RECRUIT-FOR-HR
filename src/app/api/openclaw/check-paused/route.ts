@@ -6,11 +6,15 @@ import { NextResponse } from "next/server";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  const lineUserId = searchParams.get("lineUserId");
+  // middleware.py passes the user id in `lineUserId` for both channels.
+  // LINE ids start with "U"; Facebook PSIDs are all digits → look up either.
+  const id = searchParams.get("lineUserId");
   const NC = { headers: { "Cache-Control": "no-store" } };
-  if (!lineUserId) return NextResponse.json({ paused: false }, NC);
+  if (!id) return NextResponse.json({ paused: false }, NC);
 
-  const candidate = await db.candidate.findUnique({ where: { lineUserId } });
+  const candidate = /^\d+$/.test(id)
+    ? await db.candidate.findUnique({ where: { facebookUserId: id } })
+    : await db.candidate.findUnique({ where: { lineUserId: id } });
   if (!candidate) return NextResponse.json({ paused: false }, NC);
 
   const conversation = await db.conversation.findFirst({

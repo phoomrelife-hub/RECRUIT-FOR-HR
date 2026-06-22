@@ -28,6 +28,8 @@ export async function POST(req: Request) {
   const body = await req.json();
   const {
     lineUserId,
+    facebookUserId,
+    channel,
     displayName,
     pictureUrl,
     userMessage,
@@ -36,6 +38,14 @@ export async function POST(req: Request) {
     messageType,   // "text" | "image" | "file" — from middleware.py
     mediaLineId,   // LINE message ID for image/file proxy
   } = body;
+
+  // ── Facebook bot reply sync ──────────────────────────────────────────────
+  // outbound_dedup.py posts { facebookUserId, channel:"FACEBOOK", botReply } after
+  // OpenClaw answers an FB conversation. The candidate + user message were already
+  // saved by /api/webhooks/facebook, so here we only append the bot reply.
+  if (channel === "FACEBOOK" || facebookUserId) {
+    return handleFacebookSync(facebookUserId, botReply);
+  }
 
   // Allow either userMessage OR botReply (or both) — at least one is required
   if (!lineUserId || (!userMessage && !botReply)) {
@@ -197,6 +207,44 @@ export async function POST(req: Request) {
       data: { lastMessageAt: new Date() },
     });
   }
+
+  return NextResponse.json({ ok: true, conversationId: conversation.id });
+}
+
+// ── Facebook bot reply sync ───────────────────────────────────────────────────
+
+async function handleFacebookSync(facebookUserId: string, botReply?: string) {
+  if (!facebookUserId || !botReply || botReply === "__profile_backfill__") {
+    return NextResponse.json({ ok: true, skip: true });
+  }
+
+  const candidate = await db.candidate.findUnique({ where: { facebookUserId } });
+  if (!candidate) {
+    // candidate should already exist (created by /api/webhooks/facebook); bail safely
+    return NextResponse.json({ ok: false, error: "candidate not found" }, { status: 404 });
+  }
+
+  let conversation = await db.conversation.findFirst({
+    where: { candidateId: candidate.id, status: { not: "CLOSED" } },
+  });
+  if (!conversation) {
+    conversation = await db.conversation.create({
+      data: { candidateId: candidate.id, channel: "FACEBOOK", botEnabled: true },
+    });
+  }
+
+  const cleanReply = sanitizeBotReply(botReply);
+  await db.message.create({
+    data: {
+      conversationId: conversation.id,
+      content: cleanReply,
+      senderType: "BOT",
+    },
+  });
+  await db.conversation.update({
+    where: { id: conversation.id },
+    data: { lastMessageAt: new Date() },
+  });
 
   return NextResponse.json({ ok: true, conversationId: conversation.id });
 }
