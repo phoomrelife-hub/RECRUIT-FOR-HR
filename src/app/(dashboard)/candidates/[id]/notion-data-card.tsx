@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { toast } from "sonner";
 import {
   Loader2,
   AlertCircle,
@@ -18,6 +19,7 @@ import {
   FileText,
   Tag,
   BookOpen,
+  Printer,
 } from "lucide-react";
 
 type PropItem = {
@@ -50,6 +52,130 @@ interface Props {
   positionTitle: string | null;
 }
 
+// ── PDF export (browser print-to-PDF — best Thai rendering) ──
+
+function escapeHtml(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) return "";
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function row(label: string, value: string | number | null | undefined): string {
+  if (value === null || value === undefined || value === "") return "";
+  return `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`;
+}
+
+function buildPrintHtml(detail: NotionDetail, positionTitle: string | null): string {
+  const info = detail.info;
+  const isSalesAdmin = (positionTitle ?? "").toLowerCase().includes("sales admin");
+  const printedAt = new Date().toLocaleString("th-TH");
+
+  let body = "";
+
+  if (isSalesAdmin) {
+    const personal = [
+      row("เบอร์โทร", info.phone),
+      row("อีเมล", info.email),
+      row("อายุ", info.age != null ? `${info.age} ปี` : null),
+      row("บุตร", info.children != null ? `${info.children} คน` : null),
+      row("ที่อยู่", info.address),
+      row("LINE ID", info.lineId),
+    ].join("");
+    if (personal) body += `<h2>ข้อมูลส่วนตัว</h2><table>${personal}</table>`;
+
+    const sales = [
+      row("ประสบการณ์ขาย", info.experience),
+      row("ยอดขายสูงสุด/เดือน", info.maxSales),
+      row("รายได้ที่คาดหวัง", info.expectedSalary),
+      row("อุปกรณ์ที่มี", info.equipment.length ? info.equipment.join(", ") : null),
+    ].join("");
+    if (sales) body += `<h2>ข้อมูลการขาย</h2><table>${sales}</table>`;
+  } else if (detail.allProps.length > 0) {
+    const props = detail.allProps
+      .map((p) => {
+        const v = Array.isArray(p.value) ? p.value.join(", ") : p.value;
+        return row(p.name, v);
+      })
+      .join("");
+    if (props) body += `<h2>ข้อมูล</h2><table>${props}</table>`;
+  }
+
+  if (detail.qa.length > 0) {
+    const items = detail.qa
+      .map(
+        (q, i) => `
+        <div class="qa">
+          <p class="q">${i + 1}. ${escapeHtml(q.question)}</p>
+          <p class="a${q.answer === "(ไม่ได้ตอบ)" ? " unanswered" : ""}">${escapeHtml(q.answer)}</p>
+        </div>`
+      )
+      .join("");
+    body += `<h2>คำถาม-คำตอบ (${detail.qa.length} ข้อ)</h2>${items}`;
+  }
+
+  const title = info.name || "ผู้สมัคร";
+
+  return `<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<title>${escapeHtml(title)} - Notion</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Sarabun', 'Tahoma', sans-serif;
+    color: #1e293b;
+    margin: 0;
+    padding: 32px 36px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  header { border-bottom: 2px solid #7c3aed; padding-bottom: 12px; margin-bottom: 20px; }
+  header h1 { font-size: 20px; margin: 0 0 4px; color: #0f172a; }
+  header .meta { font-size: 11px; color: #64748b; }
+  header .pos { display: inline-block; background: #f1f5f9; color: #475569; border-radius: 999px; padding: 2px 10px; font-size: 11px; margin-top: 6px; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #7c3aed; margin: 22px 0 8px; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
+  th, td { text-align: left; vertical-align: top; padding: 5px 8px; border-bottom: 1px solid #f1f5f9; }
+  th { width: 38%; font-weight: 600; color: #64748b; font-size: 12px; }
+  td { color: #1e293b; }
+  .qa { margin-bottom: 12px; page-break-inside: avoid; }
+  .qa .q { font-weight: 600; color: #0f172a; margin: 0 0 3px; }
+  .qa .a { margin: 0; padding-left: 12px; border-left: 2px solid #c7d2fe; color: #334155; white-space: pre-line; }
+  .qa .a.unanswered { color: #94a3b8; font-style: italic; border-left-color: #e2e8f0; }
+  footer { margin-top: 28px; padding-top: 10px; border-top: 1px solid #e2e8f0; font-size: 10px; color: #94a3b8; }
+  @media print { body { padding: 0; } @page { margin: 16mm; } }
+</style>
+</head>
+<body>
+  <header>
+    <h1>${escapeHtml(title)}</h1>
+    ${positionTitle ? `<span class="pos">${escapeHtml(positionTitle)}</span>` : ""}
+    <div class="meta">ข้อมูลจาก Notion · พิมพ์เมื่อ ${escapeHtml(printedAt)}</div>
+  </header>
+  ${body || "<p>ไม่พบข้อมูล</p>"}
+  <footer>Relife Recruit OS — เอกสารนี้สร้างจากข้อมูลผู้สมัครใน Notion</footer>
+  <script>
+    window.onload = function () {
+      var go = function () { window.focus(); window.print(); };
+      if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(function () { setTimeout(go, 150); });
+      } else {
+        setTimeout(go, 400);
+      }
+    };
+  </script>
+</body>
+</html>`;
+}
+
 function InfoRow({
   icon,
   label,
@@ -77,6 +203,18 @@ export function NotionDataCard({ candidateId, positionTitle }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const isSalesAdmin = (positionTitle ?? "").toLowerCase().includes("sales admin");
+
+  function exportPdf() {
+    if (!detail) return;
+    const win = window.open("", "_blank", "width=820,height=1000");
+    if (!win) {
+      toast.error("เบราว์เซอร์บล็อก popup — กรุณาอนุญาต popup แล้วลองใหม่");
+      return;
+    }
+    win.document.open();
+    win.document.write(buildPrintHtml(detail, positionTitle));
+    win.document.close();
+  }
 
   useEffect(() => {
     fetch(`/api/candidates/${candidateId}/notion-detail`)
@@ -144,6 +282,14 @@ export function NotionDataCard({ candidateId, positionTitle }: Props) {
               {positionTitle}
             </span>
           )}
+          <button
+            onClick={exportPdf}
+            title="Export เป็น PDF"
+            className={`${positionTitle ? "" : "ml-auto"} inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[10px] font-medium text-slate-500 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-600 transition-colors`}
+          >
+            <Printer className="h-3 w-3" />
+            PDF
+          </button>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4 text-sm">
