@@ -3,7 +3,7 @@
 ## Project
 ATS / Recruitment system for Relife. Located at `D:\ClaudeCode Project\recruit`.
 Focus: Recruitment only. NO employee management, payroll, attendance, leave.
-Production: https://recruit-for-hr.vercel.app
+Production: https://recruit-for-hr-product.up.railway.app  (migrated off Vercel — old recruit-for-hr.vercel.app is DEAD/402 Payment Required, do not use)
 
 ## Stack (with breaking changes)
 - **Next.js 16** — uses `proxy.ts` NOT `middleware.ts`. Export named `proxy`, not default
@@ -33,8 +33,8 @@ DIRECT_URL=postgresql://...pooler...:5432/postgres
 NEXT_PUBLIC_SUPABASE_URL=https://xynzirkumyqsxiuyiyut.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 AUTH_SECRET=...
-NEXTAUTH_URL=https://recruit-for-hr.vercel.app  ← production (localhost:3000 for local dev)
-NEXT_PUBLIC_APP_URL=https://<your-app>.up.railway.app  ← public base URL (Railway); used by openclaw config fetch in UI
+NEXTAUTH_URL=https://recruit-for-hr-product.up.railway.app  ← production Railway (localhost:3000 for local dev). NOTE: instrumentation.ts cron self-fetch uses this — if it still points at the dead vercel URL, interview-reminder cron breaks too. Verify on Railway.
+NEXT_PUBLIC_APP_URL=https://recruit-for-hr-product.up.railway.app  ← public base URL (Railway); used by openclaw config fetch in UI
 ANTHROPIC_API_KEY=sk-ant-...   ← required for AI Summary (Phase 6)
 WEBHOOK_FORM_SECRET=...        ← shared secret for /api/webhooks/form
 WEBHOOK_QUALIFY_SECRET=...     ← shared secret for /api/webhooks/qualify
@@ -404,7 +404,33 @@ SUBMIT_SCREENING_ANSWERS, SCORE_CANDIDATE, GENERATE_AI_SUMMARY
 - LINE credentials in Setting table (`line.channel_secret`, `line.channel_access_token`)
 - `src/lib/line.ts` — reads from DB then fallback env var
 - Bot reply: LINE Reply API (replyToken); HR outgoing: LINE Push API (lineUserId)
-- Facebook Messenger: planned (not implemented)
+- Facebook Messenger: ✅ implemented (see Facebook Messenger Integration below)
+
+## Facebook Messenger Integration (2026-06-22)
+**Goal:** FB Messenger uses the SAME OpenClaw (หลิน) bot as LINE — same persona, knowledge, session.
+
+**Architecture (FB rides LINE's bot via a synthetic-LINE bridge):**
+```
+FB → Meta → Railway /api/webhooks/facebook (ingest: candidate + name + user msg)
+   → forwards {psid,text,mid} to VPS middleware /fb/webhook (X-FB-Bridge-Secret)
+   → middleware wraps it as a synthetic LINE event (PSID as userId + synthetic replyToken)
+     → reuses debounce/session/is_bot_paused, forwards to OpenClaw /line/webhook
+   → OpenClaw replies via /v2/bot/message/reply → outbound_dedup (:19000)
+   → outbound_dedup detects numeric PSID (is_fb_user) → sends via Graph API me/messages
+     (LINE userIds start with "U"; FB PSIDs are all digits → that's the channel switch)
+   → bot reply synced back to inbox via /api/openclaw/sync {facebookUserId, channel:"FACEBOOK"}
+```
+- **Meta callback URL** = Railway `…/api/webhooks/facebook` (NOT the VPS). Railway forwards to VPS.
+- **Credentials:** Setting table `facebook.page_access_token` / `facebook.app_secret` / `facebook.verify_token` (Integrations UI). VPS reads page token + `bridgeSecret` from `openclaw.json` → `channels.facebook`.
+- **FB_BRIDGE_SECRET** env on Railway must equal `channels.facebook.bridgeSecret` in VPS openclaw.json (middleware rejects 403 otherwise).
+- **VPS files:** `middleware.py` `_handle_fb` + `/fb/webhook`; `outbound_dedup.py` `send_fb_message`/`is_fb_user` + FB divert + `[FB DROP]` for typing. Backups: `*.bak-20260622-120248`. Services: systemd `line-middleware` / `line-outbound` (logs `middleware.log` / `outbound.log`, NOT `outbound_dedup.log`).
+- **Names:** via Conversations API (`me/conversations?user_id=PSID`) — works for everyone. **User Profile API (`GET /{psid}`) is gated behind App Review** → profile **pictures** don't work until then (`lib/facebook.ts getFbProfile` tries Profile API first, falls back to Conversations API for name).
+- **Channel-aware sends:** `src/lib/notify.ts` `notifyCandidate` / `notifyCandidateWithQuickReply` route FB→Graph API / LINE→push. Used by qualify (single/bulk/auto), schedule-interview, interview-reminders cron, self-schedule. webhooks/qualify stays LINE-only (Make.com).
+- **24h window:** FB sends try `RESPONSE` first (works in-window, no permission). ⚠️ Legacy message tags (ACCOUNT_UPDATE etc.) are DEPRECATED by Meta — don't force them. Out-of-window delivery needs App Review + **HUMAN_AGENT** tag (7-day window). Beyond that → fallback phone/email.
+- **สะดวก/ไม่สะดวก:** FB quick_replies; webhook reads `message.quick_reply.payload` (the chip title has emoji, payload is the clean text). Handled in `webhooks/facebook` `handleFbInterviewResponse`, mirrors LINE handler in openclaw/sync.
+- **Echo loop fix:** skip `event.message.is_echo` in webhooks/facebook (bot's own reply was re-entering as inbound).
+- **check-paused / openclaw/sync:** numeric id (`/^\d+$/`) → look up by facebookUserId.
+- **Pending:** App Review (`pages_messaging` Advanced Access) unlocks profile pictures + Human Agent 7-day messaging.
 
 ## Dashboard & Reports Conventions (Phase 8)
 - recharts (`recharts: ^3.8.1`) — charts must be in "use client" components
