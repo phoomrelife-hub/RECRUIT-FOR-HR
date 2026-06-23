@@ -15,6 +15,7 @@ import {
   Brain,
   ClipboardCheck,
   Trophy,
+  Sparkles,
   type LucideIcon,
 } from "lucide-react";
 import { UserRole } from "@prisma/client";
@@ -46,6 +47,12 @@ export const navSections: NavSection[] = [
         title: "ปฏิทินนัด",
         href: "/calendar",
         icon: CalendarDays,
+        roles: ["SUPER_ADMIN", "HR_MANAGER", "HR_STAFF"],
+      },
+      {
+        title: "AI Assistant",
+        href: "/assistant",
+        icon: Sparkles,
         roles: ["SUPER_ADMIN", "HR_MANAGER", "HR_STAFF"],
       },
     ],

@@ -555,6 +555,84 @@ cd /root/.openclaw/workspace-hr/scripts && bash start-tunnel.sh
 
 **When candidate books**: POST `/api/schedule/[token]` with `slotId` → creates Interview record + marks slot unavailable + marks token used + sends LINE confirmation
 
+## AI Assistant Module (Phase 16)
+
+**Purpose**: Read-only HR assistant — asks in Thai, returns ranked candidates and pipeline stats. Powered by OpenAI tool-calling (`gpt-4o`). All HR roles (`SUPER_ADMIN`, `HR_MANAGER`, `HR_STAFF`) have access.
+
+### Routes
+```
+/assistant                          — chat page (sidebar rail + office canvas + chat panel)
+POST /api/assistant/chat            — send message; body: { sessionId?, message, history }; returns { reply, sessionId }
+GET  /api/assistant/sessions        — list user's sessions (last 50, ordered by updatedAt desc)
+POST /api/assistant/sessions        — create new session; body: { title }
+DELETE /api/assistant/sessions      — delete session; body: { sessionId }
+```
+
+### Prisma Models
+```prisma
+model AssistantSession {
+  id        String             @id @default(cuid())
+  userId    String             @map("user_id")
+  title     String
+  createdAt DateTime           @default(now()) @map("created_at")
+  updatedAt DateTime           @updatedAt @map("updated_at")
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  AssistantMessage[]
+  @@map("assistant_sessions")
+}
+model AssistantMessage {
+  id        String   @id @default(cuid())
+  sessionId String   @map("session_id")
+  role      String   // "user" | "assistant" | "tool"
+  content   String
+  createdAt DateTime @default(now()) @map("created_at")
+  session   AssistantSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  @@map("assistant_messages")
+}
+```
+
+### Setting Table Keys
+```
+openai.api_key          — OpenAI API key (fallback: OPENAI_API_KEY env var)
+assistant.model         — model override (default: gpt-4o)
+assistant.system_prompt — system prompt override
+```
+
+### Env Variable
+```
+OPENAI_API_KEY=sk-...   ← fallback if openai.api_key not set in Setting table
+```
+
+If neither is set, sending a message returns the Thai error "ยังไม่ได้ตั้งค่า OpenAI API Key…" (no crash).
+
+### Read Tools (v1 — read-only)
+| Tool | Description |
+|------|-------------|
+| `search_candidates` | Filter candidates by name, jobPositionId, status, experienceTier, salary range, tag; returns ranked list |
+| `get_candidate` | Fetch full candidate profile by id (DB fields; Notion detail graceful-null) |
+| `get_job_position` / `list_job_positions` | Get one job or list all open positions |
+| `get_pipeline_stats` | Today's new applicants, qualified, pipeline counts — Bangkok UTC+7 |
+
+### Key Files
+```
+src/lib/assistant-config.ts         — getAssistantConfig() reads Setting → env fallback; SYSTEM_PROMPT
+src/lib/assistant-tools.ts          — READ_TOOLS (OpenAI tool defs) + runReadTool() switch
+src/lib/assistant-loop.ts           — runAssistantTurn(history): 6-iteration tool-calling loop
+src/app/api/assistant/chat/route.ts — POST handler; auth + AiLog
+src/app/api/assistant/sessions/route.ts — GET/POST/DELETE sessions
+src/app/(dashboard)/assistant/
+  page.tsx                          — server component; loads user's sessions from DB
+  assistant-client.tsx              — "use client"; session rail, message send, state
+  assistant-chat.tsx                — chat panel + MarkdownMessage renderer
+  office-canvas.tsx                 — dark office illustration; thinking={bool} animates character
+src/components/ui/markdown-message.tsx — react-markdown + remark-gfm renderer
+```
+
+### v1 Known Deviations
+1. **Past-thread transcript** — clicking an old session in the rail doesn't replay history in the visible panel (model still has context server-side). Follow-up: `GET /api/assistant/sessions/[id]/messages`.
+2. **Clickable candidate cards** — matches appear as Thai text with names; no `/candidates/[id]` links yet. Follow-up: `[[candidate:id|name]]` markers + link rendering.
+3. **Notion deep Q&A** in `get_candidate` returns `null` unless notion-detail lib is importable; DB fields unaffected.
+
 ## Known Issues / TODO
 - [x] ~~**DELETE** `/api/admin/notion-test`~~ — ลบแล้ว (2026-05-10); NOTION_TOKEN อัปเดตใน Vercel แล้ว ทำงานปกติ
 - [x] ~~**Notion 502 in production**~~ — แก้แล้ว: อัปเดต NOTION_TOKEN ใน Vercel (2026-05-10)
