@@ -25,7 +25,7 @@ export function AssistantClient({ initialSessions }: { initialSessions: SessionR
   function onSessionCreated(id: string) {
     setActiveId(id);
     // refresh the session list to show the new thread
-    fetch("/api/assistant/sessions").then((r) => r.json()).then((d) => { if (d.sessions) setSessions(d.sessions); });
+    fetch("/api/assistant/sessions").then((r) => r.json()).then((d) => { if (d.sessions) setSessions(d.sessions); }).catch(() => {});
   }
 
   return (

@@ -44,7 +44,7 @@ export async function runAssistantTurn(
 
     const msg = data.choices?.[0]?.message;
     if (!msg) break;
-    if (msg.content) finalText += msg.content;
+    if (msg.content) finalText = msg.content;
 
     const calls = msg.tool_calls || [];
     if (calls.length === 0) break;

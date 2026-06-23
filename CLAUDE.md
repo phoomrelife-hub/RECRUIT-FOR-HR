@@ -565,7 +565,7 @@ cd /root/.openclaw/workspace-hr/scripts && bash start-tunnel.sh
 POST /api/assistant/chat            — send message; body: { sessionId?, message, history }; returns { reply, sessionId }
 GET  /api/assistant/sessions        — list user's sessions (last 50, ordered by updatedAt desc)
 POST /api/assistant/sessions        — create new session; body: { title }
-DELETE /api/assistant/sessions      — delete session; body: { sessionId }
+DELETE /api/assistant/sessions?id=<id> — delete session; query param id (not body)
 ```
 
 ### Prisma Models

@@ -43,11 +43,15 @@ export async function POST(req: NextRequest) {
 
   let reply = "";
   let usage = { promptTokens: 0, outputTokens: 0 };
+  let ok = true;
+  let errorMessage: string | null = null;
   try {
     const turn = await runAssistantTurn(history);
     reply = turn.text || "ขออภัย ไม่สามารถสร้างคำตอบได้";
     usage = turn.usage;
   } catch (e: any) {
+    ok = false;
+    errorMessage = e?.message ? String(e.message).slice(0, 500) : "unknown error";
     if (e.message === "NO_API_KEY") {
       reply = "ยังไม่ได้ตั้งค่า OpenAI API key — โปรดตั้งค่าใน Setting (openai.api_key) หรือ env OPENAI_API_KEY";
     } else {
@@ -63,7 +67,7 @@ export async function POST(req: NextRequest) {
     data: {
       action: "assistant", model: null,
       promptTokens: usage.promptTokens, outputTokens: usage.outputTokens,
-      totalTokens: usage.promptTokens + usage.outputTokens, success: true,
+      totalTokens: usage.promptTokens + usage.outputTokens, success: ok, errorMessage,
     },
   }).catch(() => { /* logging is best-effort */ });
 
