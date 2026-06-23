@@ -598,7 +598,10 @@ assistant.model            — model override (default: gpt-4o)
 assistant.system_prompt    — system prompt override
 assistant.msg_search_limit — search_messages cap (default 50, hard cap 200)
 assistant.conversation_limit — get_conversation cap (default 100, hard cap 300)
+assistant.rate_limit_per_min — per-user chat messages/min (default 20)
 ```
+
+> **Rate limit:** `POST /api/assistant/chat` counts the user's messages in the last 60s (DB-based, holds across instances/redeploys). Over the limit → returns a Thai "ส่งถี่เกินไป" message without calling OpenAI, and logs an `AiLog` row (`success=false`, `errorMessage="rate_limited (>N/min, user …)"`).
 
 ### Env Variable
 ```
