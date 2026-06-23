@@ -593,9 +593,11 @@ model AssistantMessage {
 
 ### Setting Table Keys
 ```
-openai.api_key          — OpenAI API key (fallback: OPENAI_API_KEY env var)
-assistant.model         — model override (default: gpt-4o)
-assistant.system_prompt — system prompt override
+openai.api_key             — OpenAI API key (fallback: OPENAI_API_KEY env var)
+assistant.model            — model override (default: gpt-4o)
+assistant.system_prompt    — system prompt override
+assistant.msg_search_limit — search_messages cap (default 50, hard cap 200)
+assistant.conversation_limit — get_conversation cap (default 100, hard cap 300)
 ```
 
 ### Env Variable
@@ -612,6 +614,10 @@ If neither is set, sending a message returns the Thai error "ยังไม่�
 | `get_candidate` | Fetch full candidate profile by id (DB fields; Notion detail graceful-null) |
 | `get_job_position` / `list_job_positions` | Get one job or list all open positions |
 | `get_pipeline_stats` | Today's new applicants, qualified, pipeline counts — Bangkok UTC+7 |
+| `search_messages` | Search ALL inbox chat messages (every conversation/channel) by keyword, senderType, channel, candidateId, sinceDays — read-only. Finds candidates by what they said in chat (to หลิน/OpenClaw or HR) |
+| `get_conversation` | Read one full chat thread chronologically by conversationId or candidateId (latest conversation) — read-only |
+
+> Inbox is **read-only** to the assistant — it can search/read every chat but never sends or drafts replies (หลิน/OpenClaw owns chat responses).
 
 ### Key Files
 ```

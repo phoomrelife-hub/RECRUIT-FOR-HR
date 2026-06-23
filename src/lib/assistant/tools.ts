@@ -1,6 +1,7 @@
 // Read-only tools for the recruit AI Assistant. All tools auto-run in the loop.
 import { db as prisma } from "@/lib/db";
 import { parseTier } from "@/lib/experience-tier";
+import { getSetting } from "./config";
 import type { Prisma } from "@prisma/client";
 
 export interface ToolSchema {
@@ -20,7 +21,12 @@ export const READ_TOOLS = new Set([
   "get_job_position",
   "list_job_positions",
   "get_pipeline_stats",
+  "search_messages",
+  "get_conversation",
 ]);
+
+const MESSAGE_SENDERS = ["CANDIDATE", "BOT", "HR", "SYSTEM"];
+const SOURCE_CHANNELS = ["LINE", "FACEBOOK", "WEBSITE", "MANUAL", "JOBBKK", "JOBTHAI", "OTHER"];
 
 const CANDIDATE_STATUSES = [
   "NEW_APPLICANT", "BOT_SCREENING", "WAITING_HR_REVIEW", "NEED_MORE_INFO",
@@ -92,6 +98,37 @@ export const TOOLS: ToolSchema[] = [
     description: "Overview counts: candidates per status, today's new applicants, today's scheduled interviews. Use for ภาพรวม-style questions like 'how many new applicants today'.",
     input_schema: { type: "object", properties: {}, additionalProperties: false },
   },
+  {
+    name: "search_messages",
+    description:
+      "Search across ALL inbox chat messages — every conversation, every channel (LINE/Facebook/etc.), read-only. Use this to find candidates by what they actually said in chat to the bot (หลิน/OpenClaw) or HR — e.g. \"พร้อมเริ่มงานทันที\", \"ทำงานเสาร์อาทิตย์ได้\", \"WFH\", \"เคยขายประกัน\". Returns matching messages with the candidate, channel, sender, and time. Use senderType=CANDIDATE to search only what applicants themselves wrote. Follow up with get_conversation to read the surrounding thread or get_candidate for the profile.",
+    input_schema: {
+      type: "object",
+      properties: {
+        keyword: { type: "string", description: "Substring to find in the message text (case-insensitive). This is the main filter — usually provide it." },
+        senderType: { type: "string", enum: MESSAGE_SENDERS, description: "Who sent the message. CANDIDATE = the applicant, BOT = หลิน/OpenClaw, HR = staff, SYSTEM = system notes." },
+        channel: { type: "string", enum: SOURCE_CHANNELS, description: "Limit to one chat channel." },
+        candidateId: { type: "string", description: "Limit to one candidate's messages." },
+        sinceDays: { type: "number", description: "Only messages from the last N days." },
+        limit: { type: "number", description: "Max messages, most recent first (default from settings ≈50, hard cap 200)." },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "get_conversation",
+    description:
+      "Read one full chat thread in chronological order (read-only). Pass conversationId, or candidateId to read that candidate's most recent conversation. Use after search_messages to see the context around a match, or to review a candidate's whole conversation with the bot/HR.",
+    input_schema: {
+      type: "object",
+      properties: {
+        conversationId: { type: "string", description: "The conversation to read." },
+        candidateId: { type: "string", description: "Used if conversationId is not given — reads the candidate's latest conversation." },
+        limit: { type: "number", description: "Max messages, most recent kept then shown oldest→newest (default from settings ≈100, hard cap 300)." },
+      },
+      additionalProperties: false,
+    },
+  },
 ];
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -124,6 +161,10 @@ export async function runReadTool(name: string, args: Record<string, any>): Prom
       return listJobPositions(Boolean(args.onlyOpen));
     case "get_pipeline_stats":
       return getPipelineStats();
+    case "search_messages":
+      return searchMessages(args);
+    case "get_conversation":
+      return getConversation(args);
     default:
       throw new Error(`unknown read tool: ${name}`);
   }
@@ -298,4 +339,94 @@ async function getPipelineStats() {
     prisma.candidate.count(),
   ]);
   return { totalCandidates: total, byStatus, newApplicantsToday: newToday, scheduledInterviewsToday: interviewsToday };
+}
+
+// Resolve a configurable cap from the Setting table, clamped to a hard ceiling.
+async function resolveLimit(settingKey: string, fallback: number, hardCap: number, requested?: unknown): Promise<number> {
+  const raw = Number(requested);
+  if (Number.isFinite(raw) && raw > 0) return Math.min(raw, hardCap);
+  const configured = Number(await getSetting(settingKey));
+  const base = Number.isFinite(configured) && configured > 0 ? configured : fallback;
+  return Math.min(base, hardCap);
+}
+
+async function searchMessages(args: Record<string, any>) {
+  const limit = await resolveLimit("assistant.msg_search_limit", 50, 200, args.limit);
+  const where: Prisma.MessageWhereInput = {};
+  if (args.keyword) where.content = { contains: String(args.keyword), mode: "insensitive" };
+  if (args.senderType) where.senderType = args.senderType;
+  if (typeof args.sinceDays === "number" && args.sinceDays > 0) {
+    where.createdAt = { gte: new Date(Date.now() - args.sinceDays * 86400000) };
+  }
+  const convWhere: Prisma.ConversationWhereInput = {};
+  if (args.channel) convWhere.channel = args.channel;
+  if (args.candidateId) convWhere.candidateId = String(args.candidateId);
+  if (Object.keys(convWhere).length) where.conversation = convWhere;
+
+  const rows = await prisma.message.findMany({
+    where,
+    take: limit,
+    orderBy: { createdAt: "desc" },
+    include: {
+      conversation: {
+        select: {
+          channel: true,
+          candidate: { select: { id: true, nickname: true, fullName: true, lineDisplayName: true } },
+        },
+      },
+    },
+  });
+
+  return {
+    count: rows.length,
+    messages: rows.map((m) => ({
+      messageId: m.id,
+      conversationId: m.conversationId,
+      candidateId: m.conversation.candidate.id,
+      candidateName: candidateName(m.conversation.candidate),
+      channel: m.conversation.channel,
+      sender: m.senderType,
+      at: m.createdAt,
+      text: m.content.slice(0, 600),
+    })),
+  };
+}
+
+async function getConversation(args: Record<string, any>) {
+  const limit = await resolveLimit("assistant.conversation_limit", 100, 300, args.limit);
+  let conversationId = args.conversationId ? String(args.conversationId) : null;
+
+  if (!conversationId && args.candidateId) {
+    const latest = await prisma.conversation.findFirst({
+      where: { candidateId: String(args.candidateId) },
+      orderBy: [{ lastMessageAt: "desc" }, { createdAt: "desc" }],
+      select: { id: true },
+    });
+    if (!latest) return { error: "ไม่พบบทสนทนาของผู้สมัครรายนี้" };
+    conversationId = latest.id;
+  }
+  if (!conversationId) throw new Error("get_conversation requires conversationId or candidateId");
+
+  const conv = await prisma.conversation.findUnique({
+    where: { id: conversationId },
+    include: { candidate: { select: { id: true, nickname: true, fullName: true, lineDisplayName: true } } },
+  });
+  if (!conv) return { error: "ไม่พบบทสนทนา" };
+
+  const recent = await prisma.message.findMany({
+    where: { conversationId },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+    select: { senderType: true, content: true, createdAt: true },
+  });
+  recent.reverse(); // chronological (oldest → newest)
+
+  return {
+    conversationId,
+    candidateId: conv.candidate.id,
+    candidateName: candidateName(conv.candidate),
+    channel: conv.channel,
+    messageCount: recent.length,
+    messages: recent.map((m) => ({ sender: m.senderType, text: m.content, at: m.createdAt })),
+  };
 }
