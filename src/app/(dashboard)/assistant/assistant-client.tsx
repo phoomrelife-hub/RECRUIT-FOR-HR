@@ -10,10 +10,28 @@ export function AssistantClient({ initialSessions }: { initialSessions: SessionR
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [thinking, setThinking] = useState(false);
+  const [loadingThread, setLoadingThread] = useState(false);
 
   function newChat() {
     setActiveId(null);
     setMessages([]);
+  }
+
+  // Open a past session and load its full transcript so it's readable.
+  async function openSession(id: string) {
+    if (id === activeId) return;
+    setActiveId(id);
+    setMessages([]);
+    setLoadingThread(true);
+    try {
+      const r = await fetch(`/api/assistant/sessions/${id}/messages`);
+      const d = await r.json();
+      if (Array.isArray(d.messages)) setMessages(d.messages);
+    } catch {
+      /* ignore — empty transcript on failure */
+    } finally {
+      setLoadingThread(false);
+    }
   }
 
   async function deleteSession(id: string) {
@@ -37,7 +55,7 @@ export function AssistantClient({ initialSessions }: { initialSessions: SessionR
           {sessions.length === 0 && <p className="text-xs text-slate-400 px-2 py-3">ยังไม่มีประวัติแชท</p>}
           {sessions.map((s) => (
             <div key={s.id} className={`group flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm cursor-pointer ${activeId === s.id ? "bg-blue-50 text-blue-700" : "hover:bg-slate-50 text-slate-700"}`}>
-              <button onClick={() => setActiveId(s.id)} className="flex-1 text-left truncate">{s.title}</button>
+              <button onClick={() => openSession(s.id)} className="flex-1 text-left truncate">{s.title}</button>
               <button onClick={() => deleteSession(s.id)} className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 text-xs">✕</button>
             </div>
           ))}
@@ -50,13 +68,17 @@ export function AssistantClient({ initialSessions }: { initialSessions: SessionR
           <OfficeCanvas thinking={thinking} />
         </div>
         <div className="rounded-xl border border-slate-200 bg-white h-[480px] flex flex-col">
-          <AssistantChat
-            key={activeId ?? "new"}
-            sessionId={activeId}
-            initialMessages={messages}
-            onSessionCreated={onSessionCreated}
-            onThinkingChange={setThinking}
-          />
+          {loadingThread ? (
+            <div className="flex-1 flex items-center justify-center text-sm text-slate-400">กำลังโหลดบทสนทนา…</div>
+          ) : (
+            <AssistantChat
+              key={activeId ?? "new"}
+              sessionId={activeId}
+              initialMessages={messages}
+              onSessionCreated={onSessionCreated}
+              onThinkingChange={setThinking}
+            />
+          )}
         </div>
       </div>
     </div>
