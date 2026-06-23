@@ -25,7 +25,38 @@ export const READ_TOOLS = new Set([
   "search_messages",
   "get_conversation",
   "get_review_queue",
+  "query_records",
 ]);
+
+// Generic read allowlist — every other (non-credential) table the assistant may read.
+// Models holding secrets/credentials are intentionally absent: Setting, AiProvider,
+// Account, Session, VerificationToken. User is included but password is never selected.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type ModelEntry = { delegate: any; select?: Record<string, true>; defaultOrderBy?: unknown };
+const QUERY_MODELS: Record<string, ModelEntry> = {
+  candidate: { delegate: prisma.candidate, defaultOrderBy: { createdAt: "desc" } },
+  job_position: { delegate: prisma.jobPosition, defaultOrderBy: { createdAt: "desc" } },
+  interview: { delegate: prisma.interview, defaultOrderBy: { interviewDate: "desc" } },
+  interview_feedback: { delegate: prisma.interviewFeedback, defaultOrderBy: { createdAt: "desc" } },
+  screening_form: { delegate: prisma.screeningForm },
+  screening_question: { delegate: prisma.screeningQuestion },
+  screening_answer: { delegate: prisma.screeningAnswer },
+  candidate_score: { delegate: prisma.candidateScore },
+  ai_summary: { delegate: prisma.aiSummary, defaultOrderBy: { createdAt: "desc" } },
+  hiring_decision: { delegate: prisma.hiringDecision, defaultOrderBy: { createdAt: "desc" } },
+  tag: { delegate: prisma.tag },
+  candidate_tag: { delegate: prisma.candidateTag },
+  candidate_note: { delegate: prisma.candidateNote, defaultOrderBy: { createdAt: "desc" } },
+  candidate_status_history: { delegate: prisma.candidateStatusHistory, defaultOrderBy: { createdAt: "desc" } },
+  candidate_assignment: { delegate: prisma.candidateAssignment, defaultOrderBy: { assignedAt: "desc" } },
+  conversation: { delegate: prisma.conversation, defaultOrderBy: { lastMessageAt: "desc" } },
+  message: { delegate: prisma.message, defaultOrderBy: { createdAt: "desc" } },
+  quick_reply: { delegate: prisma.quickReply },
+  user: { delegate: prisma.user, select: { id: true, name: true, email: true, role: true, status: true, createdAt: true } },
+  audit_log: { delegate: prisma.auditLog, defaultOrderBy: { createdAt: "desc" } },
+  ai_log: { delegate: prisma.aiLog, defaultOrderBy: { createdAt: "desc" } },
+};
+const QUERY_MODEL_NAMES = Object.keys(QUERY_MODELS);
 
 const MESSAGE_SENDERS = ["CANDIDATE", "BOT", "HR", "SYSTEM"];
 const SOURCE_CHANNELS = ["LINE", "FACEBOOK", "WEBSITE", "MANUAL", "JOBBKK", "JOBTHAI", "OTHER"];
@@ -148,6 +179,22 @@ export const TOOLS: ToolSchema[] = [
       additionalProperties: false,
     },
   },
+  {
+    name: "query_records",
+    description:
+      "Generic READ-ONLY query over any HR table not covered by a specific tool — use this so you can read almost anything in the system. Pick a model, an optional Prisma-style `where` filter, optional orderBy, and a limit. Returns rows; credential/secret tables and fields are never exposed (Settings, API keys, passwords, auth tokens are intentionally unavailable). Available models: candidate, job_position, interview, interview_feedback, screening_form, screening_question, screening_answer, candidate_score, ai_summary, hiring_decision, tag, candidate_tag, candidate_note, candidate_status_history, candidate_assignment, conversation, message, quick_reply, user (id/name/email/role/status only), audit_log, ai_log. Field names are camelCase from the Prisma schema. Prefer the specific tools (search_candidates, get_review_queue, etc.) when they fit — they return better-shaped data.",
+    input_schema: {
+      type: "object",
+      properties: {
+        model: { type: "string", enum: QUERY_MODEL_NAMES, description: "Which table to read." },
+        where: { type: "object", description: "Optional Prisma where filter, e.g. {\"currentStatus\":\"QUALIFIED\"} or {\"interviewDate\":{\"gte\":\"2026-06-01T00:00:00Z\"}} or {\"finalResult\":\"PASSED\"}. Use exact camelCase field names. Invalid filters return an error you can correct.", additionalProperties: true },
+        orderBy: { type: "object", description: "Optional sort, e.g. {\"createdAt\":\"desc\"}.", additionalProperties: true },
+        limit: { type: "number", description: "Max rows (default 25, hard cap 100)." },
+      },
+      required: ["model"],
+      additionalProperties: false,
+    },
+  },
 ];
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -215,6 +262,8 @@ export async function runReadTool(name: string, args: Record<string, any>): Prom
       return getConversation(args);
     case "get_review_queue":
       return getReviewQueue(args);
+    case "query_records":
+      return queryRecords(args);
     default:
       throw new Error(`unknown read tool: ${name}`);
   }
@@ -393,6 +442,28 @@ async function getReviewQueue(args: Record<string, any>) {
   for (const g of grouped) { byStatus[g.currentStatus] = g._count._all; total += g._count._all; }
 
   return { total, byStatus, returned: rows.length, candidates: rows.map(mapCandidateRow) };
+}
+
+async function queryRecords(args: Record<string, any>) {
+  const key = String(args.model || "");
+  const entry = QUERY_MODELS[key];
+  if (!entry) {
+    return { error: `อ่านตาราง "${key}" ไม่ได้ (ไม่อยู่ใน allowlist หรือเป็นข้อมูลลับ)`, availableModels: QUERY_MODEL_NAMES };
+  }
+  const limit = Math.min(Number(args.limit) || 25, 100);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const q: Record<string, any> = { take: limit };
+  if (args.where && typeof args.where === "object") q.where = args.where;
+  if (args.orderBy && typeof args.orderBy === "object") q.orderBy = args.orderBy;
+  else if (entry.defaultOrderBy) q.orderBy = entry.defaultOrderBy;
+  if (entry.select) q.select = entry.select;
+
+  try {
+    const rows: unknown[] = await entry.delegate.findMany(q);
+    return { model: key, count: rows.length, rows };
+  } catch (e: any) {
+    return { error: `query ล้มเหลว: ${e?.message ? String(e.message).slice(0, 300) : "unknown"} — ตรวจชื่อฟิลด์ใน where/orderBy ให้ตรงสคีมา (camelCase)` };
+  }
 }
 
 // Resolve a configurable cap from the Setting table, clamped to a hard ceiling.

@@ -615,6 +615,9 @@ If neither is set, sending a message returns the Thai error "ยังไม่�
 | `get_job_position` / `list_job_positions` | Get one job or list all open positions |
 | `get_pipeline_stats` | Today's new applicants, qualified, pipeline counts — Bangkok UTC+7 |
 | `get_review_queue` | The /review HR queue (WAITING_HR_REVIEW, BOT_SCREENING, NEW_APPLICANT, NEED_MORE_INFO) with tier/salary/sales/address; counts per status + rows. Optional position filter |
+| `query_records` | Generic read over an allowlist of ~21 models (candidate, job_position, interview, interview_feedback, screening_*, candidate_score, ai_summary, hiring_decision, tag, candidate_note, candidate_status_history, candidate_assignment, conversation, message, quick_reply, user[id/name/email/role only], audit_log, ai_log). Prisma-style `where`/`orderBy`/`limit`. **Excludes credential tables**: Setting, AiProvider, Account, Session, VerificationToken, and User.password |
+
+> **Security boundary:** `query_records` is allowlist-based. Credential/secret tables (`Setting`, `AiProvider`, `Account`, `Session`, `VerificationToken`) and `User.password` are never queryable — keys/tokens/passwords cannot leak through the assistant.
 | `search_messages` | Search ALL inbox chat messages (every conversation/channel) by keyword, senderType, channel, candidateId, sinceDays — read-only. Finds candidates by what they said in chat (to หลิน/OpenClaw or HR) |
 | `get_conversation` | Read one full chat thread chronologically by conversationId or candidateId (latest conversation) — read-only |
 
