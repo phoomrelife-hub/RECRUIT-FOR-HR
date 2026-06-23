@@ -610,10 +610,11 @@ If neither is set, sending a message returns the Thai error "ยังไม่�
 ### Read Tools (v1 — read-only)
 | Tool | Description |
 |------|-------------|
-| `search_candidates` | Filter candidates by name, jobPositionId, status, experienceTier, salary range, tag; returns ranked list |
-| `get_candidate` | Fetch full candidate profile by id (DB fields; Notion detail graceful-null) |
+| `search_candidates` | Filter candidates by name, jobPositionId, status, experienceTier, salary range, tag, **area** (address/district, e.g. "มีนบุรี"); returns ranked list (rows include address) |
+| `get_candidate` | Fetch full candidate profile by id (DB fields **+ live Notion** detail: full address + deep Q&A via `src/lib/notion-detail.ts`; graceful-null if Notion fails) |
 | `get_job_position` / `list_job_positions` | Get one job or list all open positions |
 | `get_pipeline_stats` | Today's new applicants, qualified, pipeline counts — Bangkok UTC+7 |
+| `get_review_queue` | The /review HR queue (WAITING_HR_REVIEW, BOT_SCREENING, NEW_APPLICANT, NEED_MORE_INFO) with tier/salary/sales/address; counts per status + rows. Optional position filter |
 | `search_messages` | Search ALL inbox chat messages (every conversation/channel) by keyword, senderType, channel, candidateId, sinceDays — read-only. Finds candidates by what they said in chat (to หลิน/OpenClaw or HR) |
 | `get_conversation` | Read one full chat thread chronologically by conversationId or candidateId (latest conversation) — read-only |
 

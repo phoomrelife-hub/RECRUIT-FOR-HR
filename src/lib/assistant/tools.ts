@@ -1,8 +1,9 @@
 // Read-only tools for the recruit AI Assistant. All tools auto-run in the loop.
 import { db as prisma } from "@/lib/db";
 import { parseTier } from "@/lib/experience-tier";
+import { getNotionDetail } from "@/lib/notion-detail";
 import { getSetting } from "./config";
-import type { Prisma } from "@prisma/client";
+import type { Prisma, CandidateStatus } from "@prisma/client";
 
 export interface ToolSchema {
   name: string;
@@ -23,10 +24,13 @@ export const READ_TOOLS = new Set([
   "get_pipeline_stats",
   "search_messages",
   "get_conversation",
+  "get_review_queue",
 ]);
 
 const MESSAGE_SENDERS = ["CANDIDATE", "BOT", "HR", "SYSTEM"];
 const SOURCE_CHANNELS = ["LINE", "FACEBOOK", "WEBSITE", "MANUAL", "JOBBKK", "JOBTHAI", "OTHER"];
+// Statuses shown in the /review HR queue (same set as auto-qualify scans).
+const REVIEW_QUEUE_STATUSES: CandidateStatus[] = ["WAITING_HR_REVIEW", "BOT_SCREENING", "NEW_APPLICANT", "NEED_MORE_INFO"];
 
 const CANDIDATE_STATUSES = [
   "NEW_APPLICANT", "BOT_SCREENING", "WAITING_HR_REVIEW", "NEED_MORE_INFO",
@@ -55,7 +59,8 @@ export const TOOLS: ToolSchema[] = [
         ageMin: { type: "number" },
         ageMax: { type: "number" },
         tagNames: { type: "array", items: { type: "string" }, description: "Candidate must have ALL these tag names." },
-        keyword: { type: "string", description: "Substring match (case-insensitive) on experienceText, experienceDetail, fullName, or nickname." },
+        area: { type: "string", description: "Match the candidate's address/district (substring, case-insensitive) — e.g. \"มีนบุรี\", \"ลาดกระบัง\", \"กรุงเทพ\". Use for \"ผู้สมัครในเขตนี้\" questions. Address is backfilled from Notion." },
+        keyword: { type: "string", description: "Substring match (case-insensitive) on experienceText, experienceDetail, address, fullName, or nickname." },
         sourceChannel: { type: "string", enum: ["LINE", "FACEBOOK", "WEBSITE", "MANUAL", "JOBBKK", "JOBTHAI", "OTHER"] },
         limit: { type: "number", description: "Max rows (default 25, hard cap 50)." },
       },
@@ -97,6 +102,20 @@ export const TOOLS: ToolSchema[] = [
     name: "get_pipeline_stats",
     description: "Overview counts: candidates per status, today's new applicants, today's scheduled interviews. Use for ภาพรวม-style questions like 'how many new applicants today'.",
     input_schema: { type: "object", properties: {}, additionalProperties: false },
+  },
+  {
+    name: "get_review_queue",
+    description:
+      "Get the HR review queue — candidates awaiting review/qualification (statuses WAITING_HR_REVIEW, BOT_SCREENING, NEW_APPLICANT, NEED_MORE_INFO), the same list shown on the /review page (คิวพิจารณา). Each row includes experience tier, expected salary, max sales, work preference, tags, and experienceText so you can help triage/rank who to qualify. Optionally filter by position. Returns counts per status plus the candidate rows.",
+    input_schema: {
+      type: "object",
+      properties: {
+        positionId: { type: "string", description: "Limit to one JobPosition id." },
+        positionTitle: { type: "string", description: "JobPosition title (substring, case-insensitive) — used if positionId not given." },
+        limit: { type: "number", description: "Max rows, newest first (default 50, hard cap 100)." },
+      },
+      additionalProperties: false,
+    },
   },
   {
     name: "search_messages",
@@ -147,6 +166,35 @@ function candidateName(c: { nickname: string | null; fullName: string | null; li
   return c.fullName || c.nickname || c.lineDisplayName || "(ไม่ระบุชื่อ)";
 }
 
+// Shared include + row shape for search_candidates and get_review_queue.
+const CANDIDATE_ROW_INCLUDE = {
+  interestedPosition: { select: { title: true } },
+  tags: { include: { tag: { select: { name: true } } } },
+  candidateScore: { select: { totalScore: true } },
+} satisfies Prisma.CandidateInclude;
+
+type CandidateRow = Prisma.CandidateGetPayload<{ include: typeof CANDIDATE_ROW_INCLUDE }>;
+
+function mapCandidateRow(c: CandidateRow) {
+  return {
+    id: c.id,
+    name: candidateName(c),
+    age: c.age,
+    position: c.interestedPosition?.title ?? null,
+    status: c.currentStatus,
+    tier: parseTier(c.experienceText),
+    experienceStatus: c.experienceStatus,
+    expectedSalary: c.expectedSalary,
+    maxSalesAmount: c.maxSalesAmount,
+    workPreference: c.workPreference,
+    hasComputer: c.hasComputer,
+    address: c.address,
+    tags: c.tags.map((t) => t.tag.name),
+    experienceText: c.experienceText,
+    score: c.candidateScore?.totalScore ?? null,
+  };
+}
+
 // ── executor ─────────────────────────────────────────────────────────────────
 
 export async function runReadTool(name: string, args: Record<string, any>): Promise<unknown> {
@@ -165,6 +213,8 @@ export async function runReadTool(name: string, args: Record<string, any>): Prom
       return searchMessages(args);
     case "get_conversation":
       return getConversation(args);
+    case "get_review_queue":
+      return getReviewQueue(args);
     default:
       throw new Error(`unknown read tool: ${name}`);
   }
@@ -198,6 +248,7 @@ async function searchCandidates(args: Record<string, any>) {
     if (typeof args.ageMax === "number") (where.age as Prisma.IntNullableFilter).lte = args.ageMax;
   }
   if (args.sourceChannel) where.sourceChannel = args.sourceChannel;
+  if (args.area) where.address = { contains: String(args.area), mode: "insensitive" };
   if (Array.isArray(args.tagNames) && args.tagNames.length) {
     where.AND = args.tagNames.map((t: string) => ({ tags: { some: { tag: { name: t } } } }));
   }
@@ -206,6 +257,7 @@ async function searchCandidates(args: Record<string, any>) {
     where.OR = [
       { experienceText: { contains: k, mode: "insensitive" } },
       { experienceDetail: { contains: k, mode: "insensitive" } },
+      { address: { contains: k, mode: "insensitive" } },
       { fullName: { contains: k, mode: "insensitive" } },
       { nickname: { contains: k, mode: "insensitive" } },
     ];
@@ -217,32 +269,10 @@ async function searchCandidates(args: Record<string, any>) {
     where,
     take: tierFilter ? 200 : limit,
     orderBy: { createdAt: "desc" },
-    include: {
-      interestedPosition: { select: { title: true } },
-      tags: { include: { tag: { select: { name: true } } } },
-      candidateScore: { select: { totalScore: true } },
-    },
+    include: CANDIDATE_ROW_INCLUDE,
   });
 
-  let mapped = rows.map((c) => {
-    const tier = parseTier(c.experienceText);
-    return {
-      id: c.id,
-      name: candidateName(c),
-      age: c.age,
-      position: c.interestedPosition?.title ?? null,
-      status: c.currentStatus,
-      tier,
-      experienceStatus: c.experienceStatus,
-      expectedSalary: c.expectedSalary,
-      maxSalesAmount: c.maxSalesAmount,
-      workPreference: c.workPreference,
-      hasComputer: c.hasComputer,
-      tags: c.tags.map((t) => t.tag.name),
-      experienceText: c.experienceText,
-      score: c.candidateScore?.totalScore ?? null,
-    };
-  });
+  let mapped = rows.map(mapCandidateRow);
   if (tierFilter) mapped = mapped.filter((m) => tierFilter.includes(m.tier));
   const capped = mapped.slice(0, limit);
   return { count: capped.length, candidates: capped };
@@ -265,11 +295,10 @@ async function getCandidate(id: string) {
   let notion: unknown = null;
   if (c.notionPageId && process.env.NOTION_TOKEN) {
     try {
-      // Reuse the same shape as /api/candidates/[id]/notion-detail. If that logic is
-      // extracted into a lib, import and call it here. Otherwise leave notion=null.
-      notion = null; // graceful default; wire to notion-detail logic if readily importable
+      // Live Notion page: full address, properties, and deep Q&A.
+      notion = await getNotionDetail(c.notionPageId);
     } catch {
-      notion = null;
+      notion = null; // graceful — DB fields still returned
     }
   }
 
@@ -339,6 +368,31 @@ async function getPipelineStats() {
     prisma.candidate.count(),
   ]);
   return { totalCandidates: total, byStatus, newApplicantsToday: newToday, scheduledInterviewsToday: interviewsToday };
+}
+
+async function getReviewQueue(args: Record<string, any>) {
+  const limit = Math.min(Number(args.limit) || 50, 100);
+  const where: Prisma.CandidateWhereInput = { currentStatus: { in: REVIEW_QUEUE_STATUSES } };
+
+  if (args.positionId) where.interestedPositionId = String(args.positionId);
+  else if (args.positionTitle) {
+    const pos = await prisma.jobPosition.findFirst({
+      where: { title: { contains: String(args.positionTitle), mode: "insensitive" } },
+      select: { id: true },
+    });
+    if (pos) where.interestedPositionId = pos.id;
+    else return { total: 0, byStatus: {}, returned: 0, candidates: [], note: `ไม่พบตำแหน่งงานที่ชื่อใกล้เคียง "${args.positionTitle}"` };
+  }
+
+  const [grouped, rows] = await Promise.all([
+    prisma.candidate.groupBy({ by: ["currentStatus"], where, _count: { _all: true } }),
+    prisma.candidate.findMany({ where, take: limit, orderBy: { createdAt: "desc" }, include: CANDIDATE_ROW_INCLUDE }),
+  ]);
+  const byStatus: Record<string, number> = {};
+  let total = 0;
+  for (const g of grouped) { byStatus[g.currentStatus] = g._count._all; total += g._count._all; }
+
+  return { total, byStatus, returned: rows.length, candidates: rows.map(mapCandidateRow) };
 }
 
 // Resolve a configurable cap from the Setting table, clamped to a hard ceiling.
