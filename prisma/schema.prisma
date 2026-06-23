@@ -45,6 +45,7 @@ model User {
   auditLogs           AuditLog[]
   sentMessages        Message[]
   interviewSlots      InterviewSlot[]
+  assistantSessions   AssistantSession[]
 
   @@map("users")
 }
@@ -952,4 +953,33 @@ model InterviewSlot {
   createdAt     DateTime      @default(now()) @map("created_at")
 
   @@map("interview_slots")
+}
+
+// ─────────────────────────────────────────────
+// AI ASSISTANT (candidate-matching chat)
+// ─────────────────────────────────────────────
+
+model AssistantSession {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  title     String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user     User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages AssistantMessage[]
+
+  @@map("assistant_sessions")
+}
+
+model AssistantMessage {
+  id        String   @id @default(cuid())
+  sessionId String   @map("session_id")
+  role      String   // "user" | "assistant"
+  content   String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  session AssistantSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("assistant_messages")
 }
