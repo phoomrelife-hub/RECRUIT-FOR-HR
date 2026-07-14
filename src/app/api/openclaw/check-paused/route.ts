@@ -19,9 +19,21 @@ export async function GET(req: Request) {
 
   const conversation = await db.conversation.findFirst({
     where: { candidateId: candidate.id, status: { not: "CLOSED" } },
-    select: { id: true },
+    select: { id: true, botEnabled: true },
   });
   if (!conversation) return NextResponse.json({ paused: false }, NC);
+
+  // Two sources of truth must BOTH be honoured here, or the bot keeps replying
+  // after HR takes over:
+  //   1. conversation.botEnabled — toggled by the takeover route, the bot's own
+  //      handoff (openclaw/webhook), and legacy takeovers that predate the
+  //      HumanTakeover-based check. botEnabled=false ALWAYS means "bot off".
+  //   2. latest HumanTakeover record — explicit HR TAKE_OVER/RELEASE action.
+  // Pause if EITHER says so (superset). Relying on HumanTakeover alone missed
+  // every conversation paused via botEnabled without a takeover row.
+  if (conversation.botEnabled === false) {
+    return NextResponse.json({ paused: true }, NC);
+  }
 
   // ดู HumanTakeover record ล่าสุด — ถ้า action=TAKE_OVER = HR ยังดูอยู่ = paused
   const lastTakeover = await db.humanTakeover.findFirst({
