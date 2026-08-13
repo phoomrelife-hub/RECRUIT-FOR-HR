@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { classifyBytes, countPdfPages, extractDriveFileId, fetchCandidateFile, toDownloadUrl } from "./files";
+import {
+  classifyBytes, countPdfPages, extractDriveFileId, fetchCandidateFile, MAX_FILE_BYTES, toDownloadUrl,
+} from "./files";
 
 const bytes = (...n: number[]) => new Uint8Array(n);
 const ascii = (s: string) => new TextEncoder().encode(s);
@@ -114,5 +116,43 @@ describe("fetchCandidateFile", () => {
     if (result.kind === "unavailable") {
       expect(result.reason).toBeTruthy();
     }
+  });
+
+  it("yields 'unavailable' with a Thai reason on a fetch timeout, never throws", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(
+      new DOMException("The operation was aborted due to timeout", "TimeoutError"),
+    ));
+
+    const result = await fetchCandidateFile(
+      "Resume",
+      "https://drive.google.com/file/d/1AbC/preview",
+    );
+
+    expect(result.kind).toBe("unavailable");
+    if (result.kind === "unavailable") {
+      expect(result.reason).toContain("หมดเวลา");
+    }
+  });
+
+  it("rejects early on a declared oversize Content-Length, without reading the body", async () => {
+    const arrayBuffer = vi.fn();
+    const fakeResponse = {
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-length": String(MAX_FILE_BYTES + 1) }),
+      arrayBuffer,
+    } as unknown as Response;
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(fakeResponse));
+
+    const result = await fetchCandidateFile(
+      "Resume",
+      "https://drive.google.com/file/d/1AbC/preview",
+    );
+
+    expect(result.kind).toBe("unavailable");
+    if (result.kind === "unavailable") {
+      expect(result.reason).toContain("ใหญ่เกิน");
+    }
+    expect(arrayBuffer).not.toHaveBeenCalled();
   });
 });

@@ -74,14 +74,32 @@ export async function fetchCandidateFile(label: string, url: string): Promise<Fe
 
   let buf: Uint8Array;
   try {
-    const res = await fetch(downloadUrl, { redirect: "follow" });
+    const res = await fetch(downloadUrl, {
+      redirect: "follow",
+      // A hung Drive response must not stall the request until the platform
+      // timeout — this must produce an "unavailable" record, not a throw.
+      signal: AbortSignal.timeout(20_000),
+    });
     if (!res.ok) {
       return unavailable(label, url, `ดาวน์โหลดไฟล์ไม่สำเร็จ (HTTP ${res.status})`);
     }
+
+    // Reject early on a declared oversize file, before reading the body into
+    // memory. Content-Length can be absent or wrong, so the post-read check
+    // below stays as the backstop.
+    const declaredLength = Number(res.headers.get("content-length"));
+    if (Number.isFinite(declaredLength) && declaredLength > MAX_FILE_BYTES) {
+      return unavailable(label, url, `ไฟล์ใหญ่เกิน ${MAX_FILE_BYTES / 1024 / 1024} MB`);
+    }
+
     buf = new Uint8Array(await res.arrayBuffer());
-  } catch {
-    return unavailable(label, url, "ดาวน์โหลดไฟล์ไม่สำเร็จ (network error)");
+  } catch (err) {
+    const reason = err instanceof DOMException && err.name === "TimeoutError"
+      ? "ดาวน์โหลดไฟล์ไม่สำเร็จ (หมดเวลา)"
+      : "ดาวน์โหลดไฟล์ไม่สำเร็จ (network error)";
+    return unavailable(label, url, reason);
   }
+  // Backstop: Content-Length can be missing or wrong, so re-check the actual bytes.
   if (buf.byteLength > MAX_FILE_BYTES) {
     return unavailable(label, url, `ไฟล์ใหญ่เกิน ${MAX_FILE_BYTES / 1024 / 1024} MB`);
   }
