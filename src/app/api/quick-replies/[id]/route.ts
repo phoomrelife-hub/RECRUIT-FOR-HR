@@ -18,11 +18,23 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   const body = await req.json();
   const parsed = quickReplySchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  if (parsed.data.title === undefined && parsed.data.content === undefined) {
+    return NextResponse.json({ error: "No fields to update" }, { status: 400 });
+  }
 
   const existing = await db.quickReply.findUnique({ where: { id } });
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const updated = await db.quickReply.update({ where: { id }, data: parsed.data });
+  let updated;
+  try {
+    updated = await db.quickReply.update({ where: { id }, data: parsed.data });
+  } catch (error: unknown) {
+    // P2025 = record not found (e.g., deleted in another browser tab between the check above and this update)
+    if (error instanceof Error && "code" in error && error.code === "P2025") {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    throw error;
+  }
 
   await db.auditLog.create({
     data: {
@@ -49,7 +61,15 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
 
   // Hard delete is safe: Message.content is copied at send time, so sent
   // messages hold no reference back to the template.
-  await db.quickReply.delete({ where: { id } });
+  try {
+    await db.quickReply.delete({ where: { id } });
+  } catch (error: unknown) {
+    // P2025 = record not found (e.g., deleted in another browser tab between the check above and this delete)
+    if (error instanceof Error && "code" in error && error.code === "P2025") {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    throw error;
+  }
 
   await db.auditLog.create({
     data: {

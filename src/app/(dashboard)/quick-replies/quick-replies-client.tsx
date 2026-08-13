@@ -20,6 +20,14 @@ interface Props {
   quickReplies: QuickReply[];
 }
 
+function PlaceholderHint() {
+  return (
+    <p className="text-xs text-slate-400">
+      ใส่ตัวแปรได้: {TEMPLATE_PLACEHOLDERS.join(" · ")} — ถ้าไม่มีข้อมูลจะเว้นว่างให้อัตโนมัติ
+    </p>
+  );
+}
+
 export function QuickRepliesClient({ quickReplies: initial }: Props) {
   const [items, setItems] = useState<QuickReply[]>(initial);
   const [newTitle, setNewTitle] = useState("");
@@ -148,9 +156,7 @@ export function QuickRepliesClient({ quickReplies: initial }: Props) {
                 rows={3}
                 className="w-full rounded-lg border border-slate-200 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-              <p className="text-xs text-slate-400">
-                ใส่ตัวแปรได้: {TEMPLATE_PLACEHOLDERS.join(" · ")} — ถ้าไม่มีข้อมูลจะเว้นว่างให้อัตโนมัติ
-              </p>
+              <PlaceholderHint />
             </div>
             <div>
               <Button
@@ -191,6 +197,7 @@ export function QuickRepliesClient({ quickReplies: initial }: Props) {
                       rows={3}
                       className="w-full rounded-lg border border-slate-200 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
+                    <PlaceholderHint />
                     <div className="flex gap-2">
                       <Button
                         size="sm"
