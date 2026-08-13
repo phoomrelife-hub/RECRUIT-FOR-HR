@@ -171,6 +171,20 @@ export class AssessmentFormatError extends Error {
   }
 }
 
+/**
+ * Distinct from a generic OpenAI/network failure: this means the operator
+ * hasn't configured a key at all — no request was ever sent. Routes map this
+ * to 422 ("the operator must fix configuration"), the same class of problem
+ * as NoRubricError, rather than the 502 ("upstream failed, retry") used for a
+ * real API error.
+ */
+export class MissingApiKeyError extends Error {
+  constructor() {
+    super("ยังไม่ได้ตั้งค่า OpenAI API Key (openai.api_key หรือ OPENAI_API_KEY)");
+    this.name = "MissingApiKeyError";
+  }
+}
+
 /** Resolve the OpenAI key (Setting row, then env var) and model (Setting row, then code default). */
 export async function resolveOpenAiConfig(): Promise<{ apiKey: string; model: string }> {
   const [dbKey, dbModel] = await Promise.all([
@@ -178,8 +192,28 @@ export async function resolveOpenAiConfig(): Promise<{ apiKey: string; model: st
     getSetting("qualifier.model"),
   ]);
   const apiKey = dbKey || process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error("ยังไม่ได้ตั้งค่า OpenAI API Key (openai.api_key หรือ OPENAI_API_KEY)");
+  if (!apiKey) throw new MissingApiKeyError();
   return { apiKey, model: dbModel || QUALIFIER_MODEL };
+}
+
+/**
+ * data.error from the OpenAI API is usually `{ message: string, ... }`, but
+ * isn't guaranteed to have a `message` field. `String(errorObject)` on a plain
+ * object yields the useless "[object Object]" (which also silently defeats
+ * isFileContentRejection's message matching) — serialise the whole object
+ * instead when there's no usable message string.
+ */
+export function stringifyApiError(error: unknown): string {
+  if (error && typeof error === "object") {
+    const message = (error as Record<string, unknown>).message;
+    if (typeof message === "string") return message;
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return String(error);
+    }
+  }
+  return String(error);
 }
 
 /**
@@ -214,6 +248,14 @@ async function tryAssessment(
   content: OpenAIContentPart[],
 ): Promise<AttemptResult> {
   let lastError = "unknown";
+  // Whether THIS call actually included a file/image part — a file-rejection
+  // verdict only makes sense if there was a file to reject. Without this
+  // guard, a candidate with no files (or all "unavailable") who happens to
+  // hit an unrelated error whose message mentions "file"/"image" would be
+  // routed into the file-rejection retry: an identical request gets sent
+  // again, fails the same way, and a genuine API error gets mislabelled as
+  // AssessmentFormatError — plus one wasted paid call.
+  const hasFileParts = content.some((p) => p.type === "file" || p.type === "image_url");
 
   for (let attempt = 0; attempt < 2; attempt++) {
     const res = await fetch(ENDPOINT, {
@@ -229,8 +271,8 @@ async function tryAssessment(
     const data = await res.json();
 
     if (data.error) {
-      const message = String(data.error.message ?? data.error);
-      if (isFileContentRejection(message)) {
+      const message = stringifyApiError(data.error);
+      if (hasFileParts && isFileContentRejection(message)) {
         return { ok: false, kind: "file_rejected", detail: message };
       }
       // Any other API error is not "malformed output" — surface it as-is,
@@ -301,11 +343,11 @@ function markFileSourcesUnavailable(evidence: EvidenceBundle): void {
 export async function runAssessment(
   evidence: EvidenceBundle,
   rubric: ResolvedRubric,
-): Promise<{ output: AssessmentOutput; usage: { input: number; output: number } }> {
+): Promise<{ output: AssessmentOutput; usage: { input: number; output: number }; model: string }> {
   const { apiKey, model } = await resolveOpenAiConfig();
 
   const result = await tryAssessment(apiKey, model, buildContentBlocks(evidence, rubric));
-  if (result.ok) return { output: result.output, usage: result.usage };
+  if (result.ok) return { output: result.output, usage: result.usage, model };
 
   if (result.kind === "malformed") {
     throw new AssessmentFormatError(result.detail);
@@ -317,7 +359,7 @@ export async function runAssessment(
     apiKey, model,
     buildContentBlocks(evidence, rubric, { omitFiles: true }),
   );
-  if (retried.ok) return { output: retried.output, usage: retried.usage };
+  if (retried.ok) return { output: retried.output, usage: retried.usage, model };
 
   const detail = retried.kind === "file_rejected"
     ? `โมเดลปฏิเสธคำขอซ้ำแม้ตัดไฟล์ออกแล้ว: ${retried.detail}`

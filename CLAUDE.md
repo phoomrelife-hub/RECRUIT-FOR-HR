@@ -156,6 +156,7 @@ qualify.msg_fail             — LINE message template for failing candidates
 autoqual.exp_pass_tiers      — comma-separated tiers that auto-qualify (e.g. "high,mid")
 autoqual.salary_max          — max acceptable expected salary (int, null = skip rule)
 autoqual.sales_min           — min max-sales amount required (int, null = skip rule)
+qualifier.model               — AI Qualifier (candidate scoring) model override (default: gpt-5.6-luna); reuses openai.api_key (see AI Assistant Module below) — no separate key
 ```
 
 ## Experience Tier System (`src/lib/experience-tier.ts`)

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { resolveOpenAiConfig } from "./assess";
+import { resolveOpenAiConfig, stringifyApiError } from "./assess";
 import type { RubricCriterion, ResolvedRubric } from "./types";
 
 const ENDPOINT = "https://api.openai.com/v1/chat/completions";
@@ -177,7 +177,7 @@ export async function draftRubric(job: {
   });
   const data = await res.json();
   if (data.error) {
-    throw new Error(`OpenAI: ${data.error.message ?? data.error}`);
+    throw new Error(`OpenAI: ${stringifyApiError(data.error)}`);
   }
 
   const call = data.choices?.[0]?.message?.tool_calls?.[0];
