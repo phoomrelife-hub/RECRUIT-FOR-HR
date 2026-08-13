@@ -1,4 +1,7 @@
+import Anthropic from "@anthropic-ai/sdk";
+import { z } from "zod";
 import { db } from "@/lib/db";
+import { QUALIFIER_MODEL } from "./assess";
 import type { RubricCriterion, ResolvedRubric } from "./types";
 
 export class NoRubricError extends Error {
@@ -74,4 +77,83 @@ export async function resolveRubric(jobPositionId: string | null): Promise<Resol
   const resolved = selectRubric(rows, jobPositionId);
   if (!resolved) throw new NoRubricError();
   return resolved;
+}
+
+/** Weights are meaningless unless they sum to 100 — the score maths assumes it. */
+export function normaliseWeights(criteria: RubricCriterion[]): RubricCriterion[] {
+  if (criteria.length === 0) return [];
+  const total = criteria.reduce((s, c) => s + c.weight, 0);
+  if (total === 0) {
+    const even = Math.round(100 / criteria.length);
+    return criteria.map((c) => ({ ...c, weight: even }));
+  }
+  if (total === 100) return criteria;
+  return criteria.map((c) => ({ ...c, weight: Math.round((c.weight / total) * 100) }));
+}
+
+export const draftRubricSchema = z.object({
+  criteria: z.array(z.object({
+    name: z.string(),
+    weight: z.number().min(0).max(100),
+    description: z.string(),
+  })).min(2).max(8),
+});
+
+export async function draftRubric(job: {
+  title: string;
+  description: string | null;
+  requiredExperience: string | null;
+}): Promise<RubricCriterion[]> {
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  const message = await anthropic.messages.create({
+    model: QUALIFIER_MODEL,
+    max_tokens: 1500,
+    tools: [{
+      name: "submit_rubric",
+      description: "ส่งเกณฑ์การให้คะแนนผู้สมัคร",
+      input_schema: {
+        type: "object",
+        properties: {
+          criteria: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                name: { type: "string", description: "ชื่อเกณฑ์ ภาษาไทย สั้น ๆ" },
+                weight: { type: "number", description: "น้ำหนัก รวมทุกข้อต้องได้ 100" },
+                description: { type: "string", description: "อธิบายว่าดูอะไร" },
+              },
+              required: ["name", "weight", "description"],
+            },
+          },
+        },
+        required: ["criteria"],
+      },
+    }],
+    tool_choice: { type: "tool", name: "submit_rubric" },
+    messages: [{
+      role: "user",
+      content: `ร่างเกณฑ์การให้คะแนนผู้สมัครสำหรับตำแหน่งนี้ที่ Relife Solutions
+(บริษัท E-Commerce สุขภาพและความงาม)
+
+ตำแหน่ง: ${job.title}
+รายละเอียด: ${job.description || "ไม่ได้ระบุ"}
+ประสบการณ์ที่ต้องการ: ${job.requiredExperience || "ไม่ได้ระบุ"}
+
+ให้ 4-6 เกณฑ์ น้ำหนักรวม 100
+เกณฑ์ต้องประเมินได้จริงจากใบสมัครและ Resume เท่านั้น
+ห้ามใส่เกณฑ์ที่ต้องสัมภาษณ์ก่อนถึงจะรู้`,
+    }],
+  });
+
+  const toolUse = message.content.find((b) => b.type === "tool_use");
+  if (!toolUse || toolUse.type !== "tool_use") {
+    throw new Error("ร่างเกณฑ์ไม่สำเร็จ — AI ตอบกลับผิดรูปแบบ");
+  }
+
+  const parsed = draftRubricSchema.parse(toolUse.input);
+  return normaliseWeights(
+    parsed.criteria.map((c, i) => ({ ...c, sortOrder: i })),
+  );
 }
