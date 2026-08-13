@@ -7,12 +7,13 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Loader2, Plus, MessageSquare, Tag, UserCheck, X, Trash2, ClipboardList, Star, Sparkles, RefreshCw, CheckCircle, AlertCircle, ThumbsUp, ThumbsDown, Minus, History } from "lucide-react";
+import { Loader2, Plus, MessageSquare, Tag, UserCheck, X, Trash2, ClipboardList, Star, CheckCircle, History } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { useRouter } from "next/navigation";
 import { InterviewSection } from "./interview-section";
 import { HiringDecisionSection } from "./hiring-decision-section";
+import { AssessmentSection, type AssessmentWithScores } from "./assessment-section";
 
 const statusColor: Record<CandidateStatus, string> = {
   NEW_APPLICANT: "bg-slate-100 text-slate-600",
@@ -91,12 +92,14 @@ type CandidateData = {
   id: string;
   interestedPositionId: string | null;
   currentStatus: CandidateStatus;
+  updatedAt: Date;
   notes: Note[];
   tags: { tagId: string; tag: TagData }[];
   assignments: Assignment[];
   screeningAnswers: ScreeningAnswer[];
   candidateScore: CandidateScore | null;
   aiSummary: AiSummary | null;
+  assessment: AssessmentWithScores | null;
   interviews: InterviewItem[];
   hiringDecision: HiringDecisionData | null;
   statusHistory: StatusHistoryItem[];
@@ -143,10 +146,6 @@ export function CandidateProfileClient({
   const initScore: CandidateScore = candidate.candidateScore ?? { experience: 0, communication: 0, availability: 0, salaryFit: 0, roleFit: 0, attitude: 0, totalScore: 0 };
   const [score, setScore] = useState<CandidateScore>(initScore);
   const [savingScore, setSavingScore] = useState(false);
-
-  // AI Summary state
-  const [aiSummary, setAiSummary] = useState<AiSummary | null>(candidate.aiSummary);
-  const [generatingAi, setGeneratingAi] = useState(false);
 
   async function saveScreening() {
     if (!screeningForm) return;
@@ -196,16 +195,6 @@ export function CandidateProfileClient({
     const updated = await res.json();
     setScore(updated);
     toast.success("บันทึก Score สำเร็จ");
-  }
-
-  async function generateAiSummary() {
-    setGeneratingAi(true);
-    const res = await fetch(`/api/candidates/${candidate.id}/ai-summary`, { method: "POST" });
-    setGeneratingAi(false);
-    if (!res.ok) { toast.error("Generate AI Summary ไม่สำเร็จ"); return; }
-    const summary = await res.json();
-    setAiSummary(summary);
-    toast.success("Generate AI Summary สำเร็จ");
   }
 
   const assignedTagIds = new Set(candidateTags.map((ct) => ct.tagId));
@@ -657,112 +646,12 @@ export function CandidateProfileClient({
         currentUserRole={currentUserRole}
       />
 
-      {/* AI Summary */}
-      <Card className="border-slate-200">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base font-semibold flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-purple-500" />
-            AI Summary
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              onClick={generateAiSummary}
-              disabled={generatingAi}
-              className="bg-purple-600 hover:bg-purple-700"
-            >
-              {generatingAi ? (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-              )}
-              {aiSummary ? "Regenerate" : "Generate AI Summary"}
-            </Button>
-            {aiSummary && (
-              <span className="text-xs text-slate-400">
-                อัพเดต {format(new Date(aiSummary.updatedAt), "d MMM yy HH:mm")}
-              </span>
-            )}
-          </div>
-
-          {generatingAi && (
-            <div className="flex items-center gap-2 py-4 text-sm text-slate-500">
-              <Loader2 className="h-4 w-4 animate-spin text-purple-500" />
-              กำลังวิเคราะห์ข้อมูลด้วย AI...
-            </div>
-          )}
-
-          {aiSummary && !generatingAi && (
-            <div className="space-y-3">
-              {/* Recommendation badge */}
-              {aiSummary.recommendation && (
-                <div className="flex items-center gap-2">
-                  {aiSummary.recommendation === "RECOMMEND" ? (
-                    <Badge className="bg-green-100 text-green-700 gap-1"><ThumbsUp className="h-3 w-3" /> แนะนำ</Badge>
-                  ) : aiSummary.recommendation === "NOT_RECOMMEND" ? (
-                    <Badge className="bg-red-100 text-red-600 gap-1"><ThumbsDown className="h-3 w-3" /> ไม่แนะนำ</Badge>
-                  ) : (
-                    <Badge className="bg-amber-100 text-amber-700 gap-1"><Minus className="h-3 w-3" /> พิจารณาเพิ่มเติม</Badge>
-                  )}
-                </div>
-              )}
-
-              {/* Summary */}
-              <div className="rounded-md bg-slate-50 border border-slate-100 p-3">
-                <p className="text-sm text-slate-700 leading-relaxed">{aiSummary.summary}</p>
-              </div>
-
-              {/* Strengths */}
-              {aiSummary.strengths && (
-                <div>
-                  <p className="text-xs font-semibold text-green-700 mb-1.5 flex items-center gap-1">
-                    <CheckCircle className="h-3.5 w-3.5" /> จุดเด่น
-                  </p>
-                  <ul className="space-y-1">
-                    {aiSummary.strengths.split("|").map((s, i) => (
-                      <li key={i} className="text-sm text-slate-600 flex items-start gap-1.5">
-                        <span className="text-green-500 mt-0.5">•</span>{s.trim()}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* Concerns */}
-              {aiSummary.concerns && (
-                <div>
-                  <p className="text-xs font-semibold text-amber-700 mb-1.5 flex items-center gap-1">
-                    <AlertCircle className="h-3.5 w-3.5" /> ข้อกังวล
-                  </p>
-                  <ul className="space-y-1">
-                    {aiSummary.concerns.split("|").map((c, i) => (
-                      <li key={i} className="text-sm text-slate-600 flex items-start gap-1.5">
-                        <span className="text-amber-500 mt-0.5">•</span>{c.trim()}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* Next Action */}
-              {aiSummary.nextAction && (
-                <div className="rounded-md bg-blue-50 border border-blue-100 px-3 py-2">
-                  <p className="text-xs text-blue-600 font-semibold mb-0.5">ขั้นตอนต่อไป</p>
-                  <p className="text-sm text-blue-700">{aiSummary.nextAction}</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {!aiSummary && !generatingAi && (
-            <p className="text-xs text-slate-400 py-2">
-              กดปุ่ม Generate เพื่อให้ AI วิเคราะห์ข้อมูลและสรุปผู้สมัครคนนี้
-            </p>
-          )}
-        </CardContent>
-      </Card>
+      {/* AI Assessment */}
+      <AssessmentSection
+        candidateId={candidate.id}
+        initial={candidate.assessment}
+        candidateUpdatedAt={String(candidate.updatedAt)}
+      />
 
       {/* Status Timeline */}
       {candidate.statusHistory.length > 0 && (
