@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { fuzzyMatchPosition } from "@/lib/position-match";
 import { assessCandidate } from "@/lib/qualifier";
 
@@ -166,11 +166,30 @@ export async function POST(req: Request) {
     });
   }
 
-  // Fire-and-forget: the Apps Script must not wait on a ~30s vision call, and an
-  // assessment failure must never fail the intake webhook.
+  // Background, not fire-and-forget: on Vercel, work started but not awaited
+  // before the response is sent can be frozen/torn down mid-call — `after()`
+  // keeps the function alive until this finishes while still returning the
+  // HTTP response immediately. An assessment failure must never fail the
+  // intake webhook, so errors are only logged.
   if (candidate.notionPageId) {
-    void assessCandidate(candidate.id).catch((err) => {
-      console.error("[qualifier] auto-assess failed", candidate.id, err);
+    const candidateId = candidate.id;
+    after(async () => {
+      try {
+        // Idempotency: Apps Script may retry the webhook. If an assessment
+        // already exists for this candidate, skip — otherwise two runs would
+        // race on the same candidate (two paid Claude calls, and the two
+        // upserts can collide on the candidate_id unique index). A manual
+        // re-run through the API route is unaffected — it always reassesses.
+        const already = await db.candidateAssessment.findUnique({
+          where: { candidateId },
+          select: { id: true },
+        });
+        if (already) return;
+
+        await assessCandidate(candidateId);
+      } catch (err) {
+        console.error("[qualifier] auto-assess failed", candidateId, err);
+      }
     });
   }
 
