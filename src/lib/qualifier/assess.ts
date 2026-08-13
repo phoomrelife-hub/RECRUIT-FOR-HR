@@ -1,9 +1,14 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
+import { getSetting } from "@/lib/assistant/config";
 import type { AssessmentOutput, EvidenceBundle, ResolvedRubric } from "./types";
 
-export const QUALIFIER_MODEL = "claude-sonnet-5";
+// Ported from Anthropic (claude-sonnet-5) to OpenAI. gpt-5.6-luna is a reasoning
+// model: it HARD-400s if the request includes `temperature` or `max_tokens`, so
+// neither is ever sent (see callChatCompletions below).
+export const QUALIFIER_MODEL = "gpt-5.6-luna";
 export const PROMPT_VERSION = "qualifier-v1";
+
+const ENDPOINT = "https://api.openai.com/v1/chat/completions";
 
 const INTERVIEW_AXES = [
   "communication", "personality", "experience",
@@ -68,13 +73,26 @@ ${evidence.textContext}
 ตอบกลับด้วยเครื่องมือ submit_assessment เท่านั้น ทุกข้อความเป็นภาษาไทย`;
 }
 
+export type OpenAIContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } }
+  | { type: "file"; file: { filename: string; file_data: string } };
+
+/**
+ * evidence.files → OpenAI content parts. `opts.omitFiles` is the file-rejection
+ * fallback: text only, used when the model has already rejected a file/image
+ * part once (see runAssessment).
+ */
 export function buildContentBlocks(
   evidence: EvidenceBundle,
   rubric: ResolvedRubric,
-): Anthropic.ContentBlockParam[] {
-  const blocks: Anthropic.ContentBlockParam[] = [
+  opts: { omitFiles?: boolean } = {},
+): OpenAIContentPart[] {
+  const blocks: OpenAIContentPart[] = [
     { type: "text", text: buildPrompt(evidence, rubric) },
   ];
+
+  if (opts.omitFiles) return blocks;
 
   for (const file of evidence.files) {
     if (file.kind === "unavailable" || !file.base64 || !file.mediaType) continue;
@@ -83,17 +101,16 @@ export function buildContentBlocks(
 
     if (file.kind === "pdf") {
       blocks.push({
-        type: "document",
-        source: { type: "base64", media_type: "application/pdf", data: file.base64 },
+        type: "file",
+        file: {
+          filename: `${file.label}.pdf`,
+          file_data: `data:application/pdf;base64,${file.base64}`,
+        },
       });
     } else {
       blocks.push({
-        type: "image",
-        source: {
-          type: "base64",
-          media_type: file.mediaType as "image/jpeg" | "image/png",
-          data: file.base64,
-        },
+        type: "image_url",
+        image_url: { url: `data:${file.mediaType};base64,${file.base64}` },
       });
     }
   }
@@ -101,48 +118,51 @@ export function buildContentBlocks(
   return blocks;
 }
 
-const TOOL: Anthropic.Tool = {
-  name: "submit_assessment",
-  description: "ส่งผลการประเมินผู้สมัครและคำถามสัมภาษณ์",
-  input_schema: {
-    type: "object",
-    properties: {
-      summary: { type: "string", description: "สรุปภาพรวมผู้สมัคร 2-4 ประโยค" },
-      strengths: { type: "string", description: "จุดแข็ง คั่นแต่ละข้อด้วย |" },
-      concerns: { type: "string", description: "ข้อกังวล คั่นแต่ละข้อด้วย |" },
-      redFlags: { type: "string", description: "สัญญาณอันตราย ถ้าไม่มีให้ส่งสตริงว่าง" },
-      unverifiedClaims: { type: "string", description: "ข้ออ้างที่ยังไม่มีหลักฐาน คั่นด้วย |" },
-      criteria: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            name: { type: "string", description: "ต้องตรงกับชื่อเกณฑ์เป๊ะ ๆ" },
-            score: { type: ["number", "null"], description: "0-10 (จำนวนเต็ม) หรือ null ถ้าไม่มีหลักฐาน" },
-            reasoning: { type: "string" },
+const TOOL = {
+  type: "function",
+  function: {
+    name: "submit_assessment",
+    description: "ส่งผลการประเมินผู้สมัครและคำถามสัมภาษณ์",
+    parameters: {
+      type: "object",
+      properties: {
+        summary: { type: "string", description: "สรุปภาพรวมผู้สมัคร 2-4 ประโยค" },
+        strengths: { type: "string", description: "จุดแข็ง คั่นแต่ละข้อด้วย |" },
+        concerns: { type: "string", description: "ข้อกังวล คั่นแต่ละข้อด้วย |" },
+        redFlags: { type: "string", description: "สัญญาณอันตราย ถ้าไม่มีให้ส่งสตริงว่าง" },
+        unverifiedClaims: { type: "string", description: "ข้ออ้างที่ยังไม่มีหลักฐาน คั่นด้วย |" },
+        criteria: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string", description: "ต้องตรงกับชื่อเกณฑ์เป๊ะ ๆ" },
+              score: { type: ["number", "null"], description: "0-10 (จำนวนเต็ม) หรือ null ถ้าไม่มีหลักฐาน" },
+              reasoning: { type: "string" },
+            },
+            required: ["name", "score", "reasoning"],
           },
-          required: ["name", "score", "reasoning"],
+        },
+        interviewQuestions: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              axis: { type: "string", enum: [...INTERVIEW_AXES] },
+              question: { type: "string" },
+              why: { type: "string" },
+            },
+            required: ["axis", "question", "why"],
+          },
         },
       },
-      interviewQuestions: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            axis: { type: "string", enum: [...INTERVIEW_AXES] },
-            question: { type: "string" },
-            why: { type: "string" },
-          },
-          required: ["axis", "question", "why"],
-        },
-      },
+      required: [
+        "summary", "strengths", "concerns", "redFlags",
+        "unverifiedClaims", "criteria", "interviewQuestions",
+      ],
     },
-    required: [
-      "summary", "strengths", "concerns", "redFlags",
-      "unverifiedClaims", "criteria", "interviewQuestions",
-    ],
   },
-};
+} as const;
 
 export class AssessmentFormatError extends Error {
   constructor(detail: string) {
@@ -151,44 +171,156 @@ export class AssessmentFormatError extends Error {
   }
 }
 
-/** One Claude call. Retries once on a malformed response, then fails loudly. */
-export async function runAssessment(
-  evidence: EvidenceBundle,
-  rubric: ResolvedRubric,
-): Promise<{ output: AssessmentOutput; usage: { input: number; output: number } }> {
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  const content = buildContentBlocks(evidence, rubric);
+/** Resolve the OpenAI key (Setting row, then env var) and model (Setting row, then code default). */
+export async function resolveOpenAiConfig(): Promise<{ apiKey: string; model: string }> {
+  const [dbKey, dbModel] = await Promise.all([
+    getSetting("openai.api_key"),
+    getSetting("qualifier.model"),
+  ]);
+  const apiKey = dbKey || process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error("ยังไม่ได้ตั้งค่า OpenAI API Key (openai.api_key หรือ OPENAI_API_KEY)");
+  return { apiKey, model: dbModel || QUALIFIER_MODEL };
+}
 
+/**
+ * Heuristic for "the model/endpoint rejected the file or image content part,"
+ * vs. some other API error. OpenAI does not have a single stable error code for
+ * this across models, so this matches on the vocabulary providers use for it
+ * (e.g. "Invalid content type. image_url is not supported by this model.",
+ * "'file' is not a valid content part for this model."). Deliberately broad —
+ * a false positive just costs one extra text-only retry, whereas a false
+ * negative would let an unread resume produce a confident score.
+ */
+export function isFileContentRejection(message: string): boolean {
+  const m = message.toLowerCase();
+  const mentionsFileContent = /image_url|file_data|\bimage\b|\bfile\b|\bpdf\b|content part/.test(m);
+  const mentionsRejection = /unsupported|not supported|does not support|invalid|not a valid|cannot process|rejected/.test(m);
+  return mentionsFileContent && mentionsRejection;
+}
+
+type AttemptResult =
+  | { ok: true; output: AssessmentOutput; usage: { input: number; output: number } }
+  | { ok: false; kind: "file_rejected"; detail: string }
+  | { ok: false; kind: "malformed"; detail: string };
+
+/**
+ * One or two /chat/completions calls (the built-in "retry once on malformed
+ * output" behaviour). A file/image rejection is NOT treated as malformed
+ * output — it is returned immediately so the caller can retry without files.
+ */
+async function tryAssessment(
+  apiKey: string,
+  model: string,
+  content: OpenAIContentPart[],
+): Promise<AttemptResult> {
   let lastError = "unknown";
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const message = await anthropic.messages.create({
-      model: QUALIFIER_MODEL,
-      max_tokens: 4096,
-      tools: [TOOL],
-      tool_choice: { type: "tool", name: "submit_assessment" },
-      messages: [{ role: "user", content }],
-    });
 
-    const toolUse = message.content.find((b) => b.type === "tool_use");
-    if (!toolUse || toolUse.type !== "tool_use") {
-      lastError = "ไม่มี tool_use ในคำตอบ";
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await fetch(ENDPOINT, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: "user", content }],
+        tools: [TOOL],
+        tool_choice: { type: "function", function: { name: "submit_assessment" } },
+      }),
+    });
+    const data = await res.json();
+
+    if (data.error) {
+      const message = String(data.error.message ?? data.error);
+      if (isFileContentRejection(message)) {
+        return { ok: false, kind: "file_rejected", detail: message };
+      }
+      // Any other API error is not "malformed output" — surface it as-is,
+      // matching the old behaviour where the Anthropic SDK threw immediately.
+      throw new Error(`OpenAI: ${message}`);
+    }
+
+    const msg = data.choices?.[0]?.message;
+    const call = msg?.tool_calls?.[0];
+    if (!call || call.function?.name !== "submit_assessment") {
+      lastError = "ไม่มี tool_call submit_assessment ในคำตอบ";
       continue;
     }
 
-    const parsed = assessmentSchema.safeParse(toolUse.input);
+    let args: unknown;
+    try {
+      args = JSON.parse(call.function.arguments || "{}");
+    } catch {
+      lastError = "arguments ไม่ใช่ JSON ที่ถูกต้อง";
+      continue;
+    }
+
+    const parsed = assessmentSchema.safeParse(args);
     if (!parsed.success) {
       lastError = parsed.error.issues.map((i) => i.path.join(".")).join(", ");
       continue;
     }
 
     return {
+      ok: true,
       output: parsed.data,
       usage: {
-        input: message.usage.input_tokens,
-        output: message.usage.output_tokens,
+        input: data.usage?.prompt_tokens ?? 0,
+        output: data.usage?.completion_tokens ?? 0,
       },
     };
   }
 
-  throw new AssessmentFormatError(lastError);
+  return { ok: false, kind: "malformed", detail: lastError };
+}
+
+/**
+ * Sources for files that were actually sent as file/image content parts this
+ * call — the ones that can plausibly have been rejected. Mutates evidence.sources
+ * IN PLACE (same array/objects the caller already holds) so callers that read
+ * evidence.sources after runAssessment returns (see qualifier/index.ts) see the
+ * corrected, honest picture without needing a different return shape.
+ */
+function markFileSourcesUnavailable(evidence: EvidenceBundle): void {
+  const sentLabels = new Set(
+    evidence.files
+      .filter((f) => f.kind !== "unavailable" && f.base64 && f.mediaType)
+      .map((f) => f.label),
+  );
+  for (const source of evidence.sources) {
+    if (!sentLabels.has(source.label)) continue;
+    source.status = "unavailable";
+    source.detail = "โมเดล AI ไม่สามารถอ่านไฟล์นี้ได้ (ไฟล์ถูกปฏิเสธ) — ประเมินโดยไม่ใช้ไฟล์นี้";
+  }
+}
+
+/**
+ * One OpenAI call (plus its built-in malformed-output retry). If the API
+ * rejects a file/image content part, retries ONCE more with the files omitted
+ * entirely and marks the affected sources unavailable — never silently scores
+ * the candidate as though the resume had been read.
+ */
+export async function runAssessment(
+  evidence: EvidenceBundle,
+  rubric: ResolvedRubric,
+): Promise<{ output: AssessmentOutput; usage: { input: number; output: number } }> {
+  const { apiKey, model } = await resolveOpenAiConfig();
+
+  const result = await tryAssessment(apiKey, model, buildContentBlocks(evidence, rubric));
+  if (result.ok) return { output: result.output, usage: result.usage };
+
+  if (result.kind === "malformed") {
+    throw new AssessmentFormatError(result.detail);
+  }
+
+  // file_rejected — retry once, text-only.
+  markFileSourcesUnavailable(evidence);
+  const retried = await tryAssessment(
+    apiKey, model,
+    buildContentBlocks(evidence, rubric, { omitFiles: true }),
+  );
+  if (retried.ok) return { output: retried.output, usage: retried.usage };
+
+  const detail = retried.kind === "file_rejected"
+    ? `โมเดลปฏิเสธคำขอซ้ำแม้ตัดไฟล์ออกแล้ว: ${retried.detail}`
+    : retried.detail;
+  throw new AssessmentFormatError(detail);
 }

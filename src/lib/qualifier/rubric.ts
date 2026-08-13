@@ -1,8 +1,9 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { QUALIFIER_MODEL } from "./assess";
+import { resolveOpenAiConfig } from "./assess";
 import type { RubricCriterion, ResolvedRubric } from "./types";
+
+const ENDPOINT = "https://api.openai.com/v1/chat/completions";
 
 export class NoRubricError extends Error {
   constructor() {
@@ -126,37 +127,16 @@ export async function draftRubric(job: {
   description: string | null;
   requiredExperience: string | null;
 }): Promise<RubricCriterion[]> {
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const { apiKey, model } = await resolveOpenAiConfig();
 
-  const message = await anthropic.messages.create({
-    model: QUALIFIER_MODEL,
-    max_tokens: 1500,
-    tools: [{
-      name: "submit_rubric",
-      description: "ส่งเกณฑ์การให้คะแนนผู้สมัคร",
-      input_schema: {
-        type: "object",
-        properties: {
-          criteria: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                name: { type: "string", description: "ชื่อเกณฑ์ ภาษาไทย สั้น ๆ" },
-                weight: { type: "number", description: "น้ำหนัก รวมทุกข้อต้องได้ 100" },
-                description: { type: "string", description: "อธิบายว่าดูอะไร" },
-              },
-              required: ["name", "weight", "description"],
-            },
-          },
-        },
-        required: ["criteria"],
-      },
-    }],
-    tool_choice: { type: "tool", name: "submit_rubric" },
-    messages: [{
-      role: "user",
-      content: `ร่างเกณฑ์การให้คะแนนผู้สมัครสำหรับตำแหน่งนี้ที่ Relife Solutions
+  const res = await fetch(ENDPOINT, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model,
+      messages: [{
+        role: "user",
+        content: `ร่างเกณฑ์การให้คะแนนผู้สมัครสำหรับตำแหน่งนี้ที่ Relife Solutions
 (บริษัท E-Commerce สุขภาพและความงาม)
 
 ตำแหน่ง: ${job.title}
@@ -166,15 +146,53 @@ export async function draftRubric(job: {
 ให้ 4-6 เกณฑ์ น้ำหนักรวม 100
 เกณฑ์ต้องประเมินได้จริงจากใบสมัครและ Resume เท่านั้น
 ห้ามใส่เกณฑ์ที่ต้องสัมภาษณ์ก่อนถึงจะรู้`,
-    }],
+      }],
+      tools: [{
+        type: "function",
+        function: {
+          name: "submit_rubric",
+          description: "ส่งเกณฑ์การให้คะแนนผู้สมัคร",
+          parameters: {
+            type: "object",
+            properties: {
+              criteria: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string", description: "ชื่อเกณฑ์ ภาษาไทย สั้น ๆ" },
+                    weight: { type: "number", description: "น้ำหนัก รวมทุกข้อต้องได้ 100" },
+                    description: { type: "string", description: "อธิบายว่าดูอะไร" },
+                  },
+                  required: ["name", "weight", "description"],
+                },
+              },
+            },
+            required: ["criteria"],
+          },
+        },
+      }],
+      tool_choice: { type: "function", function: { name: "submit_rubric" } },
+    }),
   });
+  const data = await res.json();
+  if (data.error) {
+    throw new Error(`OpenAI: ${data.error.message ?? data.error}`);
+  }
 
-  const toolUse = message.content.find((b) => b.type === "tool_use");
-  if (!toolUse || toolUse.type !== "tool_use") {
+  const call = data.choices?.[0]?.message?.tool_calls?.[0];
+  if (!call || call.function?.name !== "submit_rubric") {
     throw new Error("ร่างเกณฑ์ไม่สำเร็จ — AI ตอบกลับผิดรูปแบบ");
   }
 
-  const parsed = draftRubricSchema.parse(toolUse.input);
+  let args: unknown;
+  try {
+    args = JSON.parse(call.function.arguments || "{}");
+  } catch {
+    throw new Error("ร่างเกณฑ์ไม่สำเร็จ — AI ตอบกลับผิดรูปแบบ");
+  }
+
+  const parsed = draftRubricSchema.parse(args);
   return normaliseWeights(
     parsed.criteria.map((c, i) => ({ ...c, sortOrder: i })),
   );

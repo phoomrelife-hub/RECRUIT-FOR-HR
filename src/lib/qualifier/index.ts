@@ -10,13 +10,16 @@ export * from "./types";
 export { NoRubricError } from "./rubric";
 export { AssessmentFormatError } from "./assess";
 
-// Claude Sonnet pricing, USD per million tokens.
-const INPUT_USD_PER_MTOK = 3;
-const OUTPUT_USD_PER_MTOK = 15;
+// PLACEHOLDER pricing, USD per million tokens — gpt-5.6-luna's real price is not
+// known to us (ported from the old Claude Sonnet figures during the OpenAI
+// port). Correct these against actual OpenAI billing before trusting any
+// cost figure this module produces.
+const PLACEHOLDER_INPUT_USD_PER_MTOK = 3;
+const PLACEHOLDER_OUTPUT_USD_PER_MTOK = 15;
 
 export function estimateCostUsd(usage: { input: number; output: number }): number {
-  return (usage.input / 1e6) * INPUT_USD_PER_MTOK
-       + (usage.output / 1e6) * OUTPUT_USD_PER_MTOK;
+  return (usage.input / 1e6) * PLACEHOLDER_INPUT_USD_PER_MTOK
+       + (usage.output / 1e6) * PLACEHOLDER_OUTPUT_USD_PER_MTOK;
 }
 
 export function isStale(assessment: { inputHash: string }, currentHash: string): boolean {
