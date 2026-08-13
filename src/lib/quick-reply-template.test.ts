@@ -46,6 +46,27 @@ describe("applyTemplate", () => {
     expect(applyTemplate(plain, candidate)).toBe(plain);
   });
 
+  // Brace-leak safety: extra braces must be consumed, not left behind.
+  it("resolves placeholder with surplus braces (3x on each side)", () => {
+    expect(applyTemplate("สวัสดีคุณ{{{ชื่อ}}}", candidate)).toBe("สวัสดีคุณสมชาย ใจดี");
+  });
+
+  it("resolves placeholder with surplus braces (4x on each side)", () => {
+    expect(applyTemplate("สวัสดีคุณ{{{{ชื่อ}}}}", candidate)).toBe("สวัสดีคุณสมชาย ใจดี");
+  });
+
+  it("collapses unknown placeholder with surplus braces, no braces left behind", () => {
+    expect(applyTemplate("ยอดขาย {{{ยอดขาย}}} บาท", candidate)).toBe("ยอดขาย  บาท");
+  });
+
+  it("leaves single-brace text untouched (not a placeholder)", () => {
+    expect(applyTemplate("ค่าปกติ {x} ไม่ใช่ placeholder", candidate)).toBe("ค่าปกติ {x} ไม่ใช่ placeholder");
+  });
+
+  it("leaves unclosed placeholder as literal text (HR reviews before sending)", () => {
+    expect(applyTemplate("ชื่อ: {{ชื่อ", candidate)).toBe("ชื่อ: {{ชื่อ");
+  });
+
   it("exposes the three supported placeholders for the editor hint", () => {
     expect(TEMPLATE_PLACEHOLDERS).toEqual(["{{ชื่อ}}", "{{ชื่อเล่น}}", "{{ตำแหน่ง}}"]);
   });
