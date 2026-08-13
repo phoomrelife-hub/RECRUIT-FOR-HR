@@ -38,7 +38,11 @@ export default async function InboxPage() {
       initialConversations={conversations as any}
       quickReplies={[]}
       candidatesWithoutConversation={[]}
-      currentUser={{ id: session?.user?.id ?? "", name: session?.user?.name ?? "" }}
+      currentUser={{
+        id: session?.user?.id ?? "",
+        name: session?.user?.name ?? "",
+        role: session?.user?.role ?? "",
+      }}
       allTags={[]}
       hrUsers={[]}
     />

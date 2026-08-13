@@ -33,6 +33,8 @@ import {
   ZoomIn,
 } from "lucide-react";
 import Link from "next/link";
+import { applyTemplate } from "@/lib/quick-reply-template";
+import { QuickReplyChips } from "./quick-reply-chips";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -113,7 +115,7 @@ interface Props {
     sourceChannel: string;
     currentStatus: string;
   }[];
-  currentUser: { id: string; name: string };
+  currentUser: { id: string; name: string; role?: string };
   allTags: Tag[];
   hrUsers: HRUser[];
 }
@@ -927,6 +929,25 @@ export function InboxClient({
   const [hrUsers, setHrUsers] = useState<HRUser[]>(initialHrUsers);
   const [candidatesWithoutConversation, setCandidatesWithoutConversation] = useState(initialCandidatesWOConv);
   const [candidatesWOConvLoaded, setCandidatesWOConvLoaded] = useState(initialCandidatesWOConv.length > 0);
+
+  const canManageQuickReplies =
+    currentUser.role === "SUPER_ADMIN" || currentUser.role === "HR_MANAGER";
+
+  // Substitution happens on insert, never on send — HR sees the resolved text in
+  // the composer before it goes to LINE, which is what makes placeholders safe.
+  function insertQuickReply(id: string) {
+    const qr = quickReplies.find((q) => q.id === id);
+    if (!qr) return;
+    const candidate = activeConv?.candidate;
+    setInputMsg(
+      applyTemplate(qr.content, {
+        fullName: candidate?.fullName,
+        nickname: candidate?.nickname,
+        positionTitle: candidate?.interestedPosition?.title ?? null,
+      })
+    );
+    setShowQuickReplies(false);
+  }
 
   const searchParams = useSearchParams();
   const autoSelectDoneRef = useRef(false);
@@ -1790,18 +1811,25 @@ export function InboxClient({
             <div className="bg-white border-t border-slate-200 p-3">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-semibold text-slate-600">Quick Replies</span>
-                <button onClick={() => setShowQuickReplies(false)} className="text-slate-400 hover:text-slate-600">
-                  <X size={14} />
-                </button>
+                <div className="flex items-center gap-3">
+                  {canManageQuickReplies && (
+                    <a
+                      href="/quick-replies"
+                      className="text-xs text-blue-600 hover:text-blue-700 hover:underline"
+                    >
+                      ✏️ จัดการ
+                    </a>
+                  )}
+                  <button onClick={() => setShowQuickReplies(false)} className="text-slate-400 hover:text-slate-600">
+                    <X size={14} />
+                  </button>
+                </div>
               </div>
               <div className="flex flex-wrap gap-2">
                 {quickReplies.map((qr) => (
                   <button
                     key={qr.id}
-                    onClick={() => {
-                      setInputMsg(qr.content);
-                      setShowQuickReplies(false);
-                    }}
+                    onClick={() => insertQuickReply(qr.id)}
                     className="text-xs border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-full px-3 py-1 transition-colors"
                   >
                     {qr.title}
@@ -1829,6 +1857,7 @@ export function InboxClient({
                 <button onClick={() => setLinePushError(null)} className="text-red-400 hover:text-red-600 text-xs shrink-0 mt-0.5">✕</button>
               </div>
             )}
+            <QuickReplyChips quickReplies={quickReplies} onSelect={insertQuickReply} />
             <div className="flex items-end gap-2">
               <button
                 onClick={() => setShowQuickReplies(!showQuickReplies)}
