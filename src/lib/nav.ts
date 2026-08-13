@@ -16,6 +16,7 @@ import {
   ClipboardCheck,
   Trophy,
   Sparkles,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 import { UserRole } from "@prisma/client";
@@ -139,6 +140,12 @@ export const navSections: NavSection[] = [
         title: "จัดการแท็ก",
         href: "/tags",
         icon: Tag,
+        roles: ["SUPER_ADMIN", "HR_MANAGER"],
+      },
+      {
+        title: "ข้อความสำเร็จรูป",
+        href: "/quick-replies",
+        icon: Zap,
         roles: ["SUPER_ADMIN", "HR_MANAGER"],
       },
       {
