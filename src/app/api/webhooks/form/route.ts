@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { fuzzyMatchPosition } from "@/lib/position-match";
+import { assessCandidate } from "@/lib/qualifier";
 
 // Called by Google Apps Script after onFormSubmit → Notion write
 // Payload:
@@ -162,6 +163,14 @@ export async function POST(req: Request) {
     await db.conversation.update({
       where: { id: conversation.id },
       data: { lastMessageAt: new Date(), status: "ACTIVE" },
+    });
+  }
+
+  // Fire-and-forget: the Apps Script must not wait on a ~30s vision call, and an
+  // assessment failure must never fail the intake webhook.
+  if (candidate.notionPageId) {
+    void assessCandidate(candidate.id).catch((err) => {
+      console.error("[qualifier] auto-assess failed", candidate.id, err);
     });
   }
 
