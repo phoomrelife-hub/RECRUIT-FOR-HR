@@ -134,7 +134,13 @@ export async function assessCandidate(
         assessmentId: assessment.id,
         name: c.name,
         weight: c.weight,
-        score: scoreByName.get(c.name)?.score ?? null,
+        // Belt and braces: the model's output is not ours to control — even
+        // though assessmentSchema already enforces an integer, round again
+        // here so a value that somehow slips past validation still cannot
+        // fail this write (score is Int? in the DB).
+        score: scoreByName.get(c.name)?.score != null
+          ? Math.round(scoreByName.get(c.name)!.score!)
+          : null,
         reasoning: scoreByName.get(c.name)?.reasoning ?? "AI ไม่ได้ประเมินเกณฑ์นี้",
         sortOrder: i,
       })),

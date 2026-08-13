@@ -77,7 +77,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
 const putSchema = z.object({
   criteria: z.array(z.object({
     name: z.string().min(1),
-    weight: z.number().min(0).max(100),
+    weight: z.number().int().min(0).max(100),
     description: z.string(),
   })).min(1),
 });

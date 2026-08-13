@@ -17,9 +17,21 @@ export interface RubricRow {
   isDraft: boolean;
   isActive: boolean;
   categories: RubricCriterion[];
+  approvedAt: Date | null;
 }
 
 const usable = (r: RubricRow) => !r.isDraft && r.isActive && r.categories.length > 0;
+
+// Deterministic tie-break for duplicate configs (e.g. multiple global rubrics —
+// Postgres allows several NULL jobPositionId rows even with the unique index):
+// prefer the most recently approved, falling back to id so the order never
+// depends on database/array iteration order.
+const byMostRecentlyApproved = (a: RubricRow, b: RubricRow) => {
+  const at = a.approvedAt?.getTime() ?? 0;
+  const bt = b.approvedAt?.getTime() ?? 0;
+  if (at !== bt) return bt - at;
+  return a.id.localeCompare(b.id);
+};
 
 /**
  * Build the Prisma where clause for fetching rubrics.
@@ -39,7 +51,7 @@ export function selectRubric(
   configs: RubricRow[],
   jobPositionId: string | null,
 ): ResolvedRubric | null {
-  const pool = configs.filter(usable);
+  const pool = configs.filter(usable).sort(byMostRecentlyApproved);
 
   const forPosition = jobPositionId
     ? pool.find((r) => r.jobPositionId === jobPositionId)
@@ -61,6 +73,10 @@ export function selectRubric(
 export async function resolveRubric(jobPositionId: string | null): Promise<ResolvedRubric> {
   const configs = await db.aiScoringConfig.findMany({
     where: rubricWhere(jobPositionId),
+    // Deterministic query order — selectRubric's own sort is the source of
+    // truth for which duplicate wins, but ordering the query the same way
+    // keeps behaviour identical regardless of Postgres's return order.
+    orderBy: [{ approvedAt: "desc" }, { id: "asc" }],
     include: { categories: { orderBy: { sortOrder: "asc" } } },
   });
 
@@ -69,6 +85,7 @@ export async function resolveRubric(jobPositionId: string | null): Promise<Resol
     jobPositionId: c.jobPositionId,
     isDraft: c.isDraft,
     isActive: c.isActive,
+    approvedAt: c.approvedAt,
     categories: c.categories.map((k) => ({
       name: k.name, weight: k.weight, description: k.description ?? "", sortOrder: k.sortOrder,
     })),
@@ -79,7 +96,12 @@ export async function resolveRubric(jobPositionId: string | null): Promise<Resol
   return resolved;
 }
 
-/** Weights are meaningless unless they sum to 100 — the score maths assumes it. */
+/**
+ * Weights are meaningless unless they sum to 100 — the score maths assumes it.
+ * Belt and braces: `weight` is `Int` in the DB, so ALWAYS round on the way out,
+ * even when the total is already exactly 100 — a caller-supplied decimal
+ * (e.g. 50.5/49.5) must not reach Prisma and throw an uncaught 500.
+ */
 export function normaliseWeights(criteria: RubricCriterion[]): RubricCriterion[] {
   if (criteria.length === 0) return [];
   const total = criteria.reduce((s, c) => s + c.weight, 0);
@@ -87,7 +109,7 @@ export function normaliseWeights(criteria: RubricCriterion[]): RubricCriterion[]
     const even = Math.round(100 / criteria.length);
     return criteria.map((c) => ({ ...c, weight: even }));
   }
-  if (total === 100) return criteria;
+  if (total === 100) return criteria.map((c) => ({ ...c, weight: Math.round(c.weight) }));
   return criteria.map((c) => ({ ...c, weight: Math.round((c.weight / total) * 100) }));
 }
 

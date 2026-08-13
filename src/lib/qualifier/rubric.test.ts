@@ -6,7 +6,7 @@ const crit = (name: string, weight: number) => ({
 });
 
 const row = (over: Partial<RubricRow>): RubricRow => ({
-  id: "c1", jobPositionId: null, isDraft: false, isActive: true,
+  id: "c1", jobPositionId: null, isDraft: false, isActive: true, approvedAt: null,
   categories: [crit("experience", 50), crit("communication", 50)],
   ...over,
 });
@@ -63,6 +63,27 @@ describe("selectRubric", () => {
     expect(r?.configId).toBe("global");
     expect(r?.isGlobalFallback).toBe(false); // no position to fall back FROM
   });
+
+  it("is deterministic among duplicate global rubrics — picks the most recently approved", () => {
+    // Postgres treats NULLs as distinct, so multiple jobPositionId:null rows can
+    // coexist even with the unique index. Without a tie-break, `pool.find(...)`
+    // picks whichever the array happens to list first.
+    const configs = [
+      row({ id: "older", jobPositionId: null, approvedAt: new Date("2026-01-01") }),
+      row({ id: "newer", jobPositionId: null, approvedAt: new Date("2026-06-01") }),
+    ];
+    expect(selectRubric(configs, null)?.configId).toBe("newer");
+    // Order-independent: reversing the input array must not change the pick.
+    expect(selectRubric([...configs].reverse(), null)?.configId).toBe("newer");
+  });
+
+  it("is deterministic when approvedAt is tied — falls back to id order", () => {
+    const configs = [
+      row({ id: "b", jobPositionId: null, approvedAt: null }),
+      row({ id: "a", jobPositionId: null, approvedAt: null }),
+    ];
+    expect(selectRubric(configs, null)?.configId).toBe("a");
+  });
 });
 
 describe("rubricWhere (regression test for Prisma query construction)", () => {
@@ -112,5 +133,16 @@ describe("normaliseWeights", () => {
 
   it("returns an empty array unchanged", () => {
     expect(normaliseWeights([])).toEqual([]);
+  });
+
+  it("rounds decimal weights even when the total is already exactly 100", () => {
+    // Regression: the early-return path used to skip rounding entirely, so a
+    // caller-supplied 50.5/49.5 (total 100) reached Prisma's Int column unrounded.
+    const out = normaliseWeights([
+      { name: "a", weight: 50.5, description: "", sortOrder: 0 },
+      { name: "b", weight: 49.5, description: "", sortOrder: 1 },
+    ]);
+    expect(out.map((c) => c.weight)).toEqual([51, 50]);
+    expect(out.every((c) => Number.isInteger(c.weight))).toBe(true);
   });
 });

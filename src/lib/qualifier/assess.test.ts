@@ -112,4 +112,20 @@ describe("assessmentSchema", () => {
     });
     expect(r.success).toBe(false);
   });
+
+  it("rejects a decimal score — the DB column is Int?", () => {
+    const r = assessmentSchema.safeParse({
+      ...valid, criteria: [{ name: "x", score: 7.5, reasoning: "r" }],
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("accepts the boundary scores 0 and 10", () => {
+    expect(assessmentSchema.safeParse({
+      ...valid, criteria: [{ name: "x", score: 0, reasoning: "r" }],
+    }).success).toBe(true);
+    expect(assessmentSchema.safeParse({
+      ...valid, criteria: [{ name: "x", score: 10, reasoning: "r" }],
+    }).success).toBe(true);
+  });
 });

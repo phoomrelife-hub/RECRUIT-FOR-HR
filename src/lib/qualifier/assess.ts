@@ -18,7 +18,7 @@ export const assessmentSchema = z.object({
   unverifiedClaims: z.string(),
   criteria: z.array(z.object({
     name: z.string(),
-    score: z.number().min(0).max(10).nullable(),
+    score: z.number().int().min(0).max(10).nullable(),
     reasoning: z.string(),
   })),
   interviewQuestions: z.array(z.object({
@@ -118,7 +118,7 @@ const TOOL: Anthropic.Tool = {
           type: "object",
           properties: {
             name: { type: "string", description: "ต้องตรงกับชื่อเกณฑ์เป๊ะ ๆ" },
-            score: { type: ["number", "null"], description: "0-10 หรือ null ถ้าไม่มีหลักฐาน" },
+            score: { type: ["number", "null"], description: "0-10 (จำนวนเต็ม) หรือ null ถ้าไม่มีหลักฐาน" },
             reasoning: { type: "string" },
           },
           required: ["name", "score", "reasoning"],
