@@ -5,6 +5,7 @@ import { Loader2, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { httpErrorMessage } from "@/lib/http-error-message";
 
 interface Criterion { name: string; weight: number; description: string }
 
@@ -25,6 +26,7 @@ export function RubricEditor({ jobId }: { jobId: string }) {
           setIsDraft(cfg.isDraft);
         }
       })
+      .catch(() => toast.error("โหลดเกณฑ์ไม่สำเร็จ"))
       .finally(() => setLoading(false));
   }, [jobId]);
 
@@ -33,12 +35,14 @@ export function RubricEditor({ jobId }: { jobId: string }) {
     try {
       const res = await fetch(`/api/jobs/${jobId}/rubric`, { method: "POST" });
       const cfg = await res.json();
-      if (!res.ok) { toast.error(cfg.error ?? "ร่างเกณฑ์ไม่สำเร็จ"); return; }
+      if (!res.ok) { toast.error(httpErrorMessage(res.status, cfg.error)); return; }
       setCriteria(cfg.categories.map((c: Criterion) => ({
         name: c.name, weight: c.weight, description: c.description ?? "",
       })));
       setIsDraft(true);
       toast.success("ร่างเกณฑ์แล้ว — ตรวจสอบและกดอนุมัติ");
+    } catch {
+      toast.error("ร่างเกณฑ์ไม่สำเร็จ");
     } finally { setBusy(false); }
   }
 
@@ -51,12 +55,14 @@ export function RubricEditor({ jobId }: { jobId: string }) {
         body: JSON.stringify({ criteria }),
       });
       const cfg = await res.json();
-      if (!res.ok) { toast.error(cfg.error ?? "บันทึกไม่สำเร็จ"); return; }
+      if (!res.ok) { toast.error(httpErrorMessage(res.status, cfg.error)); return; }
       setCriteria(cfg.categories.map((c: Criterion) => ({
         name: c.name, weight: c.weight, description: c.description ?? "",
       })));
       setIsDraft(false);
       toast.success("อนุมัติเกณฑ์แล้ว");
+    } catch {
+      toast.error("บันทึกไม่สำเร็จ");
     } finally { setBusy(false); }
   }
 
