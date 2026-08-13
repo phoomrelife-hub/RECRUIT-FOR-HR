@@ -77,6 +77,7 @@ export default async function CandidateProfilePage({ params }: { params: Promise
       screeningAnswers: { include: { screeningQuestion: true } },
       candidateScore: true,
       aiSummary: true,
+      assessment: { include: { criterionScores: { orderBy: { sortOrder: "asc" } } } },
       interviews: {
         orderBy: { interviewDate: "asc" },
         include: {

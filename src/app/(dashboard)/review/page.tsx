@@ -4,6 +4,7 @@ import { getCachedAllJobs } from "@/lib/cached-queries";
 import { ReviewClient } from "./review-client";
 import { ClipboardCheck } from "lucide-react";
 import { fuzzyMatchPosition, extractPositionFromMessage } from "@/lib/position-match";
+import { compareByAssessment } from "@/lib/review-queue-sort";
 
 export default async function ReviewQueuePage() {
   await auth();
@@ -31,6 +32,9 @@ export default async function ReviewQueuePage() {
         currentStatus: true,
         createdAt: true,
         interestedPosition: { select: { id: true, title: true } },
+        assessment: {
+          select: { overallScore: true, verdict: true, concerns: true, coveragePct: true },
+        },
       },
       orderBy: { createdAt: "asc" },
     }),
@@ -73,7 +77,9 @@ export default async function ReviewQueuePage() {
     detectedPosition: detectedMap.get(c.id) ?? null,
   }));
 
-  const waitingCount = queue.filter((c) => c.currentStatus === "WAITING_HR_REVIEW").length;
+  const sorted = [...queue].sort(compareByAssessment);
+
+  const waitingCount = sorted.filter((c) => c.currentStatus === "WAITING_HR_REVIEW").length;
 
   return (
     <div className="space-y-6">
@@ -93,7 +99,7 @@ export default async function ReviewQueuePage() {
         </p>
       </div>
 
-      <ReviewClient initial={queue as any} positions={positions} />
+      <ReviewClient initial={sorted as any} positions={positions} />
     </div>
   );
 }

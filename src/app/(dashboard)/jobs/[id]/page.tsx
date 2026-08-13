@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, MapPin, Clock, Users, Briefcase, DollarSign } from "lucide-react";
 import { format } from "date-fns";
 import { CandidateStatus, WorkType, JobStatus } from "@prisma/client";
+import { RubricEditor } from "./rubric-editor";
 
 const statusBadge: Record<JobStatus, string> = {
   OPEN: "bg-green-100 text-green-700",
@@ -166,6 +167,8 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
               )}
             </CardContent>
           </Card>
+
+          <RubricEditor jobId={job.id} />
         </div>
 
         {/* Candidates */}

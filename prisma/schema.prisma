@@ -212,6 +212,7 @@ model Candidate {
   screeningAnswers   ScreeningAnswer[]
   candidateScore     CandidateScore?
   aiSummary          AiSummary?
+  assessment         CandidateAssessment?
   interviews             Interview[]
   hiringDecision         HiringDecision?
   scheduleToken          String?       @unique @map("schedule_token")
@@ -791,11 +792,20 @@ model AiScoringConfig {
   id        String   @id @default(cuid())
   name      String   @default("Default Scoring")
   isActive  Boolean  @default(true) @map("is_active")
+
+  jobPositionId String?   @map("job_position_id")   // null = global default rubric
+  isDraft       Boolean   @default(true)  @map("is_draft")
+  approvedById  String?   @map("approved_by_id")
+  approvedAt    DateTime? @map("approved_at")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   categories AiScoringCategory[]
 
+  // Postgres treats NULLs as distinct, so multiple global (jobPositionId: null)
+  // configs remain possible — only intended for exactly one per real position.
+  @@unique([jobPositionId])
   @@map("ai_scoring_configs")
 }
 
@@ -812,6 +822,52 @@ model AiScoringCategory {
   config AiScoringConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
 
   @@map("ai_scoring_categories")
+}
+
+model CandidateAssessment {
+  id             String  @id @default(cuid())
+  candidateId    String  @unique @map("candidate_id")
+  jobPositionId  String? @map("job_position_id")
+  rubricConfigId String? @map("rubric_config_id")
+
+  overallScore     Int     @map("overall_score")     // 0-100, weight-renormalised
+  coveragePct      Int     @map("coverage_pct")      // % of rubric weight actually scored
+  verdict          String                            // STRONG | PROMISING | WEAK | INSUFFICIENT_DATA
+  summary          String
+  strengths        String?
+  concerns         String?
+  redFlags         String? @map("red_flags")
+  unverifiedClaims String? @map("unverified_claims")
+
+  sourcesUsed        Json @map("sources_used")
+  interviewQuestions Json @map("interview_questions")
+
+  model         String
+  promptVersion String  @map("prompt_version")
+  inputHash     String  @map("input_hash")
+  costUsd       Float?  @map("cost_usd")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  criterionScores AssessmentCriterionScore[]
+  candidate       Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@map("candidate_assessments")
+}
+
+model AssessmentCriterionScore {
+  id           String  @id @default(cuid())
+  assessmentId String  @map("assessment_id")
+  name         String  // copied from the rubric so it survives later rubric edits
+  weight       Int
+  score        Int?    // null = evidence unavailable. NEVER 0 for missing evidence.
+  reasoning    String
+  sortOrder    Int     @default(0) @map("sort_order")
+
+  assessment CandidateAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  @@map("assessment_criterion_scores")
 }
 
 model AiSummaryTemplate {
