@@ -5,8 +5,16 @@ import { NextResponse } from "next/server";
 
 export const maxDuration = 300;
 
-const DEFAULT_LIMIT = 25;
-const MAX_LIMIT = 100;
+// This endpoint is meant to be called repeatedly, not once with a huge limit.
+// Each assessment is a Claude vision call over a PDF (~20s worst case). The
+// ceiling is sized to leave real headroom inside maxDuration rather than race
+// it: 12 candidates × 20s = 240s, ~80% of the 300s budget. A batch that hits
+// the timeout mid-run would leave assessments written (money spent) but no
+// response — no succeeded/failed/remaining breakdown for the operator — so we
+// keep batches small and let `remaining` in the response tell the caller to
+// run it again.
+const DEFAULT_LIMIT = 10;
+const MAX_LIMIT = 12;
 
 // Rough per-candidate usage, used only for the dry-run cost estimate.
 const TYPICAL_USAGE = { input: 8000, output: 1500 };
@@ -19,7 +27,7 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => ({}));
   const dryRun: boolean = body.dryRun !== false; // default to dry run for safety
-  const limit = Math.min(Number(body.limit) || DEFAULT_LIMIT, MAX_LIMIT);
+  const limit = Math.max(1, Math.min(Number(body.limit) || DEFAULT_LIMIT, MAX_LIMIT));
 
   const targets = await db.candidate.findMany({
     where: { notionPageId: { not: null }, assessment: { is: null } },
@@ -55,11 +63,18 @@ export async function POST(req: Request) {
     }
   }
 
+  const remaining = Math.max(0, totalPending - succeeded.length);
+
   return NextResponse.json({
     dryRun: false,
     totalPending,
     succeeded: succeeded.length,
     failed,
-    remaining: Math.max(0, totalPending - succeeded.length),
+    remaining,
+    // `remaining > 0` means the backlog isn't done — call this endpoint again
+    // (same shape, no extra params needed) to process the next batch.
+    message: remaining > 0
+      ? `เหลืออีก ${remaining} รายการ — เรียก endpoint นี้ซ้ำเพื่อทำต่อ`
+      : "ประเมินครบทุกรายการในคิวแล้ว",
   });
 }
