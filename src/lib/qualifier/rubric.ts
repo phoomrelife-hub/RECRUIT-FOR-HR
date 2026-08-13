@@ -18,6 +18,19 @@ export interface RubricRow {
 
 const usable = (r: RubricRow) => !r.isDraft && r.isActive && r.categories.length > 0;
 
+/**
+ * Build the Prisma where clause for fetching rubrics.
+ * Pure function so query construction is testable without a database.
+ */
+export function rubricWhere(jobPositionId: string | null) {
+  if (jobPositionId) {
+    // Fetch both global and position-specific rubrics.
+    return { OR: [{ jobPositionId: null }, { jobPositionId }] };
+  }
+  // Fetch only global rubrics when candidate has no position.
+  return { jobPositionId: null };
+}
+
 /** Pure precedence logic: approved position rubric → global default → null. */
 export function selectRubric(
   configs: RubricRow[],
@@ -44,7 +57,7 @@ export function selectRubric(
 
 export async function resolveRubric(jobPositionId: string | null): Promise<ResolvedRubric> {
   const configs = await db.aiScoringConfig.findMany({
-    where: { OR: [{ jobPositionId: null }, { jobPositionId: jobPositionId ?? undefined }] },
+    where: rubricWhere(jobPositionId),
     include: { categories: { orderBy: { sortOrder: "asc" } } },
   });
 

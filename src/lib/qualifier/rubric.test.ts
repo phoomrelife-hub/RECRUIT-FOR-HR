@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { selectRubric, type RubricRow } from "./rubric";
+import { selectRubric, rubricWhere, type RubricRow } from "./rubric";
 
 const crit = (name: string, weight: number) => ({
   name, weight, description: "", sortOrder: 0,
@@ -62,5 +62,25 @@ describe("selectRubric", () => {
     const r = selectRubric(configs, null);
     expect(r?.configId).toBe("global");
     expect(r?.isGlobalFallback).toBe(false); // no position to fall back FROM
+  });
+});
+
+describe("rubricWhere (regression test for Prisma query construction)", () => {
+  it("builds an OR clause when jobPositionId is provided", () => {
+    const where = rubricWhere("job1");
+    expect(where).toEqual({
+      OR: [{ jobPositionId: null }, { jobPositionId: "job1" }],
+    });
+  });
+
+  it("builds a simple filter for global rubrics when jobPositionId is null", () => {
+    const where = rubricWhere(null);
+    expect(where).toEqual({ jobPositionId: null });
+  });
+
+  it("does NOT include undefined values that would cause Prisma to ignore the clause", () => {
+    const where = rubricWhere(null);
+    // Verify no undefined values that Prisma would drop, causing match-all behavior.
+    expect(Object.values(where)).not.toContain(undefined);
   });
 });
