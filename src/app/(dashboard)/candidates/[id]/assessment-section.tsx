@@ -5,6 +5,9 @@ import { AlertTriangle, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 
+// Type-only import so the client bundle never pulls in the db-backed barrel file.
+import type { InterviewQuestion } from "@/lib/qualifier/types";
+
 interface CriterionScore {
   id: string; name: string; weight: number; score: number | null; reasoning: string;
 }
@@ -21,7 +24,7 @@ export interface AssessmentWithScores {
   redFlags: string | null;
   unverifiedClaims: string | null;
   sourcesUsed: SourceRecord[];
-  interviewQuestions: unknown;
+  interviewQuestions: InterviewQuestion[];
   updatedAt: string;
   criterionScores: CriterionScore[];
 }

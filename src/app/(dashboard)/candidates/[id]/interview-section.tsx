@@ -13,9 +13,22 @@ import { format } from "date-fns";
 import { useRouter } from "next/navigation";
 
 // Type-only import so the client bundle never pulls in the db-backed barrel file.
-import type { InterviewQuestion } from "@/lib/qualifier/types";
+import type { InterviewAxis, InterviewQuestion } from "@/lib/qualifier/types";
 
-const AXIS_LABEL: Record<string, string> = {
+// Canonical axis order — the single source every axis-ordered list in this file
+// (question grouping below, and the feedback score fields further down) derives
+// from, so the AI's suggested questions always line up with the score row the
+// interviewer fills in directly beneath them and the two lists can't drift apart.
+const AXIS_ORDER: InterviewAxis[] = [
+  "communication",
+  "personality",
+  "experience",
+  "roleUnderstanding",
+  "availability",
+  "attitude",
+];
+
+const AXIS_LABEL: Record<InterviewAxis, string> = {
   communication:     "การสื่อสาร",
   personality:       "บุคลิกภาพ",
   experience:        "ประสบการณ์",
@@ -25,24 +38,32 @@ const AXIS_LABEL: Record<string, string> = {
 };
 
 function SuggestedQuestions({ questions }: { questions: InterviewQuestion[] }) {
-  if (questions.length === 0) return null;
+  if (!Array.isArray(questions) || questions.length === 0) return null;
 
   const grouped = questions.reduce<Record<string, InterviewQuestion[]>>((acc, q) => {
     (acc[q.axis] ||= []).push(q);
     return acc;
   }, {});
 
+  // Render in AXIS_ORDER (matching the feedback form below), not insertion order —
+  // the AI's array order isn't guaranteed to match the axes the interviewer scores.
+  const orderedAxes = Object.keys(grouped).sort((a, b) => {
+    const ia = AXIS_ORDER.indexOf(a as InterviewAxis);
+    const ib = AXIS_ORDER.indexOf(b as InterviewAxis);
+    return (ia === -1 ? AXIS_ORDER.length : ia) - (ib === -1 ? AXIS_ORDER.length : ib);
+  });
+
   return (
     <div className="mb-4 rounded-lg border border-violet-200 bg-violet-50/50 p-4">
       <p className="mb-3 text-sm font-semibold text-violet-900">คำถามที่ AI แนะนำให้ถาม</p>
       <div className="space-y-3">
-        {Object.entries(grouped).map(([axis, items]) => (
+        {orderedAxes.map((axis) => (
           <div key={axis}>
             <p className="mb-1 text-xs font-medium text-violet-700">
-              {AXIS_LABEL[axis] ?? axis}
+              {AXIS_LABEL[axis as InterviewAxis] ?? axis}
             </p>
             <ul className="space-y-1.5">
-              {items.map((q, i) => (
+              {grouped[axis].map((q, i) => (
                 <li key={i} className="text-sm text-slate-700">
                   <span className="font-medium">{q.question}</span>
                   <span className="block text-xs text-slate-500">เหตุผล: {q.why}</span>
@@ -129,14 +150,19 @@ const resultLabel: Record<InterviewResult, string> = {
   NEED_SECOND_INTERVIEW: "นัดสัมภาษณ์รอบ 2",
 };
 
-const scoreFields: { key: keyof Omit<InterviewFeedback, "id" | "salaryExpectation" | "strengths" | "concerns" | "hrComment" | "finalResult" | "submittedBy" | "updatedAt">; label: string }[] = [
-  { key: "communication", label: "การสื่อสาร" },
-  { key: "personality", label: "บุคลิกภาพ" },
-  { key: "experience", label: "ประสบการณ์" },
-  { key: "roleUnderstanding", label: "เข้าใจงาน" },
-  { key: "availability", label: "ความพร้อม" },
-  { key: "attitude", label: "ทัศนคติ" },
-];
+const SCORE_FIELD_LABEL: Record<InterviewAxis, string> = {
+  communication: "การสื่อสาร",
+  personality: "บุคลิกภาพ",
+  experience: "ประสบการณ์",
+  roleUnderstanding: "เข้าใจงาน",
+  availability: "ความพร้อม",
+  attitude: "ทัศนคติ",
+};
+
+// Derived from AXIS_ORDER (declared above) so the score fields on this form can never
+// drift out of sequence with the AI's suggested-question grouping above them.
+const scoreFields: { key: keyof Omit<InterviewFeedback, "id" | "salaryExpectation" | "strengths" | "concerns" | "hrComment" | "finalResult" | "submittedBy" | "updatedAt">; label: string }[] =
+  AXIS_ORDER.map((key) => ({ key, label: SCORE_FIELD_LABEL[key] }));
 
 const initFeedbackScore = { communication: 0, personality: 0, experience: 0, roleUnderstanding: 0, availability: 0, attitude: 0 };
 

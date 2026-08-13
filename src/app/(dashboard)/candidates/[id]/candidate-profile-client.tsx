@@ -14,7 +14,6 @@ import { useRouter } from "next/navigation";
 import { InterviewSection } from "./interview-section";
 import { HiringDecisionSection } from "./hiring-decision-section";
 import { AssessmentSection, type AssessmentWithScores } from "./assessment-section";
-import type { InterviewQuestion } from "@/lib/qualifier/types";
 
 const statusColor: Record<CandidateStatus, string> = {
   NEW_APPLICANT: "bg-slate-100 text-slate-600",
@@ -638,9 +637,7 @@ export function CandidateProfileClient({
         initialInterviews={candidate.interviews as any}
         hrUsers={hrUsers}
         currentUserRole={currentUserRole}
-        suggestedQuestions={
-          (candidate.assessment?.interviewQuestions as InterviewQuestion[] | undefined) ?? []
-        }
+        suggestedQuestions={candidate.assessment?.interviewQuestions ?? []}
       />
 
       {/* Hiring Decision */}
