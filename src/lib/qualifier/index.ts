@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { PROMPT_VERSION, QUALIFIER_MODEL, runAssessment } from "./assess";
+import { PROMPT_VERSION, QUALIFIER_MODEL, resolveOpenAiConfig, runAssessment } from "./assess";
 import { resolveRubric } from "./rubric";
 import { computeScore } from "./scoring";
 import { gatherEvidence } from "./sources";
@@ -8,15 +8,18 @@ import type { Verdict } from "./types";
 
 export * from "./types";
 export { NoRubricError } from "./rubric";
-export { AssessmentFormatError } from "./assess";
+export { AssessmentFormatError, MissingApiKeyError, resolveOpenAiConfig } from "./assess";
 
-// Claude Sonnet pricing, USD per million tokens.
-const INPUT_USD_PER_MTOK = 3;
-const OUTPUT_USD_PER_MTOK = 15;
+// PLACEHOLDER pricing, USD per million tokens — gpt-5.6-luna's real price is not
+// known to us (ported from the old Claude Sonnet figures during the OpenAI
+// port). Correct these against actual OpenAI billing before trusting any
+// cost figure this module produces.
+const PLACEHOLDER_INPUT_USD_PER_MTOK = 3;
+const PLACEHOLDER_OUTPUT_USD_PER_MTOK = 15;
 
 export function estimateCostUsd(usage: { input: number; output: number }): number {
-  return (usage.input / 1e6) * INPUT_USD_PER_MTOK
-       + (usage.output / 1e6) * OUTPUT_USD_PER_MTOK;
+  return (usage.input / 1e6) * PLACEHOLDER_INPUT_USD_PER_MTOK
+       + (usage.output / 1e6) * PLACEHOLDER_OUTPUT_USD_PER_MTOK;
 }
 
 export function isStale(assessment: { inputHash: string }, currentHash: string): boolean {
@@ -60,7 +63,7 @@ async function assertUnderCostLimit(): Promise<void> {
 }
 
 /**
- * Gather evidence → resolve rubric → one Claude call → compute score → persist.
+ * Gather evidence → resolve rubric → one OpenAI call → compute score → persist.
  * Throws before writing anything if any step fails. Never touches currentStatus.
  */
 export async function assessCandidate(
@@ -85,9 +88,15 @@ export async function assessCandidate(
   try {
     result = await runAssessment(evidence, rubric);
   } catch (err) {
+    // runAssessment threw before returning, so there's no resolved model on a
+    // `result` to log — best-effort re-resolve it (cheap: Setting reads, no
+    // network call) purely for this log row. Falls back to the code default
+    // if resolution itself is what failed (e.g. MissingApiKeyError), since in
+    // that case no model was ever actually used.
+    const model = await resolveOpenAiConfig().then((c) => c.model).catch(() => QUALIFIER_MODEL);
     await db.aiLog.create({
       data: {
-        model: QUALIFIER_MODEL, action: "qualifier", candidateId,
+        model, action: "qualifier", candidateId,
         success: false, errorMessage: err instanceof Error ? err.message : String(err),
         latencyMs: Date.now() - started,
       },
@@ -95,7 +104,7 @@ export async function assessCandidate(
     throw err;
   }
 
-  const { output, usage } = result;
+  const { output, usage, model } = result;
   const { overallScore, coveragePct, verdict } = computeScore(rubric.criteria, output.criteria);
   const costUsd = estimateCostUsd(usage);
 
@@ -115,7 +124,7 @@ export async function assessCandidate(
       unverifiedClaims: output.unverifiedClaims || null,
       sourcesUsed: evidence.sources as unknown as Prisma.InputJsonValue,
       interviewQuestions: output.interviewQuestions as unknown as Prisma.InputJsonValue,
-      model: QUALIFIER_MODEL,
+      model,
       promptVersion: PROMPT_VERSION,
       inputHash: evidence.inputHash,
       costUsd,
@@ -151,7 +160,7 @@ export async function assessCandidate(
 
   await db.aiLog.create({
     data: {
-      model: QUALIFIER_MODEL, action: "qualifier", candidateId,
+      model, action: "qualifier", candidateId,
       promptTokens: usage.input, outputTokens: usage.output,
       totalTokens: usage.input + usage.output,
       costEstimate: costUsd, latencyMs: Date.now() - started, success: true,

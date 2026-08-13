@@ -1,6 +1,9 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { assessCandidate, CostLimitExceededError, estimateCostUsd, NoRubricError } from "@/lib/qualifier";
+import {
+  assessCandidate, CostLimitExceededError, estimateCostUsd, MissingApiKeyError, NoRubricError,
+  resolveOpenAiConfig,
+} from "@/lib/qualifier";
 import { NextResponse } from "next/server";
 
 export const maxDuration = 300;
@@ -50,20 +53,42 @@ export async function POST(req: Request) {
     });
   }
 
+  // A missing API key fails every candidate in the batch identically — it's a
+  // config problem, not a per-candidate one. Check it up front rather than
+  // burning through up to MAX_LIMIT sequential candidates (each doing a Notion
+  // fetch + rubric resolution first) only to report the same 422-shaped error
+  // N times in `failed[]`. Fail the whole request with 422 instead, same
+  // bucket as NoRubricError in the single-candidate route.
+  try {
+    await resolveOpenAiConfig();
+  } catch (err) {
+    if (err instanceof MissingApiKeyError) {
+      return NextResponse.json({ error: err.message }, { status: 422 });
+    }
+    throw err;
+  }
+
   const succeeded: string[] = [];
   const failed: { id: string; error: string }[] = [];
 
-  // Sequential on purpose — parallel vision calls hit Anthropic rate limits fast.
+  // Sequential on purpose — parallel vision calls hit OpenAI rate limits fast.
   for (const target of targets) {
     try {
       await assessCandidate(target.id);
       succeeded.push(target.id);
     } catch (err) {
-      // NoRubricError / CostLimitExceededError already carry a deliberate Thai
-      // message the operator needs to act on — keep it. Anything else may be
-      // whatever the Anthropic SDK or a Notion fetch threw (URLs, response
-      // bodies) — log it server-side only, return a fixed Thai string.
-      if (err instanceof NoRubricError || err instanceof CostLimitExceededError) {
+      // NoRubricError / CostLimitExceededError / MissingApiKeyError already
+      // carry a deliberate Thai message the operator needs to act on — keep
+      // it. (MissingApiKeyError is caught up front above under normal
+      // operation; this branch is belt-and-braces for the key disappearing
+      // mid-batch.) Anything else may be whatever the OpenAI call or a Notion
+      // fetch threw (URLs, response bodies) — log it server-side only, return
+      // a fixed Thai string.
+      if (
+        err instanceof NoRubricError
+        || err instanceof CostLimitExceededError
+        || err instanceof MissingApiKeyError
+      ) {
         failed.push({ id: target.id, error: err.message });
       } else {
         console.error("[qualifier] bulk-assess failed", target.id, err);

@@ -1,5 +1,12 @@
-import { describe, expect, it } from "vitest";
-import { selectRubric, rubricWhere, normaliseWeights, type RubricRow } from "./rubric";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { draftRubric, selectRubric, rubricWhere, normaliseWeights, type RubricRow } from "./rubric";
+
+// resolveOpenAiConfig (imported from ./assess) reads Setting rows via this —
+// stub it out so draftRubric tests never touch a real database. Falls through
+// to OPENAI_API_KEY (env) below.
+vi.mock("@/lib/assistant/config", () => ({
+  getSetting: vi.fn().mockResolvedValue(null),
+}));
 
 const crit = (name: string, weight: number) => ({
   name, weight, description: "", sortOrder: 0,
@@ -144,5 +151,92 @@ describe("normaliseWeights", () => {
     ]);
     expect(out.map((c) => c.weight)).toEqual([51, 50]);
     expect(out.every((c) => Number.isInteger(c.weight))).toBe(true);
+  });
+});
+
+describe("draftRubric", () => {
+  const originalKey = process.env.OPENAI_API_KEY;
+  const job = { title: "Sales Admin", description: "ขายของออนไลน์", requiredExperience: "1 ปีขึ้นไป" };
+
+  beforeEach(() => {
+    process.env.OPENAI_API_KEY = "test-key";
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    process.env.OPENAI_API_KEY = originalKey;
+  });
+
+  const toolCallResponse = (args: unknown) => ({
+    json: () => Promise.resolve({
+      choices: [{
+        message: {
+          tool_calls: [{ function: { name: "submit_rubric", arguments: JSON.stringify(args) } }],
+        },
+      }],
+    }),
+  }) as unknown as Response;
+
+  it("parses and normalises a successful tool-call response", async () => {
+    const args = {
+      criteria: [
+        { name: "ประสบการณ์การขาย", weight: 60, description: "เคยขายของออนไลน์มาก่อน" },
+        { name: "การสื่อสาร", weight: 40, description: "พูดจาสุภาพ ชัดเจน" },
+      ],
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(toolCallResponse(args)));
+
+    const result = await draftRubric(job);
+
+    expect(result).toHaveLength(2);
+    expect(result.map((c) => c.name)).toEqual(["ประสบการณ์การขาย", "การสื่อสาร"]);
+    expect(result.map((c) => c.weight)).toEqual([60, 40]);
+    expect(result.map((c) => c.sortOrder)).toEqual([0, 1]);
+  });
+
+  it("normalises weights that don't already sum to 100", async () => {
+    const args = {
+      criteria: [
+        { name: "a", weight: 1, description: "" },
+        { name: "b", weight: 3, description: "" },
+      ],
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(toolCallResponse(args)));
+
+    const result = await draftRubric(job);
+    expect(result.map((c) => c.weight)).toEqual([25, 75]);
+  });
+
+  it("throws when the response has no tool_call (malformed output)", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      json: () => Promise.resolve({ choices: [{ message: {} }] }),
+    } as unknown as Response));
+
+    await expect(draftRubric(job)).rejects.toThrow(/AI ตอบกลับผิดรูปแบบ/);
+  });
+
+  it("throws a wrapped error when the API returns an error", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      json: () => Promise.resolve({ error: { message: "Rate limit exceeded" } }),
+    } as unknown as Response));
+
+    await expect(draftRubric(job)).rejects.toThrow(/OpenAI: Rate limit exceeded/);
+  });
+
+  it("never sends temperature or max_tokens (gpt-5.6-luna hard-400s on both)", async () => {
+    const args = {
+      criteria: [
+        { name: "a", weight: 50, description: "" },
+        { name: "b", weight: 50, description: "" },
+      ],
+    };
+    const fetchMock = vi.fn().mockResolvedValue(toolCallResponse(args));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await draftRubric(job);
+
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(body).not.toHaveProperty("temperature");
+    expect(body).not.toHaveProperty("max_tokens");
   });
 });
