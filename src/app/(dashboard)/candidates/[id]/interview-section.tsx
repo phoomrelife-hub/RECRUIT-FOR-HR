@@ -12,6 +12,50 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { useRouter } from "next/navigation";
 
+// Type-only import so the client bundle never pulls in the db-backed barrel file.
+import type { InterviewQuestion } from "@/lib/qualifier/types";
+
+const AXIS_LABEL: Record<string, string> = {
+  communication:     "การสื่อสาร",
+  personality:       "บุคลิกภาพ",
+  experience:        "ประสบการณ์",
+  roleUnderstanding: "ความเข้าใจในตำแหน่ง",
+  availability:      "ความพร้อม",
+  attitude:          "ทัศนคติ",
+};
+
+function SuggestedQuestions({ questions }: { questions: InterviewQuestion[] }) {
+  if (questions.length === 0) return null;
+
+  const grouped = questions.reduce<Record<string, InterviewQuestion[]>>((acc, q) => {
+    (acc[q.axis] ||= []).push(q);
+    return acc;
+  }, {});
+
+  return (
+    <div className="mb-4 rounded-lg border border-violet-200 bg-violet-50/50 p-4">
+      <p className="mb-3 text-sm font-semibold text-violet-900">คำถามที่ AI แนะนำให้ถาม</p>
+      <div className="space-y-3">
+        {Object.entries(grouped).map(([axis, items]) => (
+          <div key={axis}>
+            <p className="mb-1 text-xs font-medium text-violet-700">
+              {AXIS_LABEL[axis] ?? axis}
+            </p>
+            <ul className="space-y-1.5">
+              {items.map((q, i) => (
+                <li key={i} className="text-sm text-slate-700">
+                  <span className="font-medium">{q.question}</span>
+                  <span className="block text-xs text-slate-500">เหตุผล: {q.why}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 type InterviewFeedback = {
   id: string;
   communication: number;
@@ -49,6 +93,7 @@ interface Props {
   initialInterviews: InterviewData[];
   hrUsers: { id: string; name: string }[];
   currentUserRole: string;
+  suggestedQuestions: InterviewQuestion[];
 }
 
 const typeIcon: Record<InterviewType, React.ReactNode> = {
@@ -95,7 +140,7 @@ const scoreFields: { key: keyof Omit<InterviewFeedback, "id" | "salaryExpectatio
 
 const initFeedbackScore = { communication: 0, personality: 0, experience: 0, roleUnderstanding: 0, availability: 0, attitude: 0 };
 
-export function InterviewSection({ candidateId, jobPositionId, initialInterviews, hrUsers, currentUserRole }: Props) {
+export function InterviewSection({ candidateId, jobPositionId, initialInterviews, hrUsers, currentUserRole, suggestedQuestions }: Props) {
   const router = useRouter();
   const [interviews, setInterviews] = useState<InterviewData[]>(initialInterviews);
   const [showSchedule, setShowSchedule] = useState(false);
@@ -324,6 +369,8 @@ export function InterviewSection({ candidateId, jobPositionId, initialInterviews
             </div>
           </div>
         )}
+
+        {interviews.length > 0 && <SuggestedQuestions questions={suggestedQuestions} />}
 
         {/* Interview List */}
         <div className="space-y-3">

@@ -21,6 +21,7 @@ export interface AssessmentWithScores {
   redFlags: string | null;
   unverifiedClaims: string | null;
   sourcesUsed: SourceRecord[];
+  interviewQuestions: unknown;
   updatedAt: string;
   criterionScores: CriterionScore[];
 }
