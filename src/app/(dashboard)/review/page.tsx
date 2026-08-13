@@ -31,6 +31,9 @@ export default async function ReviewQueuePage() {
         currentStatus: true,
         createdAt: true,
         interestedPosition: { select: { id: true, title: true } },
+        assessment: {
+          select: { overallScore: true, verdict: true, concerns: true, coveragePct: true },
+        },
       },
       orderBy: { createdAt: "asc" },
     }),
@@ -73,7 +76,21 @@ export default async function ReviewQueuePage() {
     detectedPosition: detectedMap.get(c.id) ?? null,
   }));
 
-  const waitingCount = queue.filter((c) => c.currentStatus === "WAITING_HR_REVIEW").length;
+  const VERDICT_RANK: Record<string, number> = {
+    STRONG: 0, PROMISING: 1, WEAK: 2, INSUFFICIENT_DATA: 3,
+  };
+
+  const sorted = [...queue].sort((a, b) => {
+    // Candidates with no assessment yet sort last — they are not "score 0".
+    if (!a.assessment && !b.assessment) return 0;
+    if (!a.assessment) return 1;
+    if (!b.assessment) return -1;
+    const rank = VERDICT_RANK[a.assessment.verdict] - VERDICT_RANK[b.assessment.verdict];
+    if (rank !== 0) return rank;
+    return b.assessment.overallScore - a.assessment.overallScore;
+  });
+
+  const waitingCount = sorted.filter((c) => c.currentStatus === "WAITING_HR_REVIEW").length;
 
   return (
     <div className="space-y-6">
@@ -93,7 +110,7 @@ export default async function ReviewQueuePage() {
         </p>
       </div>
 
-      <ReviewClient initial={queue as any} positions={positions} />
+      <ReviewClient initial={sorted as any} positions={positions} />
     </div>
   );
 }

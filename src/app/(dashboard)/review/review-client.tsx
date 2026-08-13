@@ -282,6 +282,13 @@ function AutoQualifyPreviewModal({
   );
 }
 
+type QueueAssessment = {
+  overallScore: number;
+  verdict: "STRONG" | "PROMISING" | "WEAK" | "INSUFFICIENT_DATA";
+  concerns: string | null;
+  coveragePct: number;
+};
+
 type QueueCandidate = {
   id: string;
   nickname: string | null;
@@ -298,6 +305,7 @@ type QueueCandidate = {
   currentStatus: string;
   interestedPosition: { id: string; title: string } | null;
   detectedPosition: { id: string; title: string } | null;
+  assessment: QueueAssessment | null;
   createdAt: Date;
 };
 
@@ -1121,6 +1129,25 @@ function CandidateRow({
     </div>
   );
 
+  const assessmentBadge = c.assessment ? (
+    <div className="flex items-center gap-2">
+      <span className="text-sm font-semibold text-slate-900">{c.assessment.overallScore}</span>
+      <span className={`rounded-full px-2 py-0.5 text-xs ${
+        c.assessment.verdict === "STRONG" ? "bg-emerald-100 text-emerald-800"
+        : c.assessment.verdict === "PROMISING" ? "bg-blue-100 text-blue-800"
+        : c.assessment.verdict === "WEAK" ? "bg-amber-100 text-amber-800"
+        : "bg-slate-200 text-slate-700"
+      }`}>
+        {c.assessment.verdict === "STRONG" ? "น่าสนใจมาก"
+          : c.assessment.verdict === "PROMISING" ? "พอไปได้"
+          : c.assessment.verdict === "WEAK" ? "ยังไม่ตรงเกณฑ์"
+          : "ข้อมูลไม่พอตัดสิน"}
+      </span>
+    </div>
+  ) : (
+    <span className="text-xs text-slate-400">ยังไม่ได้ประเมิน</span>
+  );
+
   const checkbox = (
     <button
       onClick={() => onToggle(c.id)}
@@ -1150,6 +1177,7 @@ function CandidateRow({
               {badges}
             </div>
             {subInfo}
+            <div className="mt-1.5">{assessmentBadge}</div>
           </div>
           {/* Detail + profile icons */}
           <div className="flex gap-1 shrink-0">
@@ -1199,6 +1227,7 @@ function CandidateRow({
           </div>
           {subInfo}
         </div>
+        <div className="shrink-0">{assessmentBadge}</div>
         <div className="flex items-center gap-2 shrink-0">
           <Button size="sm" variant="outline" className="h-8 px-3 text-xs gap-1 text-slate-600 border-slate-200" onClick={() => setSheetOpen(true)}>
             <FileText className="h-3.5 w-3.5" />รายละเอียด
