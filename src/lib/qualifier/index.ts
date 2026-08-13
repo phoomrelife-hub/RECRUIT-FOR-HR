@@ -8,7 +8,7 @@ import type { Verdict } from "./types";
 
 export * from "./types";
 export { NoRubricError } from "./rubric";
-export { AssessmentFormatError, MissingApiKeyError } from "./assess";
+export { AssessmentFormatError, MissingApiKeyError, resolveOpenAiConfig } from "./assess";
 
 // PLACEHOLDER pricing, USD per million tokens — gpt-5.6-luna's real price is not
 // known to us (ported from the old Claude Sonnet figures during the OpenAI
