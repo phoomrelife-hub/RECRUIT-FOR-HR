@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { assessCandidate, estimateCostUsd } from "@/lib/qualifier";
+import { assessCandidate, CostLimitExceededError, estimateCostUsd, NoRubricError } from "@/lib/qualifier";
 import { NextResponse } from "next/server";
 
 export const maxDuration = 300;
@@ -59,7 +59,16 @@ export async function POST(req: Request) {
       await assessCandidate(target.id);
       succeeded.push(target.id);
     } catch (err) {
-      failed.push({ id: target.id, error: err instanceof Error ? err.message : "unknown" });
+      // NoRubricError / CostLimitExceededError already carry a deliberate Thai
+      // message the operator needs to act on — keep it. Anything else may be
+      // whatever the Anthropic SDK or a Notion fetch threw (URLs, response
+      // bodies) — log it server-side only, return a fixed Thai string.
+      if (err instanceof NoRubricError || err instanceof CostLimitExceededError) {
+        failed.push({ id: target.id, error: err.message });
+      } else {
+        console.error("[qualifier] bulk-assess failed", target.id, err);
+        failed.push({ id: target.id, error: "ประเมินไม่สำเร็จ — ระบบขัดข้อง" });
+      }
     }
   }
 

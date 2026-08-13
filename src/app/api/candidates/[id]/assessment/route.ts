@@ -29,11 +29,16 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     // 422 = the operator must fix something (no rubric, no Notion page).
     // 429 = over the configured AI spend limit.
     // 502 = an upstream service failed; retrying may work.
-    const status = err instanceof NoRubricError ? 422
-      : err instanceof CostLimitExceededError ? 429
-      : 502;
-    const message = err instanceof Error ? err.message : "ประเมินไม่สำเร็จ";
-    return NextResponse.json({ error: message }, { status });
+    if (err instanceof NoRubricError) {
+      return NextResponse.json({ error: err.message }, { status: 422 });
+    }
+    if (err instanceof CostLimitExceededError) {
+      return NextResponse.json({ error: err.message }, { status: 429 });
+    }
+    // Whatever the Anthropic SDK or a Notion fetch threw may contain URLs or
+    // response bodies — log it server-side only, return a fixed Thai string.
+    console.error("[qualifier] assessCandidate failed", id, err);
+    return NextResponse.json({ error: "ประเมินไม่สำเร็จ — ระบบขัดข้อง ลองใหม่อีกครั้ง" }, { status: 502 });
   }
 
   const assessment = await db.candidateAssessment.findUnique({
