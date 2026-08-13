@@ -32,7 +32,7 @@ const AXIS_LABEL: Record<InterviewAxis, string> = {
   communication:     "การสื่อสาร",
   personality:       "บุคลิกภาพ",
   experience:        "ประสบการณ์",
-  roleUnderstanding: "ความเข้าใจในตำแหน่ง",
+  roleUnderstanding: "เข้าใจงาน",
   availability:      "ความพร้อม",
   attitude:          "ทัศนคติ",
 };
