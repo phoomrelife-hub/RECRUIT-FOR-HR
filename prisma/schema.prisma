@@ -601,6 +601,10 @@ enum AuditAction {
   UPDATE_AI_COST_LIMIT
   UPDATE_AI_FALLBACK
   UPDATE_AI_ROUTING
+  // Quick reply templates
+  CREATE_QUICK_REPLY
+  UPDATE_QUICK_REPLY
+  DELETE_QUICK_REPLY
 }
 
 model AuditLog {
