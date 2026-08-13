@@ -44,13 +44,17 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
 
   const existing = await db.aiScoringConfig.findFirst({ where: { jobPositionId: id } });
   if (existing) {
-    await db.aiScoringCategory.deleteMany({ where: { configId: existing.id } });
-    await db.aiScoringConfig.update({
-      where: { id: existing.id },
-      data: {
-        isDraft: true, approvedAt: null, approvedById: null,
-        categories: { create: criteria },
-      },
+    // Delete + recreate must not straddle a partial failure — a dropped connection
+    // between the two calls would leave the rubric with zero criteria.
+    await db.$transaction(async (tx) => {
+      await tx.aiScoringCategory.deleteMany({ where: { configId: existing.id } });
+      await tx.aiScoringConfig.update({
+        where: { id: existing.id },
+        data: {
+          isDraft: true, approvedAt: null, approvedById: null,
+          categories: { create: criteria },
+        },
+      });
     });
   } else {
     await db.aiScoringConfig.create({
@@ -102,16 +106,20 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         data: { name: "เกณฑ์เฉพาะตำแหน่ง", jobPositionId: id, isDraft: true },
       })).id;
 
-  await db.aiScoringCategory.deleteMany({ where: { configId } });
-  await db.aiScoringConfig.update({
-    where: { id: configId },
-    data: {
-      isDraft: false,
-      isActive: true,
-      approvedById: session!.user!.id,
-      approvedAt: new Date(),
-      categories: { create: criteria },
-    },
+  // Delete + recreate must not straddle a partial failure — a dropped connection
+  // between the two calls would leave the rubric with zero criteria.
+  await db.$transaction(async (tx) => {
+    await tx.aiScoringCategory.deleteMany({ where: { configId } });
+    await tx.aiScoringConfig.update({
+      where: { id: configId },
+      data: {
+        isDraft: false,
+        isActive: true,
+        approvedById: session!.user!.id,
+        approvedAt: new Date(),
+        categories: { create: criteria },
+      },
+    });
   });
 
   const saved = await db.aiScoringConfig.findFirst({
