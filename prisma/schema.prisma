@@ -803,6 +803,9 @@ model AiScoringConfig {
 
   categories AiScoringCategory[]
 
+  // Postgres treats NULLs as distinct, so multiple global (jobPositionId: null)
+  // configs remain possible — only intended for exactly one per real position.
+  @@unique([jobPositionId])
   @@map("ai_scoring_configs")
 }
 
