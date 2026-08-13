@@ -4,6 +4,7 @@ import { getCachedAllJobs } from "@/lib/cached-queries";
 import { ReviewClient } from "./review-client";
 import { ClipboardCheck } from "lucide-react";
 import { fuzzyMatchPosition, extractPositionFromMessage } from "@/lib/position-match";
+import { compareByAssessment } from "@/lib/review-queue-sort";
 
 export default async function ReviewQueuePage() {
   await auth();
@@ -76,19 +77,7 @@ export default async function ReviewQueuePage() {
     detectedPosition: detectedMap.get(c.id) ?? null,
   }));
 
-  const VERDICT_RANK: Record<string, number> = {
-    STRONG: 0, PROMISING: 1, WEAK: 2, INSUFFICIENT_DATA: 3,
-  };
-
-  const sorted = [...queue].sort((a, b) => {
-    // Candidates with no assessment yet sort last — they are not "score 0".
-    if (!a.assessment && !b.assessment) return 0;
-    if (!a.assessment) return 1;
-    if (!b.assessment) return -1;
-    const rank = VERDICT_RANK[a.assessment.verdict] - VERDICT_RANK[b.assessment.verdict];
-    if (rank !== 0) return rank;
-    return b.assessment.overallScore - a.assessment.overallScore;
-  });
+  const sorted = [...queue].sort(compareByAssessment);
 
   const waitingCount = sorted.filter((c) => c.currentStatus === "WAITING_HR_REVIEW").length;
 

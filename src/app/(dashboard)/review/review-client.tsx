@@ -38,6 +38,7 @@ import { toast } from "sonner";
 import Link from "next/link";
 import { parseTier, TIER_CONFIG, type Tier } from "@/lib/experience-tier";
 import { parseLocation, buildLocationOptions, matchesLocationFilter } from "@/lib/parse-location";
+import { compareForSalesAdminTab } from "@/lib/review-queue-sort";
 
 // ── Auto-Qualify Settings Dialog ──────────────────────────────────────────────
 const ALL_TIERS: Tier[] = ["high", "mid", "low", "unspecified", "none"];
@@ -1466,12 +1467,10 @@ export function ReviewClient({ initial, positions }: Props) {
       list = list.filter((c) => matchesLocationFilter(c.address, locationFilter));
     }
     if (isSalesAdmin) {
-      return [...list].sort((a, b) => {
-        const ta = TIER_CONFIG[parseTier(a.experienceText)].order;
-        const tb = TIER_CONFIG[parseTier(b.experienceText)].order;
-        if (ta !== tb) return ta - tb;
-        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-      });
+      // AI verdict rank first, descending score within a verdict, tier as
+      // the tiebreak, createdAt as the final tiebreak. Unassessed candidates
+      // still sort last — see compareForSalesAdminTab.
+      return [...list].sort(compareForSalesAdminTab);
     }
     return list;
   // eslint-disable-next-line react-hooks/exhaustive-deps
