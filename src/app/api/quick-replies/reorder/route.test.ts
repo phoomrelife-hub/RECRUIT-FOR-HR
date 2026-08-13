@@ -46,10 +46,23 @@ describe("PUT /api/quick-replies/reorder", () => {
     auth.mockResolvedValue(null);
     const res = await PUT(request({ ids: ["a"] }));
     expect(res.status).toBe(403);
+    expect($transaction).not.toHaveBeenCalled();
   });
 
   it("rejects a malformed body with 400", async () => {
     const res = await PUT(request({ ids: "not-an-array" }));
+    expect(res.status).toBe(400);
+    expect($transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects an empty ids array with 400", async () => {
+    const res = await PUT(request({ ids: [] }));
+    expect(res.status).toBe(400);
+    expect($transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects non-string elements in ids array with 400", async () => {
+    const res = await PUT(request({ ids: ["a", 123] }));
     expect(res.status).toBe(400);
     expect($transaction).not.toHaveBeenCalled();
   });
@@ -66,9 +79,23 @@ describe("PUT /api/quick-replies/reorder", () => {
     const res = await PUT(request({ ids: ["c", "a", "b"] }));
     expect(res.status).toBe(200);
     expect($transaction).toHaveBeenCalledTimes(1);
-    expect(update).toHaveBeenNthCalledWith(1, { where: { id: "c" }, data: { sortOrder: 0 } });
-    expect(update).toHaveBeenNthCalledWith(2, { where: { id: "a" }, data: { sortOrder: 1 } });
-    expect(update).toHaveBeenNthCalledWith(3, { where: { id: "b" }, data: { sortOrder: 2 } });
+    // Assert that the updates were wrapped in the transaction
+    expect($transaction.mock.calls[0][0]).toEqual([
+      { where: { id: "c" }, data: { sortOrder: 0 } },
+      { where: { id: "a" }, data: { sortOrder: 1 } },
+      { where: { id: "b" }, data: { sortOrder: 2 } },
+    ]);
+  });
+
+  it("returns 404 if a quick reply was deleted (P2025)", async () => {
+    const prismaError = new Error("Record not found");
+    (prismaError as unknown as { code: string }).code = "P2025";
+    $transaction.mockRejectedValueOnce(prismaError);
+    const res = await PUT(request({ ids: ["c"] }));
+    expect(res.status).toBe(404);
+    await expect(res.json()).resolves.toEqual({
+      error: "Quick reply not found",
+    });
   });
 
   it("returns the reordered list", async () => {

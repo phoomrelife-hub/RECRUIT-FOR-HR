@@ -24,9 +24,17 @@ export async function PUT(req: Request) {
 
   // One transaction, not N requests: a half-applied reorder leaves duplicate
   // sortOrder values, and sortOrder decides which four chips the chat shows.
-  await db.$transaction(
-    ids.map((id, index) => db.quickReply.update({ where: { id }, data: { sortOrder: index } }))
-  );
+  try {
+    await db.$transaction(
+      ids.map((id, index) => db.quickReply.update({ where: { id }, data: { sortOrder: index } }))
+    );
+  } catch (error: unknown) {
+    // P2025 = record not found (e.g., template deleted in another browser tab)
+    if (error instanceof Error && "code" in error && error.code === "P2025") {
+      return NextResponse.json({ error: "Quick reply not found" }, { status: 404 });
+    }
+    throw error;
+  }
 
   const quickReplies = await db.quickReply.findMany({ orderBy: { sortOrder: "asc" } });
   return NextResponse.json({ quickReplies });
