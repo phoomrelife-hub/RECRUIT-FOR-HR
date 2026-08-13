@@ -6,6 +6,13 @@ buildCommand = "npm run build"
 NODE_VERSION = "20.19.0"
 
 [deploy]
-startCommand = "npx next start -H 0.0.0.0 -p ${PORT:-3000}"
+# Migrations run here, not in buildCommand: the build step is not guaranteed to have
+# database credentials, and a successful build is not a deploy. Running here guarantees
+# pending migrations are applied BEFORE the server accepts traffic. `migrate deploy` is
+# idempotent (safe on restarts/scale) and never prompts or resets, unlike `migrate dev`.
+# If it fails the container fails to start — loud, rather than serving code against a
+# schema it does not match. Requires DIRECT_URL in Railway variables (prisma.config.ts
+# reads it) pointing at the direct 5432 port, NOT the pgbouncer 6543 pooler.
+startCommand = "npx prisma migrate deploy && npx next start -H 0.0.0.0 -p ${PORT:-3000}"
 healthcheckPath = "/api/health"
 restartPolicyType = "on_failure"
