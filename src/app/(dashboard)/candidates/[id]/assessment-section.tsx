@@ -4,6 +4,7 @@ import { useState } from "react";
 import { AlertTriangle, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { httpErrorMessage } from "@/lib/http-error-message";
 
 // Type-only import so the client bundle never pulls in the db-backed barrel file.
 import type { InterviewQuestion } from "@/lib/qualifier/types";
@@ -60,7 +61,7 @@ export function AssessmentSection({
       const res = await fetch(`/api/candidates/${candidateId}/assessment`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) {
-        toast.error(data.error ?? "ประเมินไม่สำเร็จ");
+        toast.error(httpErrorMessage(res.status, data.error));
         return;
       }
       setAssessment(data);
@@ -135,6 +136,24 @@ export function AssessmentSection({
             ))}
           </div>
 
+          {bullets(assessment.strengths).length > 0 && (
+            <div className="rounded border border-emerald-200 bg-emerald-50 p-3">
+              <p className="mb-1 text-xs font-semibold text-emerald-800">จุดแข็ง</p>
+              <ul className="list-inside list-disc text-xs text-emerald-700">
+                {bullets(assessment.strengths).map((s, i) => <li key={i}>{s}</li>)}
+              </ul>
+            </div>
+          )}
+
+          {bullets(assessment.concerns).length > 0 && (
+            <div className="rounded border border-amber-200 bg-amber-50 p-3">
+              <p className="mb-1 text-xs font-semibold text-amber-800">ข้อกังวล</p>
+              <ul className="list-inside list-disc text-xs text-amber-700">
+                {bullets(assessment.concerns).map((c, i) => <li key={i}>{c}</li>)}
+              </ul>
+            </div>
+          )}
+
           {bullets(assessment.redFlags).length > 0 && (
             <div className="rounded border border-red-200 bg-red-50 p-3">
               <p className="mb-1 flex items-center gap-1 text-xs font-semibold text-red-800">
@@ -158,7 +177,7 @@ export function AssessmentSection({
           <div className="border-t border-slate-100 pt-3">
             <p className="mb-1 text-xs font-semibold text-slate-500">AI อ่านอะไรไปบ้าง</p>
             <ul className="space-y-0.5 text-xs text-slate-500">
-              {assessment.sourcesUsed.map((s, i) => (
+              {(Array.isArray(assessment.sourcesUsed) ? assessment.sourcesUsed : []).map((s, i) => (
                 <li key={i}>
                   <span className={s.status === "read" ? "text-emerald-600" : "text-slate-400"}>
                     {s.status === "read" ? "✓" : "✗"}
