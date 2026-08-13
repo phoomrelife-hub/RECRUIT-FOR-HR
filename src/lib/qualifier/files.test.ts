@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { classifyBytes, countPdfPages, extractDriveFileId, toDownloadUrl } from "./files";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { classifyBytes, countPdfPages, extractDriveFileId, fetchCandidateFile, toDownloadUrl } from "./files";
 
 const bytes = (...n: number[]) => new Uint8Array(n);
 const ascii = (s: string) => new TextEncoder().encode(s);
@@ -87,5 +87,32 @@ describe("countPdfPages", () => {
 
   it("returns 0 when it cannot tell (caller must not reject on 0)", () => {
     expect(countPdfPages(ascii("%PDF-1.4 compressed-xref-stream"))).toBe(0);
+  });
+});
+
+describe("fetchCandidateFile", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("never throws — a body-read failure after a 200 response yields 'unavailable'", async () => {
+    // res.ok is true (download started fine) but the body stream breaks mid-read
+    // (connection reset, aborted stream, decompression failure, etc.)
+    const fakeResponse = {
+      ok: true,
+      status: 200,
+      arrayBuffer: () => Promise.reject(new Error("stream reset")),
+    } as unknown as Response;
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(fakeResponse));
+
+    const result = await fetchCandidateFile(
+      "Resume",
+      "https://drive.google.com/file/d/1AbC/preview",
+    );
+
+    expect(result.kind).toBe("unavailable");
+    if (result.kind === "unavailable") {
+      expect(result.reason).toBeTruthy();
+    }
   });
 });

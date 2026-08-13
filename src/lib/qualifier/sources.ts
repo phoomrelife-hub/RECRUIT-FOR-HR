@@ -6,7 +6,8 @@ import type { EvidenceBundle, FetchedFile, SourceRecord } from "./types";
 export const FILE_PROP_LABELS = ["Resume", "Portfolio"] as const;
 const LINK_PROP_LABELS = ["Portfolio Link"] as const;
 
-export function collectFileTargets(detail: NotionDetail): { label: string; url: string }[] {
+/** All Resume/Portfolio file URLs in the page, in label order, before the per-candidate cap. */
+function collectAllFileTargets(detail: NotionDetail): { label: string; url: string }[] {
   const targets: { label: string; url: string }[] = [];
   for (const label of FILE_PROP_LABELS) {
     const prop = detail.allProps.find((p) => p.name === label && p.type === "files");
@@ -14,7 +15,21 @@ export function collectFileTargets(detail: NotionDetail): { label: string; url: 
     const urls = Array.isArray(prop.value) ? (prop.value as string[]) : [];
     for (const url of urls) targets.push({ label, url });
   }
-  return targets.slice(0, MAX_FILES_PER_CANDIDATE);
+  return targets;
+}
+
+export function collectFileTargets(detail: NotionDetail): { label: string; url: string }[] {
+  return collectAllFileTargets(detail).slice(0, MAX_FILES_PER_CANDIDATE);
+}
+
+/**
+ * Targets that exist on the page but were pushed out by the shared 2-file cap
+ * (e.g. Resume alone fills both slots, so Portfolio never gets read). These are
+ * NOT "not attached" — buildSourceRecords must not conflate the two, or
+ * sourcesUsed lies to HR about why a property is missing.
+ */
+export function collectDroppedFileTargets(detail: NotionDetail): { label: string; url: string }[] {
+  return collectAllFileTargets(detail).slice(MAX_FILES_PER_CANDIDATE);
 }
 
 /** Text evidence only. File contents travel as document/image blocks, not as URLs. */
@@ -40,13 +55,21 @@ export function buildSourceRecords(
   targets: { label: string; url: string }[],
   files: FetchedFile[],
   detail: NotionDetail,
+  dropped: { label: string; url: string }[] = [],
 ): SourceRecord[] {
   const records: SourceRecord[] = [];
 
   for (const label of FILE_PROP_LABELS) {
     const target = targets.find((t) => t.label === label);
     if (!target) {
-      records.push({ label, status: "not_provided", detail: "ผู้สมัครไม่ได้แนบไฟล์" });
+      if (dropped.some((d) => d.label === label)) {
+        records.push({
+          label, status: "unavailable",
+          detail: `ผู้สมัครแนบไฟล์ไว้ แต่ไม่ได้อ่าน เพราะเกินจำนวนไฟล์สูงสุดที่อ่านได้ต่อผู้สมัคร (สูงสุด ${MAX_FILES_PER_CANDIDATE} ไฟล์)`,
+        });
+      } else {
+        records.push({ label, status: "not_provided", detail: "ผู้สมัครไม่ได้แนบไฟล์" });
+      }
       continue;
     }
     const file = files.find((f) => f.label === label);
@@ -105,7 +128,22 @@ export async function gatherEvidence(candidate: CandidateForEvidence): Promise<E
 
   const detail = await getNotionDetail(candidate.notionPageId);
   const targets = collectFileTargets(detail);
-  const files = await Promise.all(targets.map((t) => fetchCandidateFile(t.label, t.url)));
+  const dropped = collectDroppedFileTargets(detail);
+  // fetchCandidateFile documents "never throws," but gatherEvidence does not rely on a
+  // callee's discipline for that guarantee — a per-file catch here makes it structural,
+  // so one flaky download can never fail the whole Promise.all / assessment.
+  const files = await Promise.all(
+    targets.map((t) =>
+      fetchCandidateFile(t.label, t.url).catch(
+        (err): FetchedFile => ({
+          label: t.label,
+          sourceUrl: t.url,
+          kind: "unavailable",
+          reason: `ดาวน์โหลดไฟล์ไม่สำเร็จ (${err instanceof Error ? err.message : "unknown error"})`,
+        }),
+      ),
+    ),
+  );
 
   const textContext = buildTextContext(
     detail,
@@ -117,7 +155,7 @@ export async function gatherEvidence(candidate: CandidateForEvidence): Promise<E
     jobPositionId: candidate.interestedPositionId,
     textContext,
     files,
-    sources: buildSourceRecords(targets, files, detail),
+    sources: buildSourceRecords(targets, files, detail, dropped),
     inputHash: computeInputHash(textContext, files),
   };
 }

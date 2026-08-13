@@ -72,17 +72,16 @@ export async function fetchCandidateFile(label: string, url: string): Promise<Fe
     return unavailable(label, url, "ไม่ใช่ไฟล์บน Google Drive (เป็นลิงก์ภายนอก) — AI อ่านไม่ได้");
   }
 
-  let res: Response;
+  let buf: Uint8Array;
   try {
-    res = await fetch(downloadUrl, { redirect: "follow" });
+    const res = await fetch(downloadUrl, { redirect: "follow" });
+    if (!res.ok) {
+      return unavailable(label, url, `ดาวน์โหลดไฟล์ไม่สำเร็จ (HTTP ${res.status})`);
+    }
+    buf = new Uint8Array(await res.arrayBuffer());
   } catch {
     return unavailable(label, url, "ดาวน์โหลดไฟล์ไม่สำเร็จ (network error)");
   }
-  if (!res.ok) {
-    return unavailable(label, url, `ดาวน์โหลดไฟล์ไม่สำเร็จ (HTTP ${res.status})`);
-  }
-
-  const buf = new Uint8Array(await res.arrayBuffer());
   if (buf.byteLength > MAX_FILE_BYTES) {
     return unavailable(label, url, `ไฟล์ใหญ่เกิน ${MAX_FILE_BYTES / 1024 / 1024} MB`);
   }

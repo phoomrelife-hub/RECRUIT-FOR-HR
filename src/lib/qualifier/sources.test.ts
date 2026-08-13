@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildSourceRecords, buildTextContext, collectFileTargets, computeInputHash,
+  buildSourceRecords, buildTextContext, collectDroppedFileTargets, collectFileTargets,
+  computeInputHash,
 } from "./sources";
 import type { NotionDetail } from "@/lib/notion-detail";
 import type { FetchedFile } from "./types";
@@ -44,6 +45,25 @@ describe("collectFileTargets", () => {
     const many = ["A", "B", "C"].map((id) => `https://drive.google.com/file/d/${id}/preview`);
     const d = detail({ allProps: [{ name: "Resume", type: "files", value: many }] });
     expect(collectFileTargets(d).length).toBe(2);
+  });
+
+  it("drops Portfolio entirely when Resume alone fills the cap — collectDroppedFileTargets reports it", () => {
+    const d = detail({
+      allProps: [
+        { name: "Resume", type: "files", value: [
+          "https://drive.google.com/file/d/A/preview",
+          "https://drive.google.com/file/d/B/preview",
+        ] },
+        { name: "Portfolio", type: "files", value: ["https://drive.google.com/file/d/C/preview"] },
+      ],
+    });
+    expect(collectFileTargets(d)).toEqual([
+      { label: "Resume", url: "https://drive.google.com/file/d/A/preview" },
+      { label: "Resume", url: "https://drive.google.com/file/d/B/preview" },
+    ]);
+    expect(collectDroppedFileTargets(d)).toEqual([
+      { label: "Portfolio", url: "https://drive.google.com/file/d/C/preview" },
+    ]);
   });
 });
 
@@ -95,6 +115,28 @@ describe("buildSourceRecords", () => {
     const recs = buildSourceRecords([], [], d);
     const rec = recs.find((r) => r.label === "Portfolio Link");
     expect(rec?.status).toBe("not_provided");
+  });
+
+  it("marks a file dropped by the 2-file cap as unavailable, NOT not_provided (it WAS attached)", () => {
+    const d = detail({
+      allProps: [
+        { name: "Resume", type: "files", value: [
+          "https://drive.google.com/file/d/A/preview",
+          "https://drive.google.com/file/d/B/preview",
+        ] },
+        { name: "Portfolio", type: "files", value: ["https://drive.google.com/file/d/C/preview"] },
+      ],
+    });
+    const targets = collectFileTargets(d);
+    const dropped = collectDroppedFileTargets(d);
+    const files: FetchedFile[] = [
+      { label: "Resume", sourceUrl: "https://drive.google.com/file/d/A/preview", kind: "pdf" },
+      { label: "Resume", sourceUrl: "https://drive.google.com/file/d/B/preview", kind: "pdf" },
+    ];
+    const recs = buildSourceRecords(targets, files, d, dropped);
+    const portfolio = recs.find((r) => r.label === "Portfolio");
+    expect(portfolio?.status).toBe("unavailable");
+    expect(portfolio?.detail).not.toContain("ไม่ได้แนบไฟล์"); // must not claim it wasn't attached
   });
 
   it("always records the deep Q&A count", () => {
