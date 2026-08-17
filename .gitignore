@@ -45,3 +45,9 @@ next-env.d.ts
 .vercel
 .env*.local
 docs/
+
+# --- housekeeping 2026-08-17: local scratch, never commit ---
+/_wsbackup/
+/_wsedit/
+/image*.png
+/appscript.script
