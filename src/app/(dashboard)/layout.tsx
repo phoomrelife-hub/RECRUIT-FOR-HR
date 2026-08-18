@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
+import { FbBlockBanner } from "@/components/layout/fb-block-banner";
 import { UserRole } from "@prisma/client";
 
 export default async function DashboardLayout({
@@ -18,6 +19,7 @@ export default async function DashboardLayout({
         userEmail={session.user.email ?? ""}
         userRole={session.user.role as UserRole}
       >
+        <FbBlockBanner />
         {children}
       </DashboardShell>
     </div>
