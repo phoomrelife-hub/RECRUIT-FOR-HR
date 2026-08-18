@@ -6,7 +6,7 @@ import tsconfigPaths from "vite-tsconfig-paths";
 export default defineConfig({
   plugins: [tsconfigPaths()],
   test: {
-    include: ["src/**/*.smoke.ts"],
+    include: ["src/**/*.smoke.ts", "src/**/*.audit.ts"],
     testTimeout: 120_000,
     pool: "forks",
   },
