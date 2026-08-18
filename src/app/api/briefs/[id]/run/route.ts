@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { AiNotConfiguredError, resolveAiConfig } from "@/lib/brief/ai";
 import { scoreForBrief } from "@/lib/brief/run";
+import { notifyPending } from "@/lib/brief/notify";
 import type { CandidateStatus } from "@prisma/client";
 
 // POST /api/briefs/[id]/run
@@ -102,6 +103,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
   }
 
+  // Push the strong finds out now rather than waiting for the 09:00 digest —
+  // that is the whole point of the instant tier. Everything below the
+  // threshold is left for the daily roll-up so HR is not pinged 54 times.
+  // A Lark failure here must not fail the run: the scores are already saved,
+  // and the digest cron retries anything still unnotified.
+  let notified = 0;
+  try {
+    const summary = await notifyPending(true);
+    notified = summary.instantSent;
+  } catch {
+    notified = 0;
+  }
+
   return NextResponse.json({
     dryRun: false,
     processed: candidates.length,
@@ -111,6 +125,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     failed,
     remaining: Math.max(0, total - candidates.length),
     starBreakdown: stars,
+    notified,
     costUsd: Number(spend.toFixed(4)),
   });
 }
