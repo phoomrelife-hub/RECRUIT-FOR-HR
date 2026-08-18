@@ -652,6 +652,102 @@ src/components/ui/markdown-message.tsx — react-markdown + remark-gfm renderer
 2. **Clickable candidate cards** — matches appear as Thai text with names; no `/candidates/[id]` links yet. Follow-up: `[[candidate:id|name]]` markers + link rendering.
 3. **Notion deep Q&A** in `get_candidate` returns `null` unless notion-detail lib is importable; DB fields unaffected.
 
+## Brief-Driven Candidate Matching (Phase 17)
+
+**Purpose**: HR writes one free-text Thai brief per open position; the system reads every
+candidate's chat transcript, filters on hard requirements, ranks the survivors 1-5 stars, and
+pushes the strong ones to Lark.
+
+### The design rule that everything else follows
+The brief is split into **two halves handled by different machinery**:
+
+| half | goes to | why |
+|---|---|---|
+| age, salary, work preference, years, sales volume | **SQL columns** (`hiring_briefs.min_age` etc.) | checkable facts; free; deterministic |
+| everything else ("ดูตั้งใจจริง", "เคยขายสินค้าสุขภาพ") | **the model**, as weighted criteria | needs judgement |
+
+Putting a hard filter in the prompt is the bug this design exists to prevent: in the ERP build
+the model was asked to check อายุ against evidence that structurally excludes age, could not,
+and marked every candidate down for "ยังขาดข้อมูลสำคัญเรื่องอายุ". `src/lib/brief/redact.ts`
+strips protected attributes from anything the model reads; the filters do the actual checking.
+
+### Extraction is the load-bearing half
+`Candidate` already had columns for all of this, but on 5,959 rows `age` was filled on 19 and
+`max_sales_amount` on **0** — หลิน asks in chat and the answers only ever existed as prose.
+`src/lib/brief/extract.ts` reads the transcript and fills those columns, which also feeds the
+existing `/assistant` search tools.
+
+### Three rules that must not be "simplified"
+1. **null ≠ 0.** Missing evidence is excluded from the average (`qualifier/scoring.ts`), never
+   counted as a zero. A short chat must not rank below a long chat full of red flags.
+2. **Unknown ≠ rejection.** `applyHardFilters` rejects only on a positive contradiction. With
+   99.7% of columns empty, "unknown fails" would reject the whole database on day one.
+3. **Stars are derived in code**, never asserted by the model (`stars.ts`) — otherwise a model
+   could claim 5 stars and route around the low-coverage cap.
+
+### Cost model
+Realtime-per-candidate is the CHEAP path (~฿0.03/candidate, each scored once ever). A full
+re-sweep is the expensive one. Caching: score on `(candidateId, briefHash)`, extraction on
+message count. `briefHash` covers only filters+criteria, so renaming a brief does not
+invalidate thousands of scores.
+
+### Routes
+```
+/briefs                          — brief editor per open position
+/briefs/[id]                     — ranked matches, ≥3★/≥4★/≥5★ filter
+GET/POST /api/briefs             — list positions+briefs / write a brief (AI parses it)
+GET/PATCH/DELETE /api/briefs/[id] — read / HR corrects the parse / delete
+POST /api/briefs/[id]/run        — score candidates; dryRun defaults TRUE (spending is opt-in)
+GET  /api/briefs/[id]/matches    — ranked list (?minStars=&includeFiltered=)
+GET  /api/cron/brief-digest      — daily roll-up (Bearer CRON_SECRET), 02:00 UTC = 09:00 BKK
+```
+
+### Models
+`HiringBrief` (1 per JobPosition) · `CandidateBriefScore` (unique candidate+brief) ·
+`CandidateExtraction` (provenance only — values live on `Candidate`)
+
+### Model — gemini-3.7-flash (verified live 2026-08-18)
+Confirmed present on the account via ListModels, and the whole pipeline was smoke-tested
+end-to-end against it (`src/lib/brief/live.smoke.ts`, `npx vitest run --config
+vitest.smoke.config.ts`). Two things that only showed up against the real API:
+
+1. **It is a THINKING model.** Reasoning tokens are billed as output and consume `max_tokens`
+   before any answer is written, so a complete response comes back labelled
+   `finish_reason: "length"`. `callJson` therefore PARSES FIRST and only consults
+   `finish_reason` to explain a parse that actually failed. It also sends
+   `reasoning_effort: "low"` — measured 7 completion tokens for a field the default spent
+   hundreds on.
+2. **503 "high demand" is routine.** Hit within the first ten calls. `callJson` retries
+   429/500/502/503/504 up to 3 times (1s, 3s); without it a 500-candidate run would silently
+   record those people as permanent failures.
+
+⚠️ `PRICING["gemini-3.7-flash"]` in `src/lib/brief/cost.ts` is a PLACEHOLDER at 2.5-flash rates
+— replace with the real figure before trusting the cost column.
+
+### Provider
+Uses `src/lib/brief/ai.ts`, NOT `askAI()` from `lib/kimi.ts` — that helper hardcodes
+`temperature: 0.7` (scores would jitter between runs, defeating the cache) and
+`max_tokens: 500` (truncates a multi-criterion judgement into invalid JSON).
+Provider/model/key resolve from Setting keys `ai.provider` / `ai.model` / `<provider>.api_key`,
+then env. Every provider in `ENDPOINTS` speaks the OpenAI chat/completions shape, Gemini
+included via its compatibility layer.
+
+### Env
+```
+LARK_RECRUIT_WEBHOOK=https://open.larksuite.com/open-apis/bot/v2/hook/...
+LARK_RECRUIT_SECRET=...            ← optional; Lark signs HMAC over the TIMESTAMP, not the body
+GEMINI_API_KEY=AQ.A...             ← already set in recruit/.env and WORKING (53 chars).
+                                      Both "AQ.A..." and "AIza..." formats are accepted by the
+                                      Generative Language API — a 401 means the key is dead,
+                                      NOT that the format is wrong. The key in erp/.env.local
+                                      is a different, expired one; do not copy it here.
+```
+
+### Overlap to be aware of
+The existing **auto-qualify** system (`autoqual.*` Setting keys) already filters on salary and
+max-sales globally. Briefs do the same per-position and richer. They are independent today —
+decide deliberately before making one drive the other.
+
 ## Known Issues / TODO
 - [x] ~~**DELETE** `/api/admin/notion-test`~~ — ลบแล้ว (2026-05-10); NOTION_TOKEN อัปเดตใน Vercel แล้ว ทำงานปกติ
 - [x] ~~**Notion 502 in production**~~ — แก้แล้ว: อัปเดต NOTION_TOKEN ใน Vercel (2026-05-10)

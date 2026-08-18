@@ -46,6 +46,7 @@ model User {
   sentMessages        Message[]
   interviewSlots      InterviewSlot[]
   assistantSessions   AssistantSession[]
+  hiringBriefs        HiringBrief[]
 
   @@map("users")
 }
@@ -126,6 +127,7 @@ model JobPosition {
   candidates     Candidate[]
   screeningForms ScreeningForm[]
   interviews     Interview[]
+  hiringBrief    HiringBrief?
 
   @@map("job_positions")
 }
@@ -213,6 +215,8 @@ model Candidate {
   candidateScore     CandidateScore?
   aiSummary          AiSummary?
   assessment         CandidateAssessment?
+  briefScores            CandidateBriefScore[]
+  extraction             CandidateExtraction?
   interviews             Interview[]
   hiringDecision         HiringDecision?
   scheduleToken          String?       @unique @map("schedule_token")
@@ -1042,4 +1046,148 @@ model AssistantMessage {
   session AssistantSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@map("assistant_messages")
+}
+
+// ---------------------------------------------------------------------------
+// Brief-driven candidate matching
+//
+// HR writes one free-text brief per open position ("Sales Admin inhouse,
+// ประสบการณ์ 2 ปีขึ้นไป, เงินเดือนไม่เกิน 20k"). The AI splits it into two
+// halves that are deliberately handled by different machinery:
+//
+//   * Hard filters (age, salary, work preference, years, sales volume) become
+//     columns and are applied in SQL. They are free, deterministic, and cannot
+//     be argued with by a model. A candidate who fails one never reaches the
+//     scorer at all.
+//   * Everything else ("ดูตั้งใจจริง", "เคยขายสินค้าสุขภาพ") becomes weighted
+//     criteria the model judges against what the candidate actually wrote.
+//
+// Putting a hard filter in the prompt instead of a column is the bug that bit
+// the ERP build: the model was asked to check อายุ against evidence that
+// structurally excludes age, could not, and marked everyone down for it.
+// ---------------------------------------------------------------------------
+
+model HiringBrief {
+  id            String @id @default(cuid())
+  // One active brief per position — HR's "what I want right now" for this role.
+  jobPositionId String @unique @map("job_position_id")
+
+  rawBrief String @map("raw_brief")
+
+  // --- hard filters: parsed from rawBrief, then editable by HR ---
+  // All nullable: absent means "no constraint", NOT "must be missing".
+  minAge             Int?            @map("min_age")
+  maxAge             Int?            @map("max_age")
+  minSalary          Int?            @map("min_salary")
+  maxSalary          Int?            @map("max_salary")
+  workPreference     WorkPreference? @map("work_preference")
+  minExperienceYears Int?            @map("min_experience_years")
+  minSalesAmount     Int?            @map("min_sales_amount")
+  // Minimum office-proximity tier (see lib/brief/proximity.ts). Null = no
+  // constraint. Stored as text so adding a tier needs no enum migration.
+  minProximity       String?         @map("min_proximity")
+
+  // --- soft criteria: [{ name, weight, description }] judged by the model ---
+  criteria Json @default("[]")
+
+  // Cache key. A score whose briefHash differs from its brief's is stale and
+  // gets recomputed; matching hashes cost nothing to re-run.
+  briefHash String @map("brief_hash")
+
+  isActive Boolean @default(true) @map("is_active")
+  // Stars at or above this notify HR immediately; the rest ride the daily digest.
+  notifyStars Int @default(5) @map("notify_stars")
+
+  createdById String?  @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  jobPosition JobPosition           @relation(fields: [jobPositionId], references: [id], onDelete: Cascade)
+  createdBy   User?                 @relation(fields: [createdById], references: [id])
+  scores      CandidateBriefScore[]
+
+  @@map("hiring_briefs")
+}
+
+model CandidateBriefScore {
+  id          String @id @default(cuid())
+  candidateId String @map("candidate_id")
+  briefId     String @map("brief_id")
+
+  // 1-5. Derived in code from overallScore + coveragePct, never asserted by the
+  // model — otherwise a model could route around the low-coverage cap by simply
+  // claiming 5.
+  stars        Int
+  overallScore Int @default(0) @map("overall_score")
+  coveragePct  Int @default(0) @map("coverage_pct")
+
+  // [{ name, score: number|null, reasoning }] — null means "no evidence",
+  // which is NOT the same as a zero and must never be averaged as one.
+  criteria Json   @default("[]")
+  why      String @default("")
+
+  // True when a hard filter rejected the candidate. No model call was made, so
+  // criteria/why are empty and stars is 0 — distinct from "scored and bad".
+  filteredOut  Boolean @default(false) @map("filtered_out")
+  filterReason String? @map("filter_reason")
+
+  // Denormalised so the ranked list can sort and display without re-reading
+  // every address. Recomputed on each scoring run.
+  proximityTier String? @map("proximity_tier")
+
+  briefHash String  @map("brief_hash")
+  model     String  @default("")
+  costUsd   Decimal @default(0) @db.Decimal(10, 6) @map("cost_usd")
+
+  notifiedAt DateTime? @map("notified_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  candidate Candidate   @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  brief     HiringBrief @relation(fields: [briefId], references: [id], onDelete: Cascade)
+
+  @@unique([candidateId, briefId])
+  // The review queue: "unnotified 4★+ for this brief, best first".
+  @@index([briefId, stars, notifiedAt])
+  @@map("candidate_brief_scores")
+}
+
+// Provenance for the extraction pass. The extracted VALUES live on Candidate
+// (age, workPreference, expectedSalary, maxSalesAmount) so that the existing
+// search + assistant tooling benefits from them too; this table records where
+// they came from and how much was read to get them.
+model CandidateExtraction {
+  id          String @id @default(cuid())
+  candidateId String @unique @map("candidate_id")
+
+  // Candidate has no numeric years column, so it lives here.
+  experienceYears Int? @map("experience_years")
+
+  // Which fields the transcript actually supported. A field absent here was not
+  // findable — as opposed to found and empty.
+  foundFields String[] @default([]) @map("found_fields")
+
+  // Messages read. If the conversation later grows past this, re-extract.
+  messageCount Int    @default(0) @map("message_count")
+  model        String @default("")
+
+  // When the Notion form was last read. Separate from extractedAt because the
+  // two sources move independently: a page can be edited without the chat
+  // growing, and vice versa.
+  notionSyncedAt DateTime? @map("notion_synced_at")
+
+  // The rendered form Q&A, stored rather than re-fetched.
+  //
+  // This is the evidence the scorer actually judges, so it must survive past
+  // the first sync: without it a re-score (after any brief edit) silently runs
+  // on the chat transcript alone — the exact starvation that produced a run
+  // where every criterion came back null.
+  notionEvidence String? @map("notion_evidence")
+
+  extractedAt DateTime @default(now()) @map("extracted_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@map("candidate_extractions")
 }
