@@ -706,6 +706,24 @@ GET  /api/cron/brief-digest      — daily roll-up (Bearer CRON_SECRET), 02:00 U
 `HiringBrief` (1 per JobPosition) · `CandidateBriefScore` (unique candidate+brief) ·
 `CandidateExtraction` (provenance only — values live on `Candidate`)
 
+### Model — gemini-3.7-flash (verified live 2026-08-18)
+Confirmed present on the account via ListModels, and the whole pipeline was smoke-tested
+end-to-end against it (`src/lib/brief/live.smoke.ts`, `npx vitest run --config
+vitest.smoke.config.ts`). Two things that only showed up against the real API:
+
+1. **It is a THINKING model.** Reasoning tokens are billed as output and consume `max_tokens`
+   before any answer is written, so a complete response comes back labelled
+   `finish_reason: "length"`. `callJson` therefore PARSES FIRST and only consults
+   `finish_reason` to explain a parse that actually failed. It also sends
+   `reasoning_effort: "low"` — measured 7 completion tokens for a field the default spent
+   hundreds on.
+2. **503 "high demand" is routine.** Hit within the first ten calls. `callJson` retries
+   429/500/502/503/504 up to 3 times (1s, 3s); without it a 500-candidate run would silently
+   record those people as permanent failures.
+
+⚠️ `PRICING["gemini-3.7-flash"]` in `src/lib/brief/cost.ts` is a PLACEHOLDER at 2.5-flash rates
+— replace with the real figure before trusting the cost column.
+
 ### Provider
 Uses `src/lib/brief/ai.ts`, NOT `askAI()` from `lib/kimi.ts` — that helper hardcodes
 `temperature: 0.7` (scores would jitter between runs, defeating the cache) and
@@ -718,8 +736,11 @@ included via its compatibility layer.
 ```
 LARK_RECRUIT_WEBHOOK=https://open.larksuite.com/open-apis/bot/v2/hook/...
 LARK_RECRUIT_SECRET=...            ← optional; Lark signs HMAC over the TIMESTAMP, not the body
-GEMINI_API_KEY=AIza...             ← AI Studio key (~39 chars). An "AQ.Ab8..." value is a
-                                      short-lived OAuth token and will 401.
+GEMINI_API_KEY=AQ.A...             ← already set in recruit/.env and WORKING (53 chars).
+                                      Both "AQ.A..." and "AIza..." formats are accepted by the
+                                      Generative Language API — a 401 means the key is dead,
+                                      NOT that the format is wrong. The key in erp/.env.local
+                                      is a different, expired one; do not copy it here.
 ```
 
 ### Overlap to be aware of

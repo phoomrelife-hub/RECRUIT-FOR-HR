@@ -11,6 +11,10 @@ export const PRICING_UPDATED = "2026-08-18";
 export type Rate = { input: number; output: number };
 
 export const PRICING: Record<string, Rate> = {
+  // ⚠️ UNVERIFIED — placeholder at gemini-2.5-flash rates. This is the model the
+  // pipeline actually runs on, so replace it with the real figure from Google's
+  // pricing page; until then the cost column is indicative only.
+  "gemini-3.7-flash": { input: 0.3, output: 2.5 },
   "gemini-2.0-flash": { input: 0.1, output: 0.4 },
   "gemini-2.5-flash": { input: 0.3, output: 2.5 },
   "gpt-4o-mini": { input: 0.15, output: 0.6 },
