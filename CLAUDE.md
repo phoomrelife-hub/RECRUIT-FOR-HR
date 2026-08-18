@@ -471,12 +471,17 @@ FB → Meta → Railway /api/webhooks/facebook (ingest: candidate + name + user 
 
 **SOUL.md key rules**:
 - กฎ 4: OCR รูปก่อนตอบ
-- กฎ 5: Sales Admin เวลางาน 06:00-22:00 ทุกวัน
+- กฎ 5: Sales Admin เข้าออฟฟิศ จ–ส 08:30–17:30 (ตอบแชทครอบคลุม 06:00–22:00)
 - กฎ 6: ที่อยู่บริษัท locked = **76/4 อาคารแพลตินัมเพลส ซอยรามคำแหง 178 เขตมีนบุรี กทม. 10510**
-- กฎ 7: WFH เฉพาะ Sales Admin
+- กฎ 8: **ทุกตำแหน่งเข้าออฟฟิศมีนบุรี — ไม่มีตำแหน่ง WFH แล้ว** (เปลี่ยน 22 มิ.ย. 2569)
+- กฎ #0: ก่อนตอบทุกครั้งเรียก `session_manager.py` — และ **ห้ามเล่าขั้นตอนนั้นให้ผู้สมัครฟัง**
+
+> ⚠️ `boot.md` เคยเป็นสำเนาเก่าของทั้ง 4 ไฟล์นี้ที่ถูกโหลดเข้า context พร้อมกัน
+> ทำให้กฎทุกข้อมีสองชุดที่ขัดกัน (กฎ 8 เลขเดียวกัน เนื้อหาตรงข้าม) ถูกย้ายออกเป็น
+> `boot.md.ARCHIVED-20260818` แล้ว — **อย่าสร้าง boot.md ขึ้นมาใหม่**
 
 **ngrok** (PRIMARY tunnel): installed at `/usr/local/bin/ngrok` (v3.39.1)
-- authtoken saved to `/home/graph/.config/ngrok/ngrok.yml`
+- authtoken saved to `/root/.config/ngrok/ngrok.yml` (service รันเป็น root)
 - **Static domain**: `doorway-armless-roamer.ngrok-free.dev` (ไม่เปลี่ยนตลอดไป)
 - **LINE webhook**: ตั้งไว้ที่ `https://doorway-armless-roamer.ngrok-free.dev/line/webhook` (permanent — ไม่ต้อง set ใหม่)
 - รัน: `ngrok http 18788 --log=stdout` (ไม่ต้องใส่ `--domain` flag — ดึง static domain จาก account อัตโนมัติ)
@@ -495,7 +500,7 @@ FB → Meta → Railway /api/webhooks/facebook (ingest: candidate + name + user 
 ```bash
 # SSH เข้า VPS ก่อน
 ssh hermes-vps
-cd /root/.openclaw/workspace-hr/scripts && bash start-tunnel.sh
+cd /home/admin/.openclaw/workspace-hr/scripts && bash start-tunnel.sh
 ```
 
 **Tunnel troubleshooting**:
