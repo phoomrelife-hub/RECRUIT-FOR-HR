@@ -4,6 +4,8 @@ import { NextResponse } from "next/server";
 import { briefHash } from "@/lib/brief/hash";
 import { briefCriteria, briefFilters } from "@/lib/brief/run";
 import { redactCriteria } from "@/lib/brief/redact";
+import { withFallbackCriteria } from "@/lib/brief/parse";
+import { TIER_ORDER, type ProximityTier } from "@/lib/brief/proximity";
 import type { BriefCriterion, HardFilters } from "@/lib/brief/types";
 import type { Prisma, WorkPreference } from "@prisma/client";
 
@@ -75,6 +77,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     [filters.minSalary, filters.maxSalary] = [filters.maxSalary, filters.minSalary];
   }
 
+  let minProximity = existing.minProximity;
+  if ("minProximity" in body) {
+    const v = typeof body.minProximity === "string" ? body.minProximity : "";
+    minProximity = (TIER_ORDER as string[]).includes(v) ? (v as ProximityTier) : null;
+  }
+
   let criteria: BriefCriterion[] = briefCriteria(existing);
   if (Array.isArray(body.criteria)) {
     criteria = redactCriteria(
@@ -87,6 +95,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         }))
         .filter((c: BriefCriterion) => c.name.length > 0),
     );
+    // Same floor the parser applies: fewer than three criteria makes coverage
+    // all-or-nothing and flattens the ranking, however carefully HR edited.
+    criteria = withFallbackCriteria(criteria);
   }
 
   const notifyStars =
@@ -94,12 +105,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       ? Math.max(1, Math.min(5, asNullableInt(body.notifyStars) ?? existing.notifyStars))
       : existing.notifyStars;
 
-  const hash = briefHash({ filters, criteria });
+  const hash = briefHash({ filters, criteria }, minProximity);
 
   const brief = await db.hiringBrief.update({
     where: { id },
     data: {
       ...filters,
+      minProximity,
       criteria: criteria as unknown as Prisma.InputJsonValue,
       notifyStars,
       briefHash: hash,

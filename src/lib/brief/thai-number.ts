@@ -66,11 +66,24 @@ export function parseExperienceYears(text: string | null | undefined): number | 
   const s = text.trim();
   if (!s) return null;
 
-  if (/(ไม่มีประสบการณ์|ไม่เคยทำงาน|เพิ่งจบ|ยังไม่มีประสบการณ์|no experience)/i.test(s)) {
+  // "ไม่เคย" on its own is the most common way people answer this — a real
+  // zero, not a missing answer, and it must not be confused with silence.
+  if (
+    /(ไม่มีประสบการณ์|ไม่เคยทำงาน|ไม่เคย|เพิ่งจบ|ยังไม่มีประสบการณ์|no experience)/i.test(s)
+  ) {
     return 0;
   }
 
+  // Ranges first: "1-2ปี" means at least one year, and taking the high end
+  // would let someone past a ">= 2 ปี" filter they do not clear.
+  const range = s.match(/(\d+(?:\.\d+)?)\s*[-–—]\s*(\d+(?:\.\d+)?)\s*ปี/);
+  if (range) {
+    const low = Number(range[1]);
+    if (Number.isFinite(low) && low >= 0 && low <= 60) return Math.round(low);
+  }
+
   // "2 ปีครึ่ง" -> 2.5 -> rounds to 3; good enough for a >= filter.
+  // \s* throughout because people write "3ปี" with no space at all.
   const yearMatch = s.match(/(\d+(?:\.\d+)?)\s*(?:\+)?\s*ปี(ครึ่ง)?/);
   if (yearMatch) {
     const n = Number(yearMatch[1]) + (yearMatch[2] ? 0.5 : 0);

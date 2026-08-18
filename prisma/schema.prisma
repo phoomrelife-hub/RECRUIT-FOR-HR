@@ -1083,6 +1083,9 @@ model HiringBrief {
   workPreference     WorkPreference? @map("work_preference")
   minExperienceYears Int?            @map("min_experience_years")
   minSalesAmount     Int?            @map("min_sales_amount")
+  // Minimum office-proximity tier (see lib/brief/proximity.ts). Null = no
+  // constraint. Stored as text so adding a tier needs no enum migration.
+  minProximity       String?         @map("min_proximity")
 
   // --- soft criteria: [{ name, weight, description }] judged by the model ---
   criteria Json @default("[]")
@@ -1128,6 +1131,10 @@ model CandidateBriefScore {
   filteredOut  Boolean @default(false) @map("filtered_out")
   filterReason String? @map("filter_reason")
 
+  // Denormalised so the ranked list can sort and display without re-reading
+  // every address. Recomputed on each scoring run.
+  proximityTier String? @map("proximity_tier")
+
   briefHash String  @map("brief_hash")
   model     String  @default("")
   costUsd   Decimal @default(0) @db.Decimal(10, 6) @map("cost_usd")
@@ -1163,6 +1170,19 @@ model CandidateExtraction {
   // Messages read. If the conversation later grows past this, re-extract.
   messageCount Int    @default(0) @map("message_count")
   model        String @default("")
+
+  // When the Notion form was last read. Separate from extractedAt because the
+  // two sources move independently: a page can be edited without the chat
+  // growing, and vice versa.
+  notionSyncedAt DateTime? @map("notion_synced_at")
+
+  // The rendered form Q&A, stored rather than re-fetched.
+  //
+  // This is the evidence the scorer actually judges, so it must survive past
+  // the first sync: without it a re-score (after any brief edit) silently runs
+  // on the chat transcript alone — the exact starvation that produced a run
+  // where every criterion came back null.
+  notionEvidence String? @map("notion_evidence")
 
   extractedAt DateTime @default(now()) @map("extracted_at")
   updatedAt   DateTime @updatedAt @map("updated_at")

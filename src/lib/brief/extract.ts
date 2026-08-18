@@ -4,16 +4,21 @@ import { scrubContacts } from "./scrub";
 import { EMPTY_FACTS, type ExtractedFacts, type FactKey } from "./types";
 
 /**
- * Read a candidate's conversation and pull out the facts HR filters on.
+ * Read a candidate's conversation for the things the FORM cannot tell us.
  *
- * This is the load-bearing half of the feature. `Candidate` already has
- * columns for all of this, but on a 5,959-row database `age` is filled on 19
- * rows and `max_sales_amount` on none: หลิน asks the questions in chat and the
- * answers were only ever stored as prose. Everything downstream — filtering,
- * ranking, the existing candidate-search assistant — is starved until these
- * columns are populated.
+ * Scope deliberately narrowed. Notion is the source of truth for age, address,
+ * experience, expected salary and ยอดขายสูงสุด — see notion-sync.ts. Asking the
+ * model to re-derive those from chat was both wasteful and worse: the form has
+ * a considered written answer, the chat has "ประมาณนี้ค่ะ".
+ *
+ * What survives here is what the form genuinely does not ask, above all whether
+ * someone will actually come into the office. That only ever surfaces in
+ * conversation — "ไม่สะดวกทำ WFH ค่ะ" — and it is the single most decisive
+ * filter now that every position is onsite in Min Buri.
+ *
+ * The other fields remain as a FALLBACK for the 4,880 candidates who have no
+ * Notion page at all; run.ts only asks for the ones Notion left empty.
  */
-
 export interface TranscriptMessage {
   senderType: "CANDIDATE" | "BOT" | "HR" | "SYSTEM";
   content: string;
@@ -44,15 +49,17 @@ export function buildTranscript(messages: TranscriptMessage[]): string {
 const SYSTEM_PROMPT = `คุณคือผู้ช่วยฝ่ายบุคคล อ่านบทสนทนาระหว่างผู้สมัครกับบอทรับสมัครงาน
 แล้วดึง "ข้อเท็จจริง" ออกมา ตอบกลับเป็น JSON object เท่านั้น
 
-ฟิลด์ที่ต้องดึง:
-- age: อายุ (ตัวเลข ปี)
+ฟิลด์ที่สำคัญที่สุดคือ workPreference — ข้อมูลนี้มีอยู่ในแชทเท่านั้น ไม่มีในใบสมัคร:
 - workPreference: "ONSITE" ถ้าผู้สมัครรับงานเข้าออฟฟิศ/inhouse ได้,
-                  "WFH" ถ้าต้องการทำงานที่บ้านเท่านั้น,
+                  "WFH" ถ้าต้องการทำงานที่บ้านเท่านั้น (เช่น "ไม่สะดวกทำ WFH ค่ะ" = WFH),
                   "HYBRID" ถ้ารับได้ทั้งสองแบบ
+
+ฟิลด์ที่เหลือ ให้ดึงเฉพาะเมื่อผู้สมัครพูดถึงจริง ๆ (ปกติข้อมูลพวกนี้อยู่ในใบสมัครแล้ว):
+- age: อายุ (ปี)
 - expectedSalary: เงินเดือนที่ผู้สมัคร "ขอ" (บาท/เดือน เป็นตัวเลขล้วน)
-- experienceYears: จำนวนปีประสบการณ์ทำงานที่เกี่ยวข้อง
+- experienceYears: จำนวนปีประสบการณ์ที่เกี่ยวข้อง
 - maxSalesAmount: ยอดขายสูงสุดต่อเดือนที่เคยทำได้ (บาท)
-- experienceText: สรุปประสบการณ์ทำงานสั้น ๆ 1-2 ประโยค จากคำพูดของผู้สมัครเอง
+- experienceText: สรุปประสบการณ์สั้น ๆ 1-2 ประโยค จากคำพูดของผู้สมัครเอง
 
 กฎเหล็ก:
 - ถ้าบทสนทนาไม่ได้บอกเรื่องไหน ให้ใส่ null ห้ามเดา ห้ามใส่ 0 แทน null

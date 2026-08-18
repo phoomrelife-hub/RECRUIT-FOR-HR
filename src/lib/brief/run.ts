@@ -6,7 +6,9 @@ import { extractFacts, foundFields, type TranscriptMessage } from "./extract";
 import { applyHardFilters } from "./filter";
 import { scoreCandidate } from "./score";
 import { toStars } from "./stars";
-import { EMPTY_FACTS, type BriefCriterion, type ExtractedFacts, type HardFilters } from "./types";
+import type { BriefCriterion, ExtractedFacts, HardFilters } from "./types";
+import { renderNotionEvidence, syncFromNotion } from "./notion-sync";
+import { classifyProximity, meetsProximity, type ProximityTier } from "./proximity";
 
 /** Messages read per candidate. Long chats add cost without adding signal. */
 const MAX_MESSAGES = 60;
@@ -46,17 +48,32 @@ async function loadMessages(candidateId: string): Promise<TranscriptMessage[]> {
 
 export interface ExtractionResult {
   facts: ExtractedFacts;
+  /** Form Q&A, rendered for the model. The richest evidence we hold. */
+  notionEvidence: string;
+  /** Free-text address, for the proximity check. */
+  address: string | null;
   /** False when a cached extraction was reused, meaning no API call was made. */
   called: boolean;
   costUsd: number;
 }
 
 /**
- * Make sure we know what a candidate's transcript says about them.
+ * Establish everything we know about a candidate, cheapest source first.
  *
- * Cached on message count: a conversation that has not grown since the last
- * extraction cannot contain new facts, so re-reading it is pure spend. This is
- * what stops a brief edit from costing a full re-extraction of 5,959 people.
+ * ORDER IS THE WHOLE DESIGN:
+ *   1. Notion — the application form. Free (no model call), authoritative, and
+ *      holds age, address, experience, expected salary and ยอดขายสูงสุด as
+ *      considered written answers.
+ *   2. Chat — the model, and only for what the form leaves blank. Chiefly
+ *      workPreference, which the form never asks and which decides whether
+ *      someone can take an onsite job at all.
+ *
+ * Doing it the other way round is what the first live run did, and it paid a
+ * model to guess at fields that were sitting in Notion the whole time.
+ *
+ * Both halves are cached: Notion on `notionSyncedAt`, chat on message count. A
+ * conversation that has not grown cannot hold new facts, so re-reading it is
+ * pure spend.
  */
 export async function ensureExtraction(
   candidateId: string,
@@ -71,6 +88,7 @@ export async function ensureExtraction(
         expectedSalary: true,
         maxSalesAmount: true,
         experienceText: true,
+        address: true,
       },
     }),
     db.candidateExtraction.findUnique({ where: { candidateId } }),
@@ -78,16 +96,68 @@ export async function ensureExtraction(
   ]);
   if (!candidate) throw new Error(`ไม่พบผู้สมัคร ${candidateId}`);
 
+  // --- 1. Notion, once per candidate. Costs nothing but an HTTP call. ---
+  let notionQa = "";
+  // Held locally as well as written: `extraction` was read BEFORE the sync, so
+  // reading experienceYears back off it would return the stale pre-sync null
+  // and silently discard the value we just derived from the form.
+  let notionYears: number | null = null;
+  if (extraction?.notionSyncedAt) {
+    // Already synced: reuse the stored Q&A rather than re-fetching Notion. The
+    // scorer needs this on EVERY run, not just the first.
+    notionQa = extraction.notionEvidence ?? "";
+    notionYears = extraction.experienceYears;
+  } else {
+    const sync = await syncFromNotion(candidateId).catch(() => null);
+    if (sync && !sync.error) {
+      notionQa = renderNotionEvidence(sync.facts);
+      notionYears = sync.facts.experienceYears;
+      // Re-read: syncFromNotion may have just filled columns we selected above.
+      const fresh = await db.candidate.findUnique({
+        where: { id: candidateId },
+        select: {
+          age: true,
+          workPreference: true,
+          expectedSalary: true,
+          maxSalesAmount: true,
+          experienceText: true,
+          address: true,
+        },
+      });
+      if (fresh) Object.assign(candidate, fresh);
+      await db.candidateExtraction.upsert({
+        where: { candidateId },
+        create: {
+          candidateId,
+          notionSyncedAt: new Date(),
+          notionEvidence: notionQa,
+          experienceYears: sync.facts.experienceYears,
+          foundFields: sync.facts.found,
+          messageCount: 0,
+        },
+        update: {
+          notionSyncedAt: new Date(),
+          notionEvidence: notionQa,
+          ...(sync.facts.experienceYears !== null
+            ? { experienceYears: sync.facts.experienceYears }
+            : {}),
+        },
+      });
+    }
+  }
+
   if (extraction && extraction.messageCount >= messageCount) {
     return {
       facts: {
         age: candidate.age,
         workPreference: candidate.workPreference,
         expectedSalary: candidate.expectedSalary,
-        experienceYears: extraction.experienceYears,
+        experienceYears: extraction.experienceYears ?? notionYears,
         maxSalesAmount: candidate.maxSalesAmount,
         experienceText: candidate.experienceText,
       },
+      notionEvidence: notionQa,
+      address: candidate.address,
       called: false,
       costUsd: 0,
     };
@@ -95,7 +165,20 @@ export async function ensureExtraction(
 
   const messages = await loadMessages(candidateId);
   if (messages.length === 0) {
-    return { facts: EMPTY_FACTS, called: false, costUsd: 0 };
+    return {
+      facts: {
+        age: candidate.age,
+        workPreference: candidate.workPreference,
+        expectedSalary: candidate.expectedSalary,
+        experienceYears: extraction?.experienceYears ?? notionYears,
+        maxSalesAmount: candidate.maxSalesAmount,
+        experienceText: candidate.experienceText,
+      },
+      notionEvidence: notionQa,
+      address: candidate.address,
+      called: false,
+      costUsd: 0,
+    };
   }
 
   const cfg = config ?? (await resolveAiConfig());
@@ -134,7 +217,11 @@ export async function ensureExtraction(
         model: res.model,
       },
       update: {
-        experienceYears: res.facts.experienceYears,
+        // Notion's answer wins: it is a considered form response, not a
+        // number inferred from small talk. Only fill a gap it left.
+        ...(extraction?.experienceYears === null || extraction?.experienceYears === undefined
+          ? { experienceYears: res.facts.experienceYears }
+          : {}),
         foundFields: foundFields(res.facts),
         messageCount,
         model: res.model,
@@ -150,10 +237,13 @@ export async function ensureExtraction(
       age: candidate.age ?? res.facts.age,
       workPreference: candidate.workPreference ?? res.facts.workPreference,
       expectedSalary: candidate.expectedSalary ?? res.facts.expectedSalary,
-      experienceYears: res.facts.experienceYears,
+      // Notion's stated years win; chat only fills the gap.
+      experienceYears: notionYears ?? res.facts.experienceYears,
       maxSalesAmount: candidate.maxSalesAmount ?? res.facts.maxSalesAmount,
       experienceText: candidate.experienceText ?? res.facts.experienceText,
     },
+    notionEvidence: notionQa,
+    address: candidate.address,
     called: true,
     costUsd: spend,
   };
@@ -162,6 +252,7 @@ export async function ensureExtraction(
 export interface ScoreOutcome {
   candidateId: string;
   stars: number;
+  proximityTier: ProximityTier;
   filteredOut: boolean;
   /** True when a cached score was reused, meaning no API call was made. */
   cached: boolean;
@@ -189,6 +280,7 @@ export async function scoreForBrief(
     return {
       candidateId,
       stars: existing.stars,
+      proximityTier: (existing.proximityTier as ProximityTier) ?? "unknown",
       filteredOut: existing.filteredOut,
       cached: true,
       costUsd: 0,
@@ -201,7 +293,22 @@ export async function scoreForBrief(
   const extraction = await ensureExtraction(candidateId, cfg);
   spend += extraction.costUsd;
 
-  const outcome = applyHardFilters(briefFilters(brief), extraction.facts);
+  // Proximity is judged from the address, which now comes from the Notion form.
+  // It is a REJECTION only when HR explicitly set a threshold; otherwise it is
+  // recorded for display and ranking. Every position is onsite in Min Buri, so
+  // this is real signal — but with an address on file for only 266 of 5,959
+  // candidates, making it a silent default filter would gut the shortlist.
+  const proximity = classifyProximity(extraction.address);
+  const minProximity = brief.minProximity as ProximityTier | null;
+
+  let outcome = applyHardFilters(briefFilters(brief), extraction.facts);
+  if (outcome.passed && minProximity && !meetsProximity(proximity.tier, minProximity)) {
+    outcome = {
+      passed: false,
+      reason: `ที่อยู่ ${proximity.matched ?? "ไม่ระบุ"} (${proximity.label}) ไกลกว่าเกณฑ์ที่ตั้งไว้`,
+    };
+  }
+
   if (!outcome.passed) {
     await db.candidateBriefScore.upsert({
       where: { candidateId_briefId: { candidateId, briefId: brief.id } },
@@ -211,6 +318,7 @@ export async function scoreForBrief(
         stars: 0,
         filteredOut: true,
         filterReason: outcome.reason,
+        proximityTier: proximity.tier,
         briefHash: brief.briefHash,
         costUsd: spend,
       },
@@ -222,6 +330,7 @@ export async function scoreForBrief(
         why: "",
         filteredOut: true,
         filterReason: outcome.reason,
+        proximityTier: proximity.tier,
         briefHash: brief.briefHash,
         costUsd: spend,
         // Clearing this matters: if a later brief edit lets them back in, they
@@ -229,12 +338,19 @@ export async function scoreForBrief(
         notifiedAt: null,
       },
     });
-    return { candidateId, stars: 0, filteredOut: true, cached: false, costUsd: spend };
+    return {
+      candidateId,
+      stars: 0,
+      proximityTier: proximity.tier,
+      filteredOut: true,
+      cached: false,
+      costUsd: spend,
+    };
   }
 
   const criteria = briefCriteria(brief);
   const messages = await loadMessages(candidateId);
-  const judged = await scoreCandidate(criteria, messages, null, cfg);
+  const judged = await scoreCandidate(criteria, messages, null, cfg, extraction.notionEvidence);
   spend += costUsd(judged.model, judged.promptTokens, judged.completionTokens);
 
   const stars = toStars(criteria, judged.judgement.criteria);
@@ -249,6 +365,7 @@ export async function scoreForBrief(
       coveragePct: stars.coveragePct,
       criteria: judged.judgement.criteria as unknown as Prisma.InputJsonValue,
       why: judged.judgement.why,
+      proximityTier: proximity.tier,
       briefHash: brief.briefHash,
       model: judged.model,
       costUsd: spend,
@@ -261,6 +378,7 @@ export async function scoreForBrief(
       why: judged.judgement.why,
       filteredOut: false,
       filterReason: null,
+      proximityTier: proximity.tier,
       briefHash: brief.briefHash,
       model: judged.model,
       costUsd: spend,
@@ -268,5 +386,12 @@ export async function scoreForBrief(
     },
   });
 
-  return { candidateId, stars: stars.stars, filteredOut: false, cached: false, costUsd: spend };
+  return {
+    candidateId,
+    stars: stars.stars,
+    proximityTier: proximity.tier,
+    filteredOut: false,
+    cached: false,
+    costUsd: spend,
+  };
 }

@@ -28,6 +28,7 @@ export interface BriefView {
   minExperienceYears: number | null;
   minSalesAmount: number | null;
   notifyStars: number;
+  minProximity: string | null;
   criteria: BriefCriterionView[];
   strongMatches: number;
 }
@@ -44,6 +45,19 @@ const WORK_LABEL: Record<string, string> = {
   WFH: "WFH",
   HYBRID: "ผสม",
 };
+
+/** Distance thresholds HR can require, loosest last. */
+const PROXIMITY_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "", label: "ไม่จำกัดระยะทาง" },
+  { value: "adjacent", label: "เฉพาะใกล้ออฟฟิศมาก (มีนบุรีและเขตติดกัน)" },
+  { value: "nearby", label: "กรุงเทพฝั่งตะวันออก เดินทางสะดวก" },
+  { value: "bangkok", label: "อยู่ในกรุงเทพ" },
+  { value: "commutable_province", label: "กรุงเทพและปริมณฑล" },
+];
+
+const PROXIMITY_LABEL: Record<string, string> = Object.fromEntries(
+  PROXIMITY_OPTIONS.filter((o) => o.value).map((o) => [o.value, o.label]),
+);
 
 const PLACEHOLDER = `ตัวอย่าง:
 รับ Sales Admin เข้าออฟฟิศเท่านั้น ตอนนี้ปิดรับ WFH แล้ว
@@ -62,6 +76,7 @@ function FilterChips({ brief }: { brief: BriefView }) {
   if (brief.workPreference) chips.push(WORK_LABEL[brief.workPreference] ?? brief.workPreference);
   if (brief.minExperienceYears) chips.push(`ประสบการณ์ ${brief.minExperienceYears}+ ปี`);
   if (brief.minSalesAmount) chips.push(`ยอดขาย ${brief.minSalesAmount.toLocaleString()}+`);
+  if (brief.minProximity) chips.push(`ที่อยู่: ${PROXIMITY_LABEL[brief.minProximity] ?? brief.minProximity}`);
 
   if (chips.length === 0) {
     return <p className="text-xs text-slate-400">ยังไม่มีเงื่อนไขตัวเลข — คัดจากเนื้อหาล้วน</p>;
@@ -83,6 +98,7 @@ function PositionCard({ row }: { row: PositionRow }) {
   const [editing, setEditing] = useState(!row.brief);
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
+  const [savingProx, setSavingProx] = useState(false);
 
   async function save() {
     if (text.trim().length < 5) {
@@ -105,6 +121,28 @@ function PositionCard({ row }: { row: PositionRow }) {
       toast.error(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function saveProximity(value: string) {
+    if (!row.brief) return;
+    setSavingProx(true);
+    try {
+      const res = await fetch(`/api/briefs/${row.brief.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ minProximity: value }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "บันทึกไม่สำเร็จ");
+      // hashChanged means the cached scores are now stale and a re-run will
+      // actually re-evaluate rather than returning everyone from cache.
+      toast.success(json.hashChanged ? "บันทึกแล้ว — กด 'คัดผู้สมัคร' อีกครั้งเพื่อใช้เกณฑ์ใหม่" : "บันทึกแล้ว");
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ");
+    } finally {
+      setSavingProx(false);
     }
   }
 
@@ -220,6 +258,28 @@ function PositionCard({ row }: { row: PositionRow }) {
                 </ul>
               </div>
             )}
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-500" htmlFor={`prox-${row.id}`}>
+                จำกัดระยะทางจากออฟฟิศ (มีนบุรี)
+              </label>
+              <select
+                id={`prox-${row.id}`}
+                className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
+                value={row.brief.minProximity ?? ""}
+                onChange={(e) => saveProximity(e.target.value)}
+                disabled={savingProx}
+              >
+                {PROXIMITY_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-slate-400">
+                คนที่ไม่ได้กรอกที่อยู่จะไม่ถูกตัดออก
+              </p>
+            </div>
 
             <div className="flex flex-wrap gap-2">
               <Button onClick={run} disabled={running}>

@@ -117,6 +117,15 @@ export async function scoreCandidate(
   messages: TranscriptMessage[],
   positionTitle: string | null,
   config?: AiConfig,
+  /**
+   * Form answers from Notion, rendered by renderNotionEvidence.
+   *
+   * Listed BEFORE the chat transcript in the prompt because it is the better
+   * evidence by a wide margin: ~14 considered written answers, versus a chat
+   * where the candidate mostly asked about the commute. Scoring on chat alone
+   * is what produced a run where every criterion came back null.
+   */
+  notionEvidence?: string,
 ): Promise<{
   judgement: Judgement;
   model: string;
@@ -129,7 +138,12 @@ export async function scoreCandidate(
   const user = [
     positionTitle ? `ตำแหน่งที่เปิดรับ: ${positionTitle}` : "",
     `เกณฑ์ที่ต้องให้คะแนน:\n${renderCriteria(criteria)}`,
-    `บทสนทนาของผู้สมัคร:\n${transcript}`,
+    // Form answers first: ~14 considered written responses outweigh a chat in
+    // which the candidate mostly asked about the commute. Scrubbed again here
+    // rather than trusting the caller — the form collects phone, email and LINE
+    // ID, and this is the last point before the text leaves the process.
+    notionEvidence ? `ข้อมูลจากใบสมัคร:\n${scrubContacts(notionEvidence)}` : "",
+    transcript ? `บทสนทนาของผู้สมัคร:\n${transcript}` : "",
   ]
     .filter(Boolean)
     .join("\n\n");

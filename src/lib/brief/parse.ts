@@ -27,7 +27,11 @@ const SYSTEM_PROMPT = `คุณคือผู้ช่วยฝ่ายบุ
 2) criteria — คุณสมบัติเชิงคุณภาพที่ต้อง "อ่านแล้วตัดสิน" เช่น ความตั้งใจ ทักษะสื่อสาร
    ประเภทสินค้าที่เคยขาย ทัศนคติ
    แต่ละข้อ: { "name": ชื่อสั้น ๆ, "weight": 1-5 ตามความสำคัญ, "description": สิ่งที่ต้องดู }
-   ให้ 2-6 ข้อ
+   ต้องมี "อย่างน้อย 3 ข้อ" และไม่เกิน 6 ข้อ
+   ถ้าบรีฟสั้นจนได้ไม่ถึง 3 ข้อ ให้เพิ่มเกณฑ์กลาง ๆ ที่ประเมินได้จากใบสมัครเสมอ เช่น
+   "ความเหมาะสมกับตำแหน่งโดยรวม", "ทักษะการสื่อสาร", "ความตั้งใจและแรงจูงใจ"
+   สำคัญ: เกณฑ์ต้องกว้างพอที่ผู้สมัครทั่วไปจะมีข้อมูลให้ประเมินได้
+   ถ้าเกณฑ์เฉพาะเจาะจงเกินไปจนแทบไม่มีใครตอบได้ ทุกคนจะได้คะแนนเท่ากันหมดและจัดอันดับไม่ได้
 
 กฎสำคัญ:
 - อะไรที่ใส่ใน filters ได้แล้ว ห้ามใส่ซ้ำใน criteria อีก
@@ -116,6 +120,59 @@ export function normaliseParsedBrief(raw: unknown): ParsedBrief {
   };
 }
 
+/**
+ * Criteria that can be judged from any reasonably complete application.
+ *
+ * WHY THIS EXISTS — the first live run produced five candidates, all 1 star,
+ * indistinguishable. The brief had parsed to a SINGLE criterion
+ * ("ประสบการณ์ขายสินค้าสุขภาพ"), and with one criterion coverage is binary:
+ * either the transcript answers it or the candidate scores 0% and gets capped
+ * to the floor. Nobody's form said which product category they had sold, so
+ * everybody landed in the same place and the ranking carried no information.
+ *
+ * The model was right each time — it correctly returned null for "no evidence".
+ * The design was wrong: one narrow gate cannot rank people.
+ */
+const FALLBACK_CRITERIA: BriefCriterion[] = [
+  {
+    name: "ความเหมาะสมกับตำแหน่งโดยรวม",
+    weight: 3,
+    description: "ประสบการณ์และทักษะโดยรวมเหมาะกับตำแหน่งนี้แค่ไหน",
+  },
+  {
+    name: "ทักษะการสื่อสาร",
+    weight: 2,
+    description: "อธิบายได้ชัดเจน ตอบตรงคำถาม เขียนสื่อสารรู้เรื่อง",
+  },
+  {
+    name: "ความตั้งใจและแรงจูงใจ",
+    weight: 2,
+    description: "ให้ข้อมูลครบถ้วน ตอบคำถามอย่างตั้งใจ แสดงความสนใจในงาน",
+  },
+];
+
+/** Below this, coverage becomes all-or-nothing and the ranking collapses. */
+export const MIN_CRITERIA = 3;
+
+/**
+ * Top a thin brief up to MIN_CRITERIA with generally-answerable criteria.
+ *
+ * Appended, never substituted: HR's own wording always stays and keeps its
+ * weight. The additions only ensure there is enough scoreable surface for the
+ * ranking to separate people.
+ */
+export function withFallbackCriteria(criteria: BriefCriterion[]): BriefCriterion[] {
+  if (criteria.length >= MIN_CRITERIA) return criteria;
+  const have = new Set(criteria.map((c) => c.name.replace(/\s+/g, "")));
+  const out = [...criteria];
+  for (const f of FALLBACK_CRITERIA) {
+    if (out.length >= MIN_CRITERIA) break;
+    if (have.has(f.name.replace(/\s+/g, ""))) continue;
+    out.push(f);
+  }
+  return out;
+}
+
 export async function parseBrief(
   rawBrief: string,
   positionTitle: string | null,
@@ -130,8 +187,12 @@ export async function parseBrief(
     .join("\n\n");
 
   const res = await callJson<unknown>(cfg, SYSTEM_PROMPT, user, 2000);
+  const parsed = normaliseParsedBrief(res.data);
   return {
-    parsed: normaliseParsedBrief(res.data),
+    // Topped up HERE rather than inside normaliseParsedBrief, so the normaliser
+    // stays a pure description of what the model said and the fallback stays a
+    // product decision about what a usable brief needs.
+    parsed: { ...parsed, criteria: withFallbackCriteria(parsed.criteria) },
     model: res.model,
     promptTokens: res.promptTokens,
     completionTokens: res.completionTokens,

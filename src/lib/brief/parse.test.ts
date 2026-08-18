@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { normaliseParsedBrief } from "./parse";
+import { normaliseParsedBrief, withFallbackCriteria } from "./parse";
 
 describe("normaliseParsedBrief", () => {
   it("reads a well-formed response", () => {
@@ -67,5 +67,35 @@ describe("normaliseParsedBrief", () => {
     expect(p.criteria).toHaveLength(2);
     expect(p.criteria[0].weight).toBe(5);
     expect(p.criteria[1].weight).toBe(1);
+  });
+});
+
+describe("withFallbackCriteria", () => {
+  // A single narrow criterion makes coverage binary and collapses the ranking —
+  // the exact cause of five identical 1-star rows on the first live run.
+  it("tops a thin brief up to three criteria", () => {
+    const out = withFallbackCriteria([
+      { name: "ประสบการณ์ขายสินค้าสุขภาพ", weight: 4, description: "" },
+    ]);
+    expect(out.length).toBeGreaterThanOrEqual(3);
+    // HR's own wording survives, with its weight intact.
+    expect(out[0].name).toBe("ประสบการณ์ขายสินค้าสุขภาพ");
+    expect(out[0].weight).toBe(4);
+  });
+
+  it("leaves a rich brief alone", () => {
+    const rich = ["ก", "ข", "ค", "ง"].map((name) => ({ name, weight: 3, description: "" }));
+    expect(withFallbackCriteria(rich)).toHaveLength(4);
+  });
+
+  it("still returns criteria when the model gave none", () => {
+    expect(withFallbackCriteria([])).toHaveLength(3);
+  });
+
+  it("does not duplicate a fallback HR already wrote", () => {
+    const out = withFallbackCriteria([
+      { name: "ทักษะการสื่อสาร", weight: 5, description: "" },
+    ]);
+    expect(out.filter((c) => c.name === "ทักษะการสื่อสาร")).toHaveLength(1);
   });
 });

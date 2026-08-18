@@ -74,3 +74,35 @@ describe("toStars", () => {
     expect(r.stars).toBe(1);
   });
 });
+
+describe("noEvidence", () => {
+  // The failure from the first live run: five candidates, all 1 star, because
+  // the single criterion was unanswerable. "Cannot tell" must be visible as its
+  // own state, not flattened into "weak".
+  it("distinguishes 'could not tell' from 'genuinely weak'", () => {
+    const cannotTell = toStars(criteria, [
+      { name: "ประสบการณ์ขาย", score: null, reasoning: "ไม่ได้ระบุ" },
+      { name: "ความตั้งใจ", score: null, reasoning: "ไม่ได้ระบุ" },
+      { name: "สื่อสารดี", score: null, reasoning: "ไม่ได้ระบุ" },
+    ]);
+    const weak = toStars(criteria, [
+      { name: "ประสบการณ์ขาย", score: 1, reasoning: "" },
+      { name: "ความตั้งใจ", score: 0, reasoning: "" },
+      { name: "สื่อสารดี", score: 1, reasoning: "" },
+    ]);
+    expect(cannotTell.noEvidence).toBe(true);
+    expect(weak.noEvidence).toBe(false);
+    // Both land on 1 star, which is exactly why the flag has to exist.
+    expect(cannotTell.stars).toBe(weak.stars);
+  });
+
+  it("is false whenever anything at all was scored", () => {
+    expect(
+      toStars(criteria, [
+        { name: "ประสบการณ์ขาย", score: 7, reasoning: "" },
+        { name: "ความตั้งใจ", score: null, reasoning: "" },
+        { name: "สื่อสารดี", score: null, reasoning: "" },
+      ]).noEvidence,
+    ).toBe(false);
+  });
+});

@@ -31,6 +31,7 @@ export default async function BriefMatchesPage({
       why: true,
       filteredOut: true,
       filterReason: true,
+      proximityTier: true,
       candidate: {
         select: {
           id: true,
@@ -43,6 +44,9 @@ export default async function BriefMatchesPage({
           workPreference: true,
           experienceText: true,
           currentStatus: true,
+          address: true,
+          maxSalesAmount: true,
+          notionPageId: true,
         },
       },
     },
@@ -56,6 +60,10 @@ export default async function BriefMatchesPage({
     why: r.why,
     filteredOut: r.filteredOut,
     filterReason: r.filterReason,
+    proximityTier: (r.proximityTier as MatchRow["proximityTier"]) ?? "unknown",
+    // Coverage of 0 means nothing could be judged — a different statement from
+    // "weak", and the UI holds these aside rather than ranking them last.
+    noEvidence: !r.filteredOut && r.coveragePct === 0,
     candidate: {
       id: r.candidate.id,
       name:
@@ -69,6 +77,9 @@ export default async function BriefMatchesPage({
       workPreference: r.candidate.workPreference,
       experienceText: r.candidate.experienceText,
       currentStatus: r.candidate.currentStatus,
+      address: r.candidate.address,
+      maxSalesAmount: r.candidate.maxSalesAmount,
+      notionPageId: r.candidate.notionPageId,
     },
   }));
 

@@ -15,6 +15,15 @@ export interface StarResult {
   coveragePct: number;
   /** Set when a coverage cap held the rating below what the score alone gave. */
   cappedFrom: number | null;
+  /**
+   * True when NOTHING could be scored.
+   *
+   * This is a different statement from "1 star". One star means we looked and
+   * they are weak; this means we could not tell, and the right response is to
+   * ask them a question rather than to rank them last. The first live run
+   * collapsed both into 1 star and produced five identical rows.
+   */
+  noEvidence: boolean;
 }
 
 /** Score -> stars, before any coverage cap. */
@@ -57,5 +66,13 @@ export function toStars(criteria: BriefCriterion[], results: CriterionScore[]): 
   else if (coveragePct < THIN_COVERAGE_PCT) cap = THIN_COVERAGE_CAP;
 
   const stars = Math.min(raw, cap);
-  return { stars, overallScore, coveragePct, cappedFrom: stars < raw ? raw : null };
+  return {
+    stars,
+    overallScore,
+    coveragePct,
+    cappedFrom: stars < raw ? raw : null,
+    // Nothing at all was scoreable. Reported separately so the UI can hold
+    // these aside instead of burying them at the bottom of the ranking.
+    noEvidence: coveragePct === 0,
+  };
 }

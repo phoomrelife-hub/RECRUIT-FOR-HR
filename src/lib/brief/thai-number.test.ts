@@ -64,3 +64,20 @@ describe("parseExperienceYears", () => {
     expect(parseExperienceYears("")).toBeNull();
   });
 });
+
+// Every string below is a real experienceText value from the candidates table.
+describe("parseExperienceYears on real form answers", () => {
+  it("handles missing spaces around ปี", () => {
+    expect(parseExperienceYears("1ปี เสื้อผ้าออนไลน์")).toBe(1);
+    expect(parseExperienceYears("ขายสินค้าทั่วไป เสื้อผ้า มีประสบการณ์ด้านแอดมิน3ปี")).toBe(3);
+  });
+
+  // Taking the high end would let someone past a ">= 2 ปี" filter they do not clear.
+  it("takes the low end of a range", () => {
+    expect(parseExperienceYears("1-2ปี เป็นPC เชียร์ขายสินค้า เครื่องสำอางค์")).toBe(1);
+  });
+
+  it("reads a bare 'ไม่เคย' as zero, not as unknown", () => {
+    expect(parseExperienceYears("ไม่เคย")).toBe(0);
+  });
+});
