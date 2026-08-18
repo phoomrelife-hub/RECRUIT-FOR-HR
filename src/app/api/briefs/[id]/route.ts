@@ -110,6 +110,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     criteria = withFallbackCriteria(criteria);
   }
 
+  // null switches the full-spec route off; the UI sends 0 for that.
+  const notifyFullSpecStars =
+    "notifyFullSpecStars" in body
+      ? (() => {
+          const n = asNullableInt(body.notifyFullSpecStars);
+          return n === null ? null : Math.max(1, Math.min(5, n));
+        })()
+      : existing.notifyFullSpecStars;
+
   const notifyStars =
     "notifyStars" in body
       ? Math.max(1, Math.min(5, asNullableInt(body.notifyStars) ?? existing.notifyStars))
@@ -124,6 +133,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       minProximity,
       criteria: criteria as unknown as Prisma.InputJsonValue,
       notifyStars,
+      notifyFullSpecStars,
       briefHash: hash,
       ...(typeof body.isActive === "boolean" ? { isActive: body.isActive } : {}),
     },

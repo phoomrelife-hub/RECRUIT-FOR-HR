@@ -9,6 +9,7 @@ import { toStars } from "./stars";
 import type { BriefCriterion, ExtractedFacts, HardFilters } from "./types";
 import { renderNotionEvidence, syncFromNotion } from "./notion-sync";
 import { classifyProximity, meetsProximity, type ProximityTier } from "./proximity";
+import { specMatch, EMPTY_SPEC, type SpecResult } from "./spec-match";
 
 /** Messages read per candidate. Long chats add cost without adding signal. */
 const MAX_MESSAGES = 60;
@@ -260,6 +261,7 @@ export interface ScoreOutcome {
   candidateId: string;
   stars: number;
   proximityTier: ProximityTier;
+  spec: SpecResult;
   filteredOut: boolean;
   /** True when a cached score was reused, meaning no API call was made. */
   cached: boolean;
@@ -288,6 +290,8 @@ export async function scoreForBrief(
       candidateId,
       stars: existing.stars,
       proximityTier: (existing.proximityTier as ProximityTier) ?? "unknown",
+      spec: { ...EMPTY_SPEC, met: existing.specMet, total: existing.specTotal,
+        full: existing.specTotal > 0 && existing.specMet === existing.specTotal },
       filteredOut: existing.filteredOut,
       cached: true,
       costUsd: 0,
@@ -349,11 +353,18 @@ export async function scoreForBrief(
       candidateId,
       stars: 0,
       proximityTier: proximity.tier,
+      // A rejected candidate has no meaningful spec score — they contradicted
+      // something, which is a different statement from partially matching.
+      spec: EMPTY_SPEC,
       filteredOut: true,
       cached: false,
       costUsd: spend,
     };
   }
+
+  // Computed only for survivors: for anyone filtered out, a requirement is
+  // either met or unknown, never contradicted.
+  const spec = specMatch(briefFilters(brief), extraction.facts, proximity.tier, brief.minProximity);
 
   const criteria = briefCriteria(brief);
   const messages = await loadMessages(candidateId);
@@ -373,6 +384,8 @@ export async function scoreForBrief(
       criteria: judged.judgement.criteria as unknown as Prisma.InputJsonValue,
       why: judged.judgement.why,
       proximityTier: proximity.tier,
+      specMet: spec.met,
+      specTotal: spec.total,
       briefHash: brief.briefHash,
       model: judged.model,
       costUsd: spend,
@@ -386,6 +399,8 @@ export async function scoreForBrief(
       filteredOut: false,
       filterReason: null,
       proximityTier: proximity.tier,
+      specMet: spec.met,
+      specTotal: spec.total,
       briefHash: brief.briefHash,
       model: judged.model,
       costUsd: spend,
@@ -397,6 +412,7 @@ export async function scoreForBrief(
     candidateId,
     stars: stars.stars,
     proximityTier: proximity.tier,
+    spec,
     filteredOut: false,
     cached: false,
     costUsd: spend,

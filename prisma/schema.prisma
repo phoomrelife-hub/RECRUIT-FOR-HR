@@ -1107,6 +1107,13 @@ model HiringBrief {
   // Stars at or above this notify HR immediately; the rest ride the daily digest.
   notifyStars Int @default(5) @map("notify_stars")
 
+  /// The SECOND notify route, and the reason it exists: stars measure only the
+  /// soft criteria, so a candidate who positively meets every stated
+  /// requirement can sit at 3 stars purely because their form said little about
+  /// "ดูตั้งใจจริง". Such a candidate notifies at this lower floor.
+  /// Null switches the route off entirely.
+  notifyFullSpecStars Int? @default(3) @map("notify_full_spec_stars")
+
   createdById String?  @map("created_by_id")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
@@ -1143,6 +1150,13 @@ model CandidateBriefScore {
   // Denormalised so the ranked list can sort and display without re-reading
   // every address. Recomputed on each scoring run.
   proximityTier String? @map("proximity_tier")
+
+  /// How many of HR's stated requirements this candidate POSITIVELY meets, out
+  /// of how many were set. Strict: an unknown never counts. Distinguishes
+  /// "checked and confirmed" from "we know nothing", which `filteredOut: false`
+  /// alone cannot.
+  specMet   Int @default(0) @map("spec_met")
+  specTotal Int @default(0) @map("spec_total")
 
   briefHash String  @map("brief_hash")
   model     String  @default("")

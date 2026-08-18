@@ -29,6 +29,8 @@ export interface MatchRow {
   filteredOut: boolean;
   filterReason: string | null;
   proximityTier: ProximityTier;
+  specMet: number;
+  specTotal: number;
   noEvidence: boolean;
   candidate: {
     id: string;
@@ -64,7 +66,7 @@ const EQUIPMENT_ICON: Record<string, LucideIcon> = {
   tablet: Tablet,
 };
 
-type SortKey = "stars" | "age" | "salary" | "proximity";
+type SortKey = "stars" | "spec" | "age" | "salary" | "proximity";
 
 interface SortState {
   key: SortKey;
@@ -125,6 +127,29 @@ function Th({
 }
 type View = "ranked" | "no_evidence" | "filtered";
 
+/**
+ * Stated requirements positively met.
+ *
+ * Sits beside the stars rather than folded into them: they measure different
+ * things — stars are the model's judgement of prose, this is checkable fact —
+ * and collapsing them into one number is what made a perfect-on-paper
+ * candidate indistinguishable from someone we simply know nothing about.
+ */
+function SpecCell({ met, total }: { met: number; total: number }) {
+  if (total === 0) return <span className="text-xs text-slate-300">—</span>;
+  const full = met === total;
+  return (
+    <span
+      className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium tabular-nums ${
+        full ? "bg-blue-100 text-blue-800" : "bg-slate-100 text-slate-600"
+      }`}
+      title={full ? "ตรงเงื่อนไขครบทุกข้อ" : `ตรง ${met} จาก ${total} ข้อ ที่เหลือไม่มีข้อมูล`}
+    >
+      {met}/{total}
+    </span>
+  );
+}
+
 function StarCell({ n }: { n: number }) {
   return (
     <span className="inline-flex items-center gap-1 tabular-nums" title={`${n} ดาว`}>
@@ -166,6 +191,11 @@ export function MatchesClient({ matches }: { matches: MatchRow[] }) {
     const { key, dir } = sort;
     return [...base].sort((a, b) => {
       if (key === "stars") return (a.stars - b.stars) * dir || b.overallScore - a.overallScore;
+      // Ratio, not raw count: 3/3 is a stronger claim than 4/7.
+      if (key === "spec") {
+        const r = (m: MatchRow) => (m.specTotal ? m.specMet / m.specTotal : -1);
+        return (r(a) - r(b)) * dir || b.specTotal - a.specTotal;
+      }
       if (key === "age") return cmpNullable(a.candidate.age, b.candidate.age, dir);
       if (key === "salary")
         return cmpNullable(a.candidate.expectedSalary, b.candidate.expectedSalary, dir);
@@ -243,6 +273,7 @@ export function MatchesClient({ matches }: { matches: MatchRow[] }) {
               <tr>
                 <Th label="ชื่อ" sort={sort} onSort={toggleSort} />
                 {view === "ranked" && <Th label="ดาว" sortKey="stars" sort={sort} onSort={toggleSort} />}
+                <Th label="ตรงสเปก" sortKey="spec" sort={sort} onSort={toggleSort} />
                 <Th label="อายุ" sortKey="age" className="hidden sm:table-cell" sort={sort} onSort={toggleSort} />
                 <Th label="เงินเดือน" sortKey="salary" className="hidden sm:table-cell" sort={sort} onSort={toggleSort} />
                 <Th label="ระยะทาง" sortKey="proximity" sort={sort} onSort={toggleSort} />
@@ -271,6 +302,9 @@ export function MatchesClient({ matches }: { matches: MatchRow[] }) {
                         <StarCell n={m.stars} />
                       </td>
                     )}
+                    <td className="px-3 py-2">
+                      <SpecCell met={m.specMet} total={m.specTotal} />
+                    </td>
                     <td className="hidden px-3 py-2 tabular-nums text-slate-600 sm:table-cell">
                       {c.age ?? "—"}
                     </td>
@@ -372,6 +406,7 @@ function DetailPanel({ row, onClose }: { row: MatchRow; onClose: () => void }) {
         <>
           <p className="mt-1 text-xs text-slate-400">
             คะแนน {row.overallScore} · ข้อมูล {row.coveragePct}%
+            {row.specTotal > 0 && ` · ตรงเงื่อนไข ${row.specMet}/${row.specTotal}`}
           </p>
           {row.why && <p className="mt-2 text-sm leading-relaxed text-slate-700">{row.why}</p>}
         </>

@@ -94,7 +94,16 @@ export async function resolveAiConfig(): Promise<AiConfig> {
  * run still reports success.
  */
 const RETRYABLE = new Set([429, 500, 502, 503, 504]);
-const MAX_ATTEMPTS = 3;
+
+/**
+ * Four attempts with a widening gap.
+ *
+ * Three attempts at 1s and 3s was measured to be too short: a demand spike
+ * outlasted the whole sequence and took down a batch. The gap now reaches ~12s
+ * total, which only costs anything on the calls that were failing anyway.
+ */
+const MAX_ATTEMPTS = 4;
+const BACKOFF_MS = [1000, 3000, 8000];
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -163,9 +172,7 @@ export async function callJson<T>(
         `AI API error (${config.provider}/${config.model}): ${lastDetail.slice(0, 400)}`,
       );
     }
-    // 1s, then 3s. Long enough for a demand spike to pass, short enough that a
-    // 500-candidate run does not stall for minutes on one bad patch.
-    await sleep(attempt * 2000 - 1000);
+    await sleep(BACKOFF_MS[attempt - 1] ?? 8000);
   }
 
   if (!res || !res.ok) {

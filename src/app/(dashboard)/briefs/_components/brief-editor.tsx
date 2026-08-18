@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import type { BriefView, PositionRow } from "../briefs-workbench";
 import { EquipmentField, FieldGroup, NumberField, SegmentedField } from "./fields";
+import { Bell } from "lucide-react";
 
 const WORK_OPTIONS: Array<{ value: WorkPreference | null; label: string }> = [
   { value: null, label: "ไม่จำกัด" },
@@ -313,6 +314,44 @@ export function BriefEditor({ position }: { position: PositionRow }) {
             {notes !== brief.rawBrief && (
               <span className="text-xs text-amber-600">ยังไม่ได้บันทึกข้อความนี้</span>
             )}
+          </div>
+        </div>
+      </FieldGroup>
+
+      <FieldGroup
+        title="แจ้งเตือนเข้า Lark"
+        hint="ผู้สมัครที่ไม่ถึงเกณฑ์จะรวมอยู่ในสรุปรายวันตอน 09:00 แทน"
+      >
+        <div className="space-y-4">
+          <SegmentedField
+            label="แจ้งทันทีเมื่อได้ดาวตั้งแต่"
+            value={String(brief.notifyStars)}
+            options={[3, 4, 5].map((n) => ({ value: String(n), label: `${n} ดาว` }))}
+            onSelect={(v) => patch({ notifyStars: Number(v ?? 5) })}
+          />
+
+          <div className="rounded-lg bg-slate-50 p-3">
+            <SegmentedField
+              label="…หรือเมื่อตรงเงื่อนไขครบทุกข้อ และได้ดาวตั้งแต่"
+              value={brief.notifyFullSpecStars === null ? "off" : String(brief.notifyFullSpecStars)}
+              options={[
+                { value: "off", label: "ปิด" },
+                ...[2, 3, 4].map((n) => ({ value: String(n), label: `${n} ดาว` })),
+              ]}
+              onSelect={(v) =>
+                patch({ notifyFullSpecStars: v === "off" || v === null ? null : Number(v) })
+              }
+            />
+            {/* The reason this second route exists, stated where the setting is
+                — otherwise a 3-star notification looks like a bug. */}
+            <p className="mt-2 flex gap-1.5 text-[11px] leading-relaxed text-slate-500">
+              <Bell className="mt-px h-3 w-3 shrink-0" aria-hidden />
+              <span>
+                ดาวคิดจากข้อความที่ AI อ่านเท่านั้น ไม่ได้คิดจากเงื่อนไขด้านบน
+                คนที่ตรงเงื่อนไขที่ตั้งไว้ครบทุกข้อจึงอาจได้แค่ 3 ดาวเพราะเขียนมาน้อย —
+                ข้อนี้ทำให้เขายังถูกแจ้งเตือน
+              </span>
+            </p>
           </div>
         </div>
       </FieldGroup>

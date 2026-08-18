@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { buildDigestCard, buildInstantCard, sendLark, type MatchCardCandidate } from "@/lib/lark";
+import { shouldNotifyInstantly, EMPTY_SPEC } from "./spec-match";
 
 /**
  * Telling HR about a match.
@@ -7,6 +8,12 @@ import { buildDigestCard, buildInstantCard, sendLark, type MatchCardCandidate } 
  * Two speeds, because one speed is always wrong: a 5-star candidate is worth
  * interrupting someone for, and 54 candidates a day at that volume is not. The
  * threshold lives on the brief (`notifyStars`) so HR can tune it per position.
+ *
+ * And TWO ROUTES into the instant tier, not one. Stars measure only the soft
+ * criteria, so a candidate who positively meets every stated requirement can
+ * sit at 3 stars because their form said little about "ดูตั้งใจจริง" — exactly
+ * the person HR would most want to call. `notifyFullSpecStars` is the lower
+ * floor such a candidate notifies at.
  *
  * `notifiedAt` is the idempotency guard. It is set only after Lark accepts the
  * message, so a failed send is retried on the next tick rather than silently
@@ -35,6 +42,8 @@ interface PendingRow {
   stars: number;
   why: string;
   proximityTier: string | null;
+  specMet: number;
+  specTotal: number;
   candidate: {
     id: string;
     fullName: string | null;
@@ -61,6 +70,8 @@ function toCard(row: PendingRow): MatchCardCandidate {
     why: row.why,
     url: `${appBase()}/candidates/${row.candidate.id}`,
     proximity: row.proximityTier ? (PROXIMITY_LABEL[row.proximityTier] ?? null) : null,
+    specMet: row.specMet,
+    specTotal: row.specTotal,
     resumeUrl: row.candidate.resumeUrl,
     portfolioUrl: row.candidate.portfolioUrl,
   };
@@ -109,6 +120,8 @@ export async function notifyPending(instantOnly = false): Promise<NotifySummary>
         stars: true,
         why: true,
         proximityTier: true,
+        specMet: true,
+        specTotal: true,
         candidate: {
           select: {
             id: true,
@@ -123,11 +136,26 @@ export async function notifyPending(instantOnly = false): Promise<NotifySummary>
     });
     if (pending.length === 0) continue;
 
-    const instant = pending.filter((p) => p.stars >= brief.notifyStars);
-    const rest = pending.filter((p) => p.stars < brief.notifyStars);
+    const decide = (p: PendingRow) =>
+      shouldNotifyInstantly(
+        p.stars,
+        {
+          ...EMPTY_SPEC,
+          met: p.specMet,
+          total: p.specTotal,
+          full: p.specTotal > 0 && p.specMet === p.specTotal,
+        },
+        brief.notifyStars,
+        brief.notifyFullSpecStars,
+      );
+
+    const instant = pending.filter((p) => decide(p).notify);
+    const rest = pending.filter((p) => !decide(p).notify);
 
     for (const row of instant) {
-      const res = await sendLark(buildInstantCard(brief.jobPosition.title, toCard(row)));
+      const res = await sendLark(
+        buildInstantCard(brief.jobPosition.title, toCard(row), decide(row).reason),
+      );
       if (res.ok) {
         await db.candidateBriefScore.update({
           where: { id: row.id },

@@ -64,19 +64,38 @@ export interface MatchCardCandidate {
   /** Google Drive links from the form. Present on ~6% of applicants. */
   resumeUrl?: string | null;
   portfolioUrl?: string | null;
+  /** Stated requirements positively met, out of how many were set. */
+  specMet?: number;
+  specTotal?: number;
 }
 
 const STAR_ROW = (n: number) => "⭐".repeat(Math.max(0, Math.min(5, n)));
 
-/** A single high-scoring candidate, sent the moment they are found. */
-export function buildInstantCard(positionTitle: string, c: MatchCardCandidate) {
+/**
+ * A single candidate worth interrupting for, sent the moment they are found.
+ *
+ * `reason` says WHICH route fired. A 3-star card would look like a mistake
+ * without it — the header has to explain that this person matched every stated
+ * requirement, or HR learns to distrust the threshold.
+ */
+export function buildInstantCard(
+  positionTitle: string,
+  c: MatchCardCandidate,
+  reason: "stars" | "full_spec" | null = "stars",
+) {
+  const fullSpec = reason === "full_spec";
   return {
     msg_type: "interactive",
     card: {
       config: { wide_screen_mode: true },
       header: {
-        template: "green",
-        title: { tag: "plain_text", content: `ผู้สมัครน่าสนใจ — ${positionTitle}` },
+        template: fullSpec ? "turquoise" : "green",
+        title: {
+          tag: "plain_text",
+          content: fullSpec
+            ? `ตรงเงื่อนไขครบทุกข้อ — ${positionTitle}`
+            : `ผู้สมัครน่าสนใจ — ${positionTitle}`,
+        },
       },
       elements: [
         {
@@ -85,6 +104,9 @@ export function buildInstantCard(positionTitle: string, c: MatchCardCandidate) {
             tag: "lark_md",
             content:
               `**${c.name}**  ${STAR_ROW(c.stars)}` +
+              // Shown on every card, not just full-spec ones: "4/6" is the
+              // context that makes a star count mean something.
+              (c.specTotal ? `\n✅ ตรงเงื่อนไข ${c.specMet}/${c.specTotal} ข้อ` : "") +
               (c.proximity ? `\n📍 ${c.proximity}` : ""),
           },
         },

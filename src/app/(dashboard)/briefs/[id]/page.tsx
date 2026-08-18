@@ -32,6 +32,8 @@ export default async function BriefMatchesPage({
       filteredOut: true,
       filterReason: true,
       proximityTier: true,
+      specMet: true,
+      specTotal: true,
       candidate: {
         select: {
           id: true,
@@ -64,6 +66,8 @@ export default async function BriefMatchesPage({
     filteredOut: r.filteredOut,
     filterReason: r.filterReason,
     proximityTier: (r.proximityTier as MatchRow["proximityTier"]) ?? "unknown",
+    specMet: r.specMet,
+    specTotal: r.specTotal,
     // Coverage of 0 means nothing could be judged — a different statement from
     // "weak", and the UI holds these aside rather than ranking them last.
     noEvidence: !r.filteredOut && r.coveragePct === 0,

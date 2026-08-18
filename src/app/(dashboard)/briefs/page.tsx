@@ -54,6 +54,7 @@ export default async function BriefsPage() {
             minProximity: p.hiringBrief.minProximity,
             requiredEquipment: p.hiringBrief.requiredEquipment,
             notifyStars: p.hiringBrief.notifyStars,
+            notifyFullSpecStars: p.hiringBrief.notifyFullSpecStars,
             criteria: briefCriteria(p.hiringBrief),
             strongMatches: strongBy.get(p.hiringBrief.id) ?? 0,
           }

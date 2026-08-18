@@ -25,6 +25,7 @@ export interface BriefView {
   minProximity: string | null;
   requiredEquipment: string[];
   notifyStars: number;
+  notifyFullSpecStars: number | null;
   criteria: BriefCriterionView[];
   strongMatches: number;
 }
