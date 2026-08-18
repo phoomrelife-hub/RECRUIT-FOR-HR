@@ -47,6 +47,8 @@ export default async function BriefMatchesPage({
           address: true,
           maxSalesAmount: true,
           notionPageId: true,
+          resumeUrl: true,
+          portfolioUrl: true,
         },
       },
     },
@@ -80,6 +82,8 @@ export default async function BriefMatchesPage({
       address: r.candidate.address,
       maxSalesAmount: r.candidate.maxSalesAmount,
       notionPageId: r.candidate.notionPageId,
+      resumeUrl: r.candidate.resumeUrl,
+      portfolioUrl: r.candidate.portfolioUrl,
     },
   }));
 

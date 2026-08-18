@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Star, MapPin, Filter, HelpCircle } from "lucide-react";
+import { Star, MapPin, Filter, HelpCircle, FileText, Briefcase } from "lucide-react";
 import type { WorkPreference } from "@prisma/client";
 import type { ProximityTier } from "@/lib/brief/proximity";
 
@@ -32,6 +32,8 @@ export interface MatchRow {
     address: string | null;
     maxSalesAmount: number | null;
     notionPageId: string | null;
+    resumeUrl: string | null;
+    portfolioUrl: string | null;
   };
 }
 
@@ -130,6 +132,35 @@ function MatchCard({ row }: { row: MatchRow }) {
 
       {c.experienceText && (
         <p className="mt-2 text-xs text-slate-400">ประสบการณ์: {c.experienceText}</p>
+      )}
+
+      {/* Only ~6% of applicants attach anything, so these are shown when they
+          exist rather than as empty slots on every card. */}
+      {(c.resumeUrl || c.portfolioUrl) && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {c.resumeUrl && (
+            <a
+              href={c.resumeUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+            >
+              <FileText className="h-3.5 w-3.5" />
+              Resume
+            </a>
+          )}
+          {c.portfolioUrl && (
+            <a
+              href={c.portfolioUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+            >
+              <Briefcase className="h-3.5 w-3.5" />
+              Portfolio
+            </a>
+          )}
+        </div>
       )}
     </Card>
   );

@@ -14,6 +14,9 @@ describe("live lark webhook", () => {
         stars: 5,
         why: "เคยขายอาหารเสริมออนไลน์ 3 ปี ยอดขายเดือนละ 250,000 เข้าออฟฟิศได้ และพร้อมเริ่มงานทันที",
         url: "https://recruit-for-hr-product.up.railway.app/candidates/demo",
+        proximity: "ใกล้ออฟฟิศมาก",
+        resumeUrl: "https://drive.google.com/file/d/1Yk1iJDdmJLAyt756NVGF6ZaQs1RRmpxd/preview",
+        portfolioUrl: "https://www.tiktok.com/@chx_aem12",
       }),
     );
     console.log("instant:", res);

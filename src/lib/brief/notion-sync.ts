@@ -26,6 +26,15 @@ export interface NotionFacts {
   maxSalesAmount: number | null;
   /** Deep Q&A, the richest evidence we hold — 14 answers on a typical page. */
   qa: Array<{ question: string; answer: string }>;
+  /**
+   * Attachments, as Google Drive links.
+   *
+   * Sparse by nature: across 1,753 form submissions only 102 attach a resume
+   * and 28 a portfolio. So this is a bonus for the few who bother, never
+   * something to filter on — requiring a resume would discard 94% of the pool.
+   */
+  resumeUrl: string | null;
+  portfolioUrl: string | null;
   /** Which fields the page actually supported. */
   found: string[];
 }
@@ -38,8 +47,36 @@ export const EMPTY_NOTION_FACTS: NotionFacts = {
   expectedSalary: null,
   maxSalesAmount: null,
   qa: [],
+  resumeUrl: null,
+  portfolioUrl: null,
   found: [],
 };
+
+/**
+ * Pull a usable href out of a free-text field.
+ *
+ * "Portfolio Link" is plain text on the form, and people paste things like
+ * "www.tiktok.com/@chx_aem12    ปกติหนูมีช่องหลัก..." — a bare host followed by
+ * a sentence. Stored raw that becomes a relative href in the browser and a
+ * malformed button URL in Lark, so it is extracted and given a scheme here.
+ */
+export function firstUrl(text: string | null | undefined): string | null {
+  if (!text) return null;
+
+  // An explicit TLD list rather than a generic `word.word` pattern: the loose
+  // version happily matches "resume.pdf" and turns a filename into a link.
+  const TLD = "com|net|org|co|io|me|dev|app|xyz|th|info|biz|link|site|page|be|tv|cc";
+  const m = text.match(
+    new RegExp(
+      `(https?:\\/\\/\\S+|(?:www\\.)\\S+|[a-z0-9-]+(?:\\.[a-z0-9-]+)*\\.(?:${TLD})(?:\\/\\S*)?)`,
+      "i",
+    ),
+  );
+  if (!m) return null;
+
+  const raw = m[1].replace(/[.,)\]]+$/, "");
+  return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+}
 
 const clean = (s: string | null | undefined): string | null => {
   const t = (s ?? "").trim();
@@ -57,6 +94,15 @@ const clean = (s: string | null | undefined): string | null => {
 export function mapNotionFacts(detail: NotionDetail): NotionFacts {
   const info = detail.info;
 
+  // Attachments live on allProps rather than info: getNotionDetail's `info`
+  // predates the Resume/Portfolio columns being added to the form.
+  const fileProp = (name: string): string | null => {
+    const p = detail.allProps.find((x) => x.name === name);
+    if (!p) return null;
+    if (Array.isArray(p.value)) return p.value[0] ?? null;
+    return typeof p.value === "string" && p.value ? p.value : null;
+  };
+
   const experienceText = clean(info.experience);
   const facts: NotionFacts = {
     // Age is a real Notion `number` property, so it needs no parsing — the one
@@ -68,6 +114,10 @@ export function mapNotionFacts(detail: NotionDetail): NotionFacts {
     expectedSalary: parseThaiAmount(info.expectedSalary),
     maxSalesAmount: parseThaiAmount(info.maxSales),
     qa: detail.qa.filter((q) => q.question?.trim() && q.answer?.trim()),
+    resumeUrl: fileProp("Resume"),
+    // "Portfolio Link" is a plain URL field some candidates use instead of
+    // uploading, so it is a fallback for the same thing.
+    portfolioUrl: fileProp("Portfolio") ?? firstUrl(fileProp("Portfolio Link")),
     found: [],
   };
 
@@ -79,6 +129,8 @@ export function mapNotionFacts(detail: NotionDetail): NotionFacts {
       "experienceYears",
       "expectedSalary",
       "maxSalesAmount",
+      "resumeUrl",
+      "portfolioUrl",
     ] as const
   ).filter((k) => facts[k] !== null);
   if (facts.qa.length) facts.found.push("qa");
@@ -111,6 +163,8 @@ export async function syncFromNotion(candidateId: string): Promise<NotionSyncRes
       experienceText: true,
       expectedSalary: true,
       maxSalesAmount: true,
+      resumeUrl: true,
+      portfolioUrl: true,
     },
   });
   if (!candidate) throw new Error(`ไม่พบผู้สมัคร ${candidateId}`);
@@ -143,6 +197,8 @@ export async function syncFromNotion(candidateId: string): Promise<NotionSyncRes
   if (candidate.maxSalesAmount === null && facts.maxSalesAmount !== null) {
     fill.maxSalesAmount = facts.maxSalesAmount;
   }
+  if (!candidate.resumeUrl && facts.resumeUrl) fill.resumeUrl = facts.resumeUrl;
+  if (!candidate.portfolioUrl && facts.portfolioUrl) fill.portfolioUrl = facts.portfolioUrl;
 
   if (Object.keys(fill).length) {
     await db.candidate.update({ where: { id: candidateId }, data: fill });

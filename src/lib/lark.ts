@@ -59,6 +59,11 @@ export interface MatchCardCandidate {
   stars: number;
   why: string;
   url: string;
+  /** Where they live, e.g. "ใกล้ออฟฟิศมาก" — the first thing HR checks. */
+  proximity?: string | null;
+  /** Google Drive links from the form. Present on ~6% of applicants. */
+  resumeUrl?: string | null;
+  portfolioUrl?: string | null;
 }
 
 const STAR_ROW = (n: number) => "⭐".repeat(Math.max(0, Math.min(5, n)));
@@ -76,7 +81,12 @@ export function buildInstantCard(positionTitle: string, c: MatchCardCandidate) {
       elements: [
         {
           tag: "div",
-          text: { tag: "lark_md", content: `**${c.name}**  ${STAR_ROW(c.stars)}` },
+          text: {
+            tag: "lark_md",
+            content:
+              `**${c.name}**  ${STAR_ROW(c.stars)}` +
+              (c.proximity ? `\n📍 ${c.proximity}` : ""),
+          },
         },
         { tag: "div", text: { tag: "lark_md", content: c.why || "—" } },
         {
@@ -88,6 +98,28 @@ export function buildInstantCard(positionTitle: string, c: MatchCardCandidate) {
               type: "primary",
               url: c.url,
             },
+            // Attachments ride along only when they exist. A dead "Resume"
+            // button on 94% of cards would train HR to ignore it.
+            ...(c.resumeUrl
+              ? [
+                  {
+                    tag: "button",
+                    text: { tag: "plain_text", content: "📄 Resume" },
+                    type: "default",
+                    url: c.resumeUrl,
+                  },
+                ]
+              : []),
+            ...(c.portfolioUrl
+              ? [
+                  {
+                    tag: "button",
+                    text: { tag: "plain_text", content: "🎨 Portfolio" },
+                    type: "default",
+                    url: c.portfolioUrl,
+                  },
+                ]
+              : []),
           ],
         },
       ],

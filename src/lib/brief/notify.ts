@@ -34,13 +34,25 @@ interface PendingRow {
   id: string;
   stars: number;
   why: string;
+  proximityTier: string | null;
   candidate: {
     id: string;
     fullName: string | null;
     nickname: string | null;
     lineDisplayName: string | null;
+    resumeUrl: string | null;
+    portfolioUrl: string | null;
   };
 }
+
+const PROXIMITY_LABEL: Record<string, string> = {
+  adjacent: "ใกล้ออฟฟิศมาก",
+  nearby: "เดินทางสะดวก",
+  bangkok: "ในกรุงเทพ",
+  commutable_province: "ปริมณฑล",
+  far: "ต่างจังหวัด",
+  unknown: "ไม่ระบุที่อยู่",
+};
 
 function toCard(row: PendingRow): MatchCardCandidate {
   return {
@@ -48,6 +60,9 @@ function toCard(row: PendingRow): MatchCardCandidate {
     stars: row.stars,
     why: row.why,
     url: `${appBase()}/candidates/${row.candidate.id}`,
+    proximity: row.proximityTier ? (PROXIMITY_LABEL[row.proximityTier] ?? null) : null,
+    resumeUrl: row.candidate.resumeUrl,
+    portfolioUrl: row.candidate.portfolioUrl,
   };
 }
 
@@ -93,8 +108,16 @@ export async function notifyPending(instantOnly = false): Promise<NotifySummary>
         id: true,
         stars: true,
         why: true,
+        proximityTier: true,
         candidate: {
-          select: { id: true, fullName: true, nickname: true, lineDisplayName: true },
+          select: {
+            id: true,
+            fullName: true,
+            nickname: true,
+            lineDisplayName: true,
+            resumeUrl: true,
+            portfolioUrl: true,
+          },
         },
       },
     });

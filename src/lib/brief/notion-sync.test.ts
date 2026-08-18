@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mapNotionFacts, renderNotionEvidence } from "./notion-sync";
+import { mapNotionFacts, renderNotionEvidence, firstUrl } from "./notion-sync";
 import type { NotionDetail } from "@/lib/notion-detail";
 
 // Modelled on two real pages dumped from the live Notion database.
@@ -85,5 +85,38 @@ describe("renderNotionEvidence", () => {
     expect(text).not.toContain("0967179464");
     expect(text).not.toContain("jaifon@gmail.com");
     expect(text).not.toContain("nanasulisa");
+  });
+});
+
+describe("firstUrl", () => {
+  // Real value from the form: a bare host followed by a Thai sentence.
+  it("extracts a link from free text and adds a scheme", () => {
+    expect(firstUrl("www.tiktok.com/@chx_aem12    ปกติหนูมีช่องหลัก")).toBe(
+      "https://www.tiktok.com/@chx_aem12",
+    );
+  });
+
+  it("leaves a well-formed URL alone", () => {
+    expect(firstUrl("https://drive.google.com/file/d/abc123/view")).toBe(
+      "https://drive.google.com/file/d/abc123/view",
+    );
+  });
+
+  it("returns null when there is no link at all", () => {
+    expect(firstUrl("ไม่มีค่ะ")).toBeNull();
+    expect(firstUrl("")).toBeNull();
+    expect(firstUrl(null)).toBeNull();
+  });
+
+  it("strips trailing punctuation that is not part of the link", () => {
+    expect(firstUrl("ดูที่ behance.net/somchai.")).toBe("https://behance.net/somchai");
+  });
+});
+
+describe("firstUrl false positives", () => {
+  // A generic word.word pattern would turn a filename into a link.
+  it("does not treat a filename as a URL", () => {
+    expect(firstUrl("แนบไฟล์ resume.pdf มาแล้วค่ะ")).toBeNull();
+    expect(firstUrl("portfolio.docx")).toBeNull();
   });
 });
