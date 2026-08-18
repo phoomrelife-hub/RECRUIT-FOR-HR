@@ -38,9 +38,13 @@ describe("normaliseFacts", () => {
     expect(f.maxSalesAmount).toBe(250000);
   });
 
-  it("returns all nulls for junk", () => {
+  it("returns nothing usable for junk", () => {
     const f = normaliseFacts({});
-    expect(Object.values(f).every((v) => v === null)).toBe(true);
+    // equipment is an array (it comes from the form, never from chat), so
+    // "empty" for it means [] rather than null.
+    expect(f.equipment).toEqual([]);
+    const nullable = Object.entries(f).filter(([k]) => k !== "equipment");
+    expect(nullable.every(([, v]) => v === null)).toBe(true);
   });
 
   // A phone number misread as an age would sail past maxAge and silently
@@ -66,5 +70,14 @@ describe("normaliseFacts", () => {
   it("reports which fields the transcript supported", () => {
     const f = normaliseFacts({ age: 28, expectedSalary: 18000 });
     expect(foundFields(f).sort()).toEqual(["age", "expectedSalary"]);
+  });
+
+  // An empty array is absence. Without this, equipment would be reported as
+  // "found" for every candidate the chat extractor ever touched.
+  it("does not report an empty array as a found field", () => {
+    expect(foundFields({ ...normaliseFacts({ age: 30 }), equipment: [] })).toEqual(["age"]);
+    expect(foundFields({ ...normaliseFacts({ age: 30 }), equipment: ["computer"] }).sort()).toEqual(
+      ["age", "equipment"],
+    );
   });
 });

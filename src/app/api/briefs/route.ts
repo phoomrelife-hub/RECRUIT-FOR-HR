@@ -2,13 +2,16 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { briefHash } from "@/lib/brief/hash";
-import { parseBrief } from "@/lib/brief/parse";
-import { AiNotConfiguredError } from "@/lib/brief/ai";
+import { EMPTY_HARD_FILTERS } from "@/lib/brief/types";
 import type { Prisma } from "@prisma/client";
 
-// GET  /api/briefs            — every open position with its brief (if any)
-// POST /api/briefs            — write/replace the brief for one position
-//                               body: { jobPositionId, rawBrief }
+// GET  /api/briefs  — every open position with its brief (if any)
+// POST /api/briefs  — create an EMPTY brief for a position; body: { jobPositionId }
+//
+// Creating a brief no longer calls the AI. The numeric requirements are typed
+// into real fields and saved by PATCH; only the free-text "อื่นๆที่ต้องการ" box
+// needs a model, and that is its own explicit endpoint (/parse). Splitting them
+// is what lets HR change maxAge from 40 to 45 for free.
 
 export async function GET() {
   const session = await auth();
@@ -16,7 +19,6 @@ export async function GET() {
 
   const positions = await db.jobPosition.findMany({
     where: { status: "OPEN" },
-    orderBy: { createdAt: "desc" },
     select: {
       id: true,
       title: true,
@@ -26,27 +28,7 @@ export async function GET() {
     },
   });
 
-  // Counting matches per brief in one grouped query rather than per row.
-  const briefIds = positions.map((p) => p.hiringBrief?.id).filter((v): v is string => !!v);
-  const grouped = briefIds.length
-    ? await db.candidateBriefScore.groupBy({
-        by: ["briefId"],
-        where: { briefId: { in: briefIds }, filteredOut: false, stars: { gte: 4 } },
-        _count: { _all: true },
-      })
-    : [];
-  const strongByBrief = new Map(grouped.map((g) => [g.briefId, g._count._all]));
-
-  return NextResponse.json({
-    positions: positions.map((p) => ({
-      id: p.id,
-      title: p.title,
-      workType: p.workType,
-      candidateCount: p._count.candidates,
-      brief: p.hiringBrief,
-      strongMatches: p.hiringBrief ? (strongByBrief.get(p.hiringBrief.id) ?? 0) : 0,
-    })),
-  });
+  return NextResponse.json({ positions });
 }
 
 export async function POST(req: Request) {
@@ -55,47 +37,33 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => ({}));
   const jobPositionId = typeof body.jobPositionId === "string" ? body.jobPositionId : "";
-  const rawBrief = typeof body.rawBrief === "string" ? body.rawBrief.trim() : "";
-
   if (!jobPositionId) {
     return NextResponse.json({ error: "jobPositionId is required" }, { status: 400 });
-  }
-  if (rawBrief.length < 5) {
-    return NextResponse.json({ error: "กรุณาเขียนบรีฟอย่างน้อย 5 ตัวอักษร" }, { status: 400 });
   }
 
   const position = await db.jobPosition.findUnique({
     where: { id: jobPositionId },
-    select: { id: true, title: true },
+    select: { id: true, workType: true },
   });
   if (!position) return NextResponse.json({ error: "ไม่พบตำแหน่งงาน" }, { status: 404 });
 
-  let parsed;
-  try {
-    ({ parsed } = await parseBrief(rawBrief, position.title));
-  } catch (e) {
-    // A missing key is a setup problem, not a server fault — say so with a 400
-    // so the UI can point HR at the settings page instead of showing a crash.
-    if (e instanceof AiNotConfiguredError) {
-      return NextResponse.json({ error: e.message }, { status: 400 });
-    }
-    const message = e instanceof Error ? e.message : "อ่านบรีฟไม่สำเร็จ";
-    return NextResponse.json({ error: message }, { status: 502 });
-  }
+  const existing = await db.hiringBrief.findUnique({ where: { jobPositionId } });
+  if (existing) return NextResponse.json({ brief: existing });
 
-  const hash = briefHash(parsed);
-  const data = {
-    rawBrief,
-    ...parsed.filters,
-    criteria: parsed.criteria as unknown as Prisma.InputJsonValue,
-    briefHash: hash,
-    isActive: true,
-  };
+  // Seed the work preference from the position, but it is rendered as a visible
+  // segmented control — so a stale job_positions row shows up as a wrong-looking
+  // selection HR can fix, rather than as a hidden filter nobody knows is on.
+  const filters = { ...EMPTY_HARD_FILTERS, workPreference: position.workType };
 
-  const brief = await db.hiringBrief.upsert({
-    where: { jobPositionId },
-    create: { jobPositionId, createdById: session.user.id, ...data },
-    update: data,
+  const brief = await db.hiringBrief.create({
+    data: {
+      jobPositionId,
+      createdById: session.user.id,
+      rawBrief: "",
+      ...filters,
+      criteria: [] as unknown as Prisma.InputJsonValue,
+      briefHash: briefHash({ filters, criteria: [] }),
+    },
   });
 
   return NextResponse.json({ brief });

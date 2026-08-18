@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { getNotionDetail, type NotionDetail } from "@/lib/notion-detail";
 import { parseExperienceYears, parseThaiAmount } from "./thai-number";
+import { normaliseEquipmentList, type EquipmentToken } from "./equipment";
 
 /**
  * Pull the structured facts out of a candidate's Notion form page.
@@ -35,6 +36,8 @@ export interface NotionFacts {
    */
   resumeUrl: string | null;
   portfolioUrl: string | null;
+  /** What the candidate owns, normalised (see equipment.ts). */
+  equipment: EquipmentToken[];
   /** Which fields the page actually supported. */
   found: string[];
 }
@@ -49,6 +52,7 @@ export const EMPTY_NOTION_FACTS: NotionFacts = {
   qa: [],
   resumeUrl: null,
   portfolioUrl: null,
+  equipment: [],
   found: [],
 };
 
@@ -118,6 +122,7 @@ export function mapNotionFacts(detail: NotionDetail): NotionFacts {
     // "Portfolio Link" is a plain URL field some candidates use instead of
     // uploading, so it is a fallback for the same thing.
     portfolioUrl: fileProp("Portfolio") ?? firstUrl(fileProp("Portfolio Link")),
+    equipment: normaliseEquipmentList(info.equipment ?? []),
     found: [],
   };
 
@@ -134,6 +139,7 @@ export function mapNotionFacts(detail: NotionDetail): NotionFacts {
     ] as const
   ).filter((k) => facts[k] !== null);
   if (facts.qa.length) facts.found.push("qa");
+  if (facts.equipment.length) facts.found.push("equipment");
 
   return facts;
 }
@@ -165,6 +171,7 @@ export async function syncFromNotion(candidateId: string): Promise<NotionSyncRes
       maxSalesAmount: true,
       resumeUrl: true,
       portfolioUrl: true,
+      equipment: true,
     },
   });
   if (!candidate) throw new Error(`ไม่พบผู้สมัคร ${candidateId}`);
@@ -199,6 +206,9 @@ export async function syncFromNotion(candidateId: string): Promise<NotionSyncRes
   }
   if (!candidate.resumeUrl && facts.resumeUrl) fill.resumeUrl = facts.resumeUrl;
   if (!candidate.portfolioUrl && facts.portfolioUrl) fill.portfolioUrl = facts.portfolioUrl;
+  if (candidate.equipment.length === 0 && facts.equipment.length) {
+    fill.equipment = facts.equipment;
+  }
 
   if (Object.keys(fill).length) {
     await db.candidate.update({ where: { id: candidateId }, data: fill });

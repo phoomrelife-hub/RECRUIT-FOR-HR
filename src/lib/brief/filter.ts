@@ -1,5 +1,6 @@
 import type { WorkPreference } from "@prisma/client";
 import type { ExtractedFacts, FilterOutcome, HardFilters } from "./types";
+import { EQUIPMENT_LABEL, meetsEquipment, type EquipmentToken } from "./equipment";
 
 /**
  * Apply HR's hard requirements to what we actually know about a candidate.
@@ -95,6 +96,15 @@ export function applyHardFilters(filters: HardFilters, facts: ExtractedFacts): F
   ) {
     return reject(
       `ยอดขายสูงสุด ${facts.maxSalesAmount.toLocaleString()} ต่ำกว่าเกณฑ์ ${filters.minSalesAmount.toLocaleString()}`,
+    );
+  }
+
+  const equip = meetsEquipment(filters.requiredEquipment, facts.equipment);
+  if (!equip.passed) {
+    return reject(
+      `ไม่มีอุปกรณ์ที่ต้องการ: ${equip.missing
+        .map((m) => EQUIPMENT_LABEL[m as EquipmentToken] ?? m)
+        .join(", ")}`,
     );
   }
 

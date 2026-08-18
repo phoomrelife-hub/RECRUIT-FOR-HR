@@ -191,6 +191,10 @@ model Candidate {
   expectedSalary       Int?              @map("expected_salary")
   availableStartDate   DateTime?         @map("available_start_date")
   workPreference       WorkPreference?   @map("work_preference")
+  /// Canonical equipment tokens from the Notion form's "อุปกรณ์ที่มีพร้อม".
+  /// Kept alongside the older hasComputer/hasInternet booleans, which only
+  /// cover two of the four real answers and are filled on 16 of 5,959 rows.
+  equipment            String[]          @default([])
   hasComputer          Boolean?          @map("has_computer")
   hasInternet          Boolean?          @map("has_internet")
   resumeUrl            String?           @map("resume_url")
@@ -1086,6 +1090,11 @@ model HiringBrief {
   // Minimum office-proximity tier (see lib/brief/proximity.ts). Null = no
   // constraint. Stored as text so adding a tier needs no enum migration.
   minProximity       String?         @map("min_proximity")
+
+  /// Equipment the candidate must own, as canonical tokens (see
+  /// lib/brief/equipment.ts). A SET rather than booleans because HR picks from
+  /// icons — and because the Notion form's own question is a multi-select.
+  requiredEquipment  String[]        @default([]) @map("required_equipment")
 
   // --- soft criteria: [{ name, weight, description }] judged by the model ---
   criteria Json @default("[]")
