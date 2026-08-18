@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   Brain,
   ClipboardCheck,
+  Target,
   Trophy,
   Sparkles,
   Zap,
@@ -71,6 +72,12 @@ export const navSections: NavSection[] = [
         title: "คิวพิจารณา",
         href: "/review",
         icon: ClipboardCheck,
+        roles: ["SUPER_ADMIN", "HR_MANAGER", "HR_STAFF"],
+      },
+      {
+        title: "บรีฟหาคน",
+        href: "/briefs",
+        icon: Target,
         roles: ["SUPER_ADMIN", "HR_MANAGER", "HR_STAFF"],
       },
       {

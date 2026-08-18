@@ -20,7 +20,7 @@ export type AiProviderConfig = {
 };
 
 // All providers use OpenAI-compatible /chat/completions format
-const ENDPOINTS: Record<AiProviderName, string> = {
+export const ENDPOINTS: Record<AiProviderName, string> = {
   qwen: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions",
   openrouter: "https://openrouter.ai/api/v1/chat/completions",
   openai: "https://api.openai.com/v1/chat/completions",
