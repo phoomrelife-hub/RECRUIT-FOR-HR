@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { db } from "@/lib/db";
 import { getLineProfile, pushMessage } from "@/lib/line";
-import { sanitizeBotReply } from "@/lib/sanitize-bot-reply";
+import { isInternalLeak, sanitizeBotReply } from "@/lib/sanitize-bot-reply";
 import { applyKeywordTagging } from "@/lib/auto-tag";
 import { NextResponse } from "next/server";
 
@@ -189,7 +189,9 @@ export async function POST(req: Request) {
   }
 
   // save bot reply if present (skip backfill sentinel)
-  if (botReply && botReply !== "__profile_backfill__") {
+  if (botReply && botReply !== "__profile_backfill__" && !isInternalLeak(botReply)) {
+    // isInternalLeak: the bot narrating its own session bookkeeping is not a
+    // reply — storing it would show a candidate-facing message that never sent.
     const cleanReply = sanitizeBotReply(botReply);
     // always 2s after user message so sort order is deterministic
     const botReplyAt = new Date(userMsgAt.getTime() + 2000);
@@ -231,6 +233,10 @@ async function handleFacebookSync(facebookUserId: string, botReply?: string) {
     conversation = await db.conversation.create({
       data: { candidateId: candidate.id, channel: "FACEBOOK", botEnabled: true },
     });
+  }
+
+  if (isInternalLeak(botReply)) {
+    return NextResponse.json({ ok: true, skip: true, reason: "internal-leak" });
   }
 
   const cleanReply = sanitizeBotReply(botReply);

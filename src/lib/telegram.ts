@@ -68,3 +68,26 @@ export async function getTelegramWebhookInfo(): Promise<{ url: string; pending: 
   if (!data.ok) return null;
   return { url: data.result.url ?? "", pending: data.result.pending_update_count ?? 0 };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Ops alert — infrastructure problems that need a human, not a candidate reply.
+// Goes to the same Daniel-HR group/topic so it lands where people already look.
+// ─────────────────────────────────────────────────────────────────────────────
+export async function sendOpsAlert(text: string): Promise<boolean> {
+  if (!BOT_TOKEN) return false;
+  try {
+    const res = await fetch(`${TG_API}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: GROUP_ID,
+        message_thread_id: TOPIC_ID,
+        text,
+      }),
+    });
+    const data = await res.json();
+    return data.ok === true;
+  } catch {
+    return false;
+  }
+}
