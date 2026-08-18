@@ -109,9 +109,19 @@ export function normaliseFacts(raw: unknown): ExtractedFacts {
   };
 }
 
-/** Which fields the transcript actually supported — provenance, not values. */
+/**
+ * Which fields the transcript actually supported — provenance, not values.
+ *
+ * An EMPTY ARRAY counts as absent, not present. `equipment` is an array that
+ * chat never populates (it comes from the Notion form), so a bare `!== null`
+ * test would report it as found on every single candidate.
+ */
 export function foundFields(facts: ExtractedFacts): FactKey[] {
-  return (Object.keys(facts) as FactKey[]).filter((k) => facts[k] !== null);
+  return (Object.keys(facts) as FactKey[]).filter((k) => {
+    const v = facts[k];
+    if (Array.isArray(v)) return v.length > 0;
+    return v !== null;
+  });
 }
 
 export async function extractFacts(

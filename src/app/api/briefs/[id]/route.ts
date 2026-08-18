@@ -6,6 +6,7 @@ import { briefCriteria, briefFilters } from "@/lib/brief/run";
 import { redactCriteria } from "@/lib/brief/redact";
 import { withFallbackCriteria } from "@/lib/brief/parse";
 import { TIER_ORDER, type ProximityTier } from "@/lib/brief/proximity";
+import { EQUIPMENT_TOKENS, type EquipmentToken } from "@/lib/brief/equipment";
 import type { BriefCriterion, HardFilters } from "@/lib/brief/types";
 import type { Prisma, WorkPreference } from "@prisma/client";
 
@@ -75,6 +76,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     filters.minSalary > filters.maxSalary
   ) {
     [filters.minSalary, filters.maxSalary] = [filters.maxSalary, filters.minSalary];
+  }
+
+  if ("requiredEquipment" in body) {
+    const raw = Array.isArray(body.requiredEquipment) ? body.requiredEquipment : [];
+    // Filter against the canonical set: the UI sends tokens, but an unknown
+    // value must never reach the column and become an unmeetable requirement.
+    filters.requiredEquipment = EQUIPMENT_TOKENS.filter((t) =>
+      (raw as unknown[]).includes(t as EquipmentToken),
+    );
   }
 
   let minProximity = existing.minProximity;

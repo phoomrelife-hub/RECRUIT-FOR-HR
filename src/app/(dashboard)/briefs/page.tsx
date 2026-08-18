@@ -1,71 +1,65 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { Target } from "lucide-react";
-import { BriefsClient } from "./briefs-client";
+import { BriefsWorkbench, type PositionRow } from "./briefs-workbench";
 import { briefCriteria } from "@/lib/brief/run";
 
+/**
+ * The brief editor, as a master-detail workbench.
+ *
+ * Sorted by waiting count rather than name, because the workload is extremely
+ * lopsided: Sales Admin holds 757 of the ~860 candidates awaiting review, and an
+ * alphabetical list would bury the only position that matters most days.
+ */
 export default async function BriefsPage() {
   await auth();
 
-  const positions = await db.jobPosition.findMany({
-    where: { status: "OPEN" },
-    orderBy: { createdAt: "desc" },
-    select: {
-      id: true,
-      title: true,
-      workType: true,
-      hiringBrief: true,
-    },
-  });
+  const [positions, waitingCounts, strongCounts] = await Promise.all([
+    db.jobPosition.findMany({
+      where: { status: "OPEN" },
+      select: { id: true, title: true, workType: true, headcount: true, hiringBrief: true },
+    }),
+    db.candidate.groupBy({
+      by: ["interestedPositionId"],
+      where: { currentStatus: "WAITING_HR_REVIEW", interestedPositionId: { not: null } },
+      _count: { _all: true },
+    }),
+    db.candidateBriefScore.groupBy({
+      by: ["briefId"],
+      where: { filteredOut: false, stars: { gte: 4 } },
+      _count: { _all: true },
+    }),
+  ]);
 
-  const briefIds = positions.map((p) => p.hiringBrief?.id).filter((v): v is string => !!v);
-  const grouped = briefIds.length
-    ? await db.candidateBriefScore.groupBy({
-        by: ["briefId"],
-        where: { briefId: { in: briefIds }, filteredOut: false, stars: { gte: 4 } },
-        _count: { _all: true },
-      })
-    : [];
-  const strongByBrief = new Map(grouped.map((g) => [g.briefId, g._count._all]));
+  const waitingBy = new Map(waitingCounts.map((w) => [w.interestedPositionId, w._count._all]));
+  const strongBy = new Map(strongCounts.map((s) => [s.briefId, s._count._all]));
 
-  const rows = positions.map((p) => ({
-    id: p.id,
-    title: p.title,
-    workType: p.workType,
-    brief: p.hiringBrief
-      ? {
-          id: p.hiringBrief.id,
-          rawBrief: p.hiringBrief.rawBrief,
-          minAge: p.hiringBrief.minAge,
-          maxAge: p.hiringBrief.maxAge,
-          minSalary: p.hiringBrief.minSalary,
-          maxSalary: p.hiringBrief.maxSalary,
-          workPreference: p.hiringBrief.workPreference,
-          minExperienceYears: p.hiringBrief.minExperienceYears,
-          minSalesAmount: p.hiringBrief.minSalesAmount,
-          notifyStars: p.hiringBrief.notifyStars,
-          minProximity: p.hiringBrief.minProximity,
-          criteria: briefCriteria(p.hiringBrief),
-          strongMatches: strongByBrief.get(p.hiringBrief.id) ?? 0,
-        }
-      : null,
-  }));
+  const rows: PositionRow[] = positions
+    .map((p) => ({
+      id: p.id,
+      title: p.title,
+      workType: p.workType,
+      headcount: p.headcount,
+      waiting: waitingBy.get(p.id) ?? 0,
+      brief: p.hiringBrief
+        ? {
+            id: p.hiringBrief.id,
+            rawBrief: p.hiringBrief.rawBrief,
+            minAge: p.hiringBrief.minAge,
+            maxAge: p.hiringBrief.maxAge,
+            minSalary: p.hiringBrief.minSalary,
+            maxSalary: p.hiringBrief.maxSalary,
+            workPreference: p.hiringBrief.workPreference,
+            minExperienceYears: p.hiringBrief.minExperienceYears,
+            minSalesAmount: p.hiringBrief.minSalesAmount,
+            minProximity: p.hiringBrief.minProximity,
+            requiredEquipment: p.hiringBrief.requiredEquipment,
+            notifyStars: p.hiringBrief.notifyStars,
+            criteria: briefCriteria(p.hiringBrief),
+            strongMatches: strongBy.get(p.hiringBrief.id) ?? 0,
+          }
+        : null,
+    }))
+    .sort((a, b) => b.waiting - a.waiting || a.title.localeCompare(b.title, "th"));
 
-  return (
-    <div className="space-y-6">
-      <div className="flex items-start gap-3">
-        <div className="rounded-lg bg-blue-50 p-2">
-          <Target className="h-6 w-6 text-blue-600" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">บรีฟหาคน</h1>
-          <p className="text-sm text-slate-500">
-            เขียนสิ่งที่อยากได้เป็นภาษาคนหนึ่งครั้ง แล้ว AI จะคัดผู้สมัครที่เข้าเกณฑ์ให้อัตโนมัติ
-          </p>
-        </div>
-      </div>
-
-      <BriefsClient positions={rows} />
-    </div>
-  );
+  return <BriefsWorkbench positions={rows} />;
 }

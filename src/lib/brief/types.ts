@@ -15,6 +15,8 @@ export interface HardFilters {
   workPreference: WorkPreference | null;
   minExperienceYears: number | null;
   minSalesAmount: number | null;
+  /** Equipment tokens the candidate must own. Empty = no constraint. */
+  requiredEquipment: string[];
 }
 
 export const EMPTY_HARD_FILTERS: HardFilters = {
@@ -25,6 +27,7 @@ export const EMPTY_HARD_FILTERS: HardFilters = {
   workPreference: null,
   minExperienceYears: null,
   minSalesAmount: null,
+  requiredEquipment: [],
 };
 
 /** One thing the model judges, with a weight relative to the others. */
@@ -54,6 +57,8 @@ export interface ExtractedFacts {
   experienceYears: number | null;
   maxSalesAmount: number | null;
   experienceText: string | null;
+  /** What they own, from the Notion form. Empty = never learned. */
+  equipment: string[];
 }
 
 export const EMPTY_FACTS: ExtractedFacts = {
@@ -63,6 +68,7 @@ export const EMPTY_FACTS: ExtractedFacts = {
   experienceYears: null,
   maxSalesAmount: null,
   experienceText: null,
+  equipment: [],
 };
 
 /** Fields a filter can reject on — used to build human-readable reasons. */

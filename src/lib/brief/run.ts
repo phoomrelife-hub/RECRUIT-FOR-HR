@@ -23,6 +23,7 @@ export function briefFilters(b: HiringBrief): HardFilters {
     workPreference: b.workPreference,
     minExperienceYears: b.minExperienceYears,
     minSalesAmount: b.minSalesAmount,
+    requiredEquipment: b.requiredEquipment,
   };
 }
 
@@ -89,6 +90,7 @@ export async function ensureExtraction(
         maxSalesAmount: true,
         experienceText: true,
         address: true,
+        equipment: true,
       },
     }),
     db.candidateExtraction.findUnique({ where: { candidateId } }),
@@ -122,6 +124,7 @@ export async function ensureExtraction(
           maxSalesAmount: true,
           experienceText: true,
           address: true,
+          equipment: true,
         },
       });
       if (fresh) Object.assign(candidate, fresh);
@@ -155,6 +158,7 @@ export async function ensureExtraction(
         experienceYears: extraction.experienceYears ?? notionYears,
         maxSalesAmount: candidate.maxSalesAmount,
         experienceText: candidate.experienceText,
+        equipment: candidate.equipment,
       },
       notionEvidence: notionQa,
       address: candidate.address,
@@ -173,6 +177,7 @@ export async function ensureExtraction(
         experienceYears: extraction?.experienceYears ?? notionYears,
         maxSalesAmount: candidate.maxSalesAmount,
         experienceText: candidate.experienceText,
+        equipment: candidate.equipment,
       },
       notionEvidence: notionQa,
       address: candidate.address,
@@ -241,6 +246,8 @@ export async function ensureExtraction(
       experienceYears: notionYears ?? res.facts.experienceYears,
       maxSalesAmount: candidate.maxSalesAmount ?? res.facts.maxSalesAmount,
       experienceText: candidate.experienceText ?? res.facts.experienceText,
+      // Equipment only ever comes from the Notion form; chat never reports it.
+      equipment: candidate.equipment,
     },
     notionEvidence: notionQa,
     address: candidate.address,

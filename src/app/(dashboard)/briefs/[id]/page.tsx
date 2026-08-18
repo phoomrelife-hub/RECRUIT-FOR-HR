@@ -22,7 +22,7 @@ export default async function BriefMatchesPage({
   const rows = await db.candidateBriefScore.findMany({
     where: { briefId: id },
     orderBy: [{ stars: "desc" }, { overallScore: "desc" }, { createdAt: "desc" }],
-    take: 200,
+    take: 500,
     select: {
       id: true,
       stars: true,
@@ -49,6 +49,7 @@ export default async function BriefMatchesPage({
           notionPageId: true,
           resumeUrl: true,
           portfolioUrl: true,
+          equipment: true,
         },
       },
     },
@@ -84,6 +85,7 @@ export default async function BriefMatchesPage({
       notionPageId: r.candidate.notionPageId,
       resumeUrl: r.candidate.resumeUrl,
       portfolioUrl: r.candidate.portfolioUrl,
+      equipment: r.candidate.equipment,
     },
   }));
 
