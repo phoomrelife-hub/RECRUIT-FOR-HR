@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { verifyFbSignature, getVerifyToken, getFbProfile, sendFbMessage, FbWebhookPayload } from "@/lib/facebook";
+import { isPlatformBotEnabled } from "@/lib/bot-switch";
 
 // VPS bridge — forwards the FB message to middleware.py /fb/webhook, where it is
 // wrapped as a synthetic LINE event and answered by the same OpenClaw (หลิน) brain.
@@ -194,7 +195,12 @@ async function handleFbMessage(facebookUserId: string, text: string, externalId:
   // Hand off to the VPS bot bridge (same OpenClaw brain as LINE). The bridge
   // debounces, runs the agent, and delivers the reply via Graph API + syncs it
   // back here through /api/openclaw/sync. Skip if HR has disabled the bot.
-  if (conversation.botEnabled) {
+  // Two gates, both must be open:
+  //   1. the global Facebook kill switch on /integrations
+  //   2. this conversation's own botEnabled (HR takeover)
+  // The message above is already saved either way — turning the channel off
+  // silences the bot, it does not drop the candidate's message.
+  if (conversation.botEnabled && (await isPlatformBotEnabled("FACEBOOK"))) {
     await forwardToBotBridge(facebookUserId, text, externalId);
   }
 }

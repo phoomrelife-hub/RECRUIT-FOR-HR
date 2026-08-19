@@ -1,21 +1,142 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle, XCircle, Copy, Check, Eye, EyeOff, Trash2, FlaskConical } from "lucide-react";
+import { CheckCircle, XCircle, Copy, Check, Eye, EyeOff, Trash2, FlaskConical, Bot, BotOff, Loader2 } from "lucide-react";
+
+type BotPlatform = "LINE" | "FACEBOOK";
 
 type Props = {
   isLineConfigured: boolean;
   webhookUrl: string;
   isFacebookConfigured: boolean;
   facebookWebhookUrl: string;
+  botSwitches: Record<BotPlatform, boolean>;
 };
+
+// Global on/off for one channel's bot. Separate from the per-conversation
+// takeover in /inbox: this silences the whole channel at once.
+function BotPowerToggle({
+  platform,
+  label,
+  enabled,
+  onChange,
+}: {
+  platform: BotPlatform;
+  label: string;
+  enabled: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  // Two-step confirm rendered inline. A native confirm() would be a blocking
+  // browser modal — worse on mobile and impossible to drive from a test.
+  const [confirming, setConfirming] = useState(false);
+
+  async function toggle() {
+    const next = !enabled;
+    // Turning a channel OFF is the consequential direction; ask once.
+    if (!next && !confirming) { setConfirming(true); return; }
+    setConfirming(false);
+    setSaving(true); setError("");
+    try {
+      const res = await fetch("/api/integrations/bot-toggle", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ platform, enabled: next }),
+      });
+      if (!res.ok) throw new Error();
+      const data = (await res.json()) as Record<BotPlatform, boolean>;
+      // Trust the server's echo, not the optimistic guess — if two admins
+      // toggle at once the UI must not show a state the DB does not hold.
+      onChange(data[platform]);
+    } catch {
+      setError("เปลี่ยนสถานะไม่สำเร็จ กรุณาลองใหม่");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      className={`rounded-lg border px-4 py-3 ${
+        enabled ? "border-slate-200 bg-slate-50" : "border-orange-200 bg-orange-50"
+      }`}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          {enabled ? (
+            <Bot className="w-5 h-5 text-indigo-600 shrink-0" />
+          ) : (
+            <BotOff className="w-5 h-5 text-orange-600 shrink-0" />
+          )}
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-slate-900">
+              บอทอัตโนมัติ — {enabled ? "เปิดอยู่" : "ปิดอยู่"}
+            </p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {enabled
+                ? `หลินตอบข้อความจาก ${label} ให้อัตโนมัติ`
+                : `หลินจะไม่ตอบ ${label} — ข้อความยังเข้า Inbox ให้ HR ตอบเอง`}
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={enabled}
+          aria-label={`บอท ${label}`}
+          data-testid={`bot-toggle-${platform.toLowerCase()}`}
+          onClick={toggle}
+          disabled={saving}
+          className={`relative shrink-0 inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50 ${
+            enabled ? "bg-indigo-600" : "bg-slate-300"
+          }`}
+        >
+          <span
+            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+              enabled ? "translate-x-6" : "translate-x-1"
+            }`}
+          />
+          {saving && <Loader2 className="absolute -right-6 w-4 h-4 animate-spin text-slate-400" />}
+        </button>
+      </div>
+      {confirming && (
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-md bg-white border border-orange-300 px-3 py-2">
+          <p className="text-xs text-slate-600">
+            ปิดบอท {label}? ข้อความยังเข้า Inbox แต่บอทจะเงียบจนกว่าจะเปิดใหม่
+          </p>
+          <div className="flex gap-2 shrink-0">
+            <button
+              type="button"
+              data-testid={`bot-toggle-confirm-${platform.toLowerCase()}`}
+              onClick={toggle}
+              className="px-3 py-1 rounded-md bg-orange-600 hover:bg-orange-700 text-white text-xs font-medium"
+            >
+              ยืนยันปิด
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirming(false)}
+              className="px-3 py-1 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-medium"
+            >
+              ยกเลิก
+            </button>
+          </div>
+        </div>
+      )}
+      {error && <p className="text-xs text-red-500 mt-2">{error}</p>}
+    </div>
+  );
+}
 
 export default function IntegrationsClient({
   isLineConfigured,
   webhookUrl,
   isFacebookConfigured,
   facebookWebhookUrl,
+  botSwitches,
 }: Props) {
+  const [bots, setBots] = useState(botSwitches);
   // ── LINE state ──
   const [lineConfigured, setLineConfigured] = useState(isLineConfigured);
   const [lineEditing, setLineEditing] = useState(false);
@@ -143,6 +264,13 @@ export default function IntegrationsClient({
           )}
         </div>
 
+        <BotPowerToggle
+          platform="LINE"
+          label="LINE"
+          enabled={bots.LINE}
+          onChange={(next) => setBots((b) => ({ ...b, LINE: next }))}
+        />
+
         <div>
           <p className="text-sm font-medium text-slate-700 mb-1.5">Webhook URL</p>
           <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5">
@@ -262,6 +390,13 @@ export default function IntegrationsClient({
             </span>
           )}
         </div>
+
+        <BotPowerToggle
+          platform="FACEBOOK"
+          label="Facebook Messenger"
+          enabled={bots.FACEBOOK}
+          onChange={(next) => setBots((b) => ({ ...b, FACEBOOK: next }))}
+        />
 
         <div>
           <p className="text-sm font-medium text-slate-700 mb-1.5">Webhook URL</p>

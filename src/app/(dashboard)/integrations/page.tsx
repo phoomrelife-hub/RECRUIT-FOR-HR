@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { redirect } from "next/navigation";
+import { getPlatformBotSwitches } from "@/lib/bot-switch";
 import IntegrationsClient from "./integrations-client";
 
 export default async function IntegrationsPage() {
@@ -29,6 +30,8 @@ export default async function IntegrationsPage() {
     },
   });
 
+  const botSwitches = await getPlatformBotSwitches();
+
   const has = (k: string) => settings.some((s) => s.key === k);
   const isLineConfigured     = has("line.channel_secret") && has("line.channel_access_token");
   const isFacebookConfigured = has("facebook.page_access_token") && has("facebook.app_secret") && has("facebook.verify_token");
@@ -39,6 +42,7 @@ export default async function IntegrationsPage() {
       isLineConfigured={isLineConfigured}
       facebookWebhookUrl={facebookWebhookUrl}
       isFacebookConfigured={isFacebookConfigured}
+      botSwitches={botSwitches}
     />
   );
 }

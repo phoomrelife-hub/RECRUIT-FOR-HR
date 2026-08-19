@@ -2,6 +2,7 @@
 // Called by middleware.py to check if HR has taken over (bot should not respond).
 // No auth required — added to proxy.ts whitelist.
 import { db } from "@/lib/db";
+import { isPlatformBotEnabled, platformFromExternalId } from "@/lib/bot-switch";
 import { NextResponse } from "next/server";
 
 export async function GET(req: Request) {
@@ -11,6 +12,15 @@ export async function GET(req: Request) {
   const id = searchParams.get("lineUserId");
   const NC = { headers: { "Cache-Control": "no-store" } };
   if (!id) return NextResponse.json({ paused: false }, NC);
+
+  // Global per-platform kill switch (HR toggles it on /integrations). This is
+  // checked BEFORE any candidate lookup: the switch must silence the channel
+  // even for a first-time messenger who has no candidate row yet, otherwise the
+  // very first message of a new conversation would still get a bot reply.
+  const platform = platformFromExternalId(id);
+  if (!(await isPlatformBotEnabled(platform))) {
+    return NextResponse.json({ paused: true, reason: `${platform}_BOT_OFF` }, NC);
+  }
 
   const candidate = /^\d+$/.test(id)
     ? await db.candidate.findUnique({ where: { facebookUserId: id } })
