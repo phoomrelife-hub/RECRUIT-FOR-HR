@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { NextResponse, after } from "next/server";
 import { fuzzyMatchPosition } from "@/lib/position-match";
 import { assessCandidate } from "@/lib/qualifier";
+import { scoreOnArrival } from "@/lib/brief/auto-score";
 
 // Called by Google Apps Script after onFormSubmit → Notion write
 // Payload:
@@ -192,6 +193,11 @@ export async function POST(req: Request) {
       }
     });
   }
+
+  // Same after()-not-fire-and-forget reasoning as the qualifier block above:
+  // score against the position's active brief right now, rather than waiting
+  // for HR to run a batch sweep. scoreOnArrival never throws.
+  after(() => scoreOnArrival(candidate.id));
 
   return NextResponse.json({ ok: true, candidateId: candidate.id });
 }

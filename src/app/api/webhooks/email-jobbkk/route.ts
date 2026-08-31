@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { fuzzyMatchPosition } from "@/lib/position-match";
+import { scoreOnArrival } from "@/lib/brief/auto-score";
 
 // ── POST /api/webhooks/email-jobbkk ──────────────────────────────────────────
 // Called by Make.com — receives raw email content, parses on server side.
@@ -183,6 +184,12 @@ export async function POST(req: Request) {
     where: { id: conversation.id },
     data: { lastMessageAt: new Date(), status: "ACTIVE" },
   });
+
+  // Background, not fire-and-forget: `after()` keeps this alive past the
+  // response without delaying it. Scores against the position's active
+  // brief right now instead of waiting for HR to run a batch sweep.
+  // scoreOnArrival never throws.
+  after(() => scoreOnArrival(candidate.id));
 
   return NextResponse.json({
     ok: true,
