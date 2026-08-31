@@ -127,20 +127,28 @@ export interface JsonCallResult<T> {
  * `temperature: 0` and an explicit large `max_tokens` are the two things this
  * exists to guarantee.
  */
+// gpt-5.6-luna hard-400s on `temperature` and `max_tokens` (accepts only its
+// default temperature=1; verified against the live API, same finding as
+// erp/lib/agent-office/chat.ts and erp/lib/dev-tracker/secretary.ts). Every
+// other provider in ENDPOINTS wants both, so this can't be a blanket omission
+// — it's model-specific.
+const NO_TEMPERATURE_OR_MAX_TOKENS = new Set(["gpt-5.6-luna"]);
+
 export async function callJson<T>(
   config: AiConfig,
   systemPrompt: string,
   userPrompt: string,
   maxTokens = 4000,
 ): Promise<JsonCallResult<T>> {
+  const skipTempAndMaxTokens = NO_TEMPERATURE_OR_MAX_TOKENS.has(config.model);
+
   const body = JSON.stringify({
       model: config.model,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
-      temperature: 0,
-      max_tokens: maxTokens,
+      ...(skipTempAndMaxTokens ? {} : { temperature: 0, max_tokens: maxTokens }),
       // Gemini 3.x are THINKING models: reasoning tokens are billed as output
       // and spend the max_tokens budget before a single character of the answer
       // is written. Left at the default, a brief parse burns ~600 tokens
