@@ -37,6 +37,31 @@ export async function getVerifyToken(): Promise<string> {
   return verifyToken;
 }
 
+// ─── Own app id ──────────────────────────────────────────────────────────────
+// The Meta app behind our page token. Echo events carry the sending app's id,
+// so this is how we recognise our own sends (see lib/fb-echo.ts). Cached per
+// token; a failed lookup is retried next time instead of being cached.
+
+let ownAppIdCache: { token: string; id: string } | null = null;
+
+export async function getOwnFbAppId(): Promise<string | null> {
+  const { pageAccessToken } = await getCredentials();
+  if (!pageAccessToken) return null;
+  if (ownAppIdCache?.token === pageAccessToken) return ownAppIdCache.id;
+  try {
+    const res = await fetch(`${GRAPH_API}/app?access_token=${pageAccessToken}`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { id?: string };
+    if (!data.id) return null;
+    ownAppIdCache = { token: pageAccessToken, id: data.id };
+    return data.id;
+  } catch {
+    return null;
+  }
+}
+
 // ─── User profile ────────────────────────────────────────────────────────────
 
 export type FbProfile = {
@@ -160,7 +185,10 @@ export interface FbMessage {
   mid: string;
   text?: string;
   is_echo?: boolean;
+  /** Echoes only: the Meta app whose token sent the message. */
+  app_id?: string | number;
   quick_reply?: { payload: string };
+  attachments?: { type: string; payload?: { url?: string } }[];
 }
 
 export interface FbMessagingEvent {

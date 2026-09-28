@@ -493,6 +493,10 @@ function MessageBubble({ msg }: { msg: Message }) {
         {isBot && (
           <span className="text-[10px] text-slate-400 mr-1 text-right">Claw Bot</span>
         )}
+        {/* HR replies with no sender were typed in Meta Business Suite, not here (lib/fb-echo.ts) */}
+        {isHR && !msg.senderId && (
+          <span className="text-[10px] text-slate-400 mr-1 text-right">ตอบจากเพจ Facebook</span>
+        )}
 
         <MessageMedia msg={msg} isRight={isRight} />
 

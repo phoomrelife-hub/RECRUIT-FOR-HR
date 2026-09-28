@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { verifyFbSignature, getVerifyToken, getFbProfile, sendFbMessage, FbWebhookPayload } from "@/lib/facebook";
 import { isPlatformBotEnabled } from "@/lib/bot-switch";
+import { handleFbEcho } from "@/lib/fb-echo";
 
 // VPS bridge — forwards the FB message to middleware.py /fb/webhook, where it is
 // wrapped as a synthetic LINE event and answered by the same OpenClaw (หลิน) brain.
@@ -71,9 +72,17 @@ export async function POST(req: Request) {
 
   for (const entry of payload.entry ?? []) {
     for (const event of entry.messaging ?? []) {
-      // Skip echoes — messages the Page itself sent (e.g. the bot's own reply).
-      // Without this, the bot's reply re-enters as a new inbound message → loop.
-      if (event.message?.is_echo) continue;
+      // Echoes — messages the Page itself sent. Never treat one as inbound (the
+      // bot's own reply would re-enter → loop). Replies HR typed in Business
+      // Suite are recorded into the inbox; our own sends are ignored there.
+      if (event.message?.is_echo) {
+        try {
+          await handleFbEcho(event.recipient.id, event.message, event.timestamp);
+        } catch (err) {
+          console.error("[FB webhook] error processing echo:", err);
+        }
+        continue;
+      }
 
       // Only handle text messages (skip delivery/read receipts, etc.)
       if (!event.message?.text || event.message.text === "") continue;
