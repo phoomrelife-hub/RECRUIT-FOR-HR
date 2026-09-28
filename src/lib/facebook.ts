@@ -203,6 +203,8 @@ export interface FbWebhookEntry {
   id: string;
   time: number;
   messaging: FbMessagingEvent[];
+  /** Present when another app has thread control (handover protocol). */
+  standby?: FbMessagingEvent[];
 }
 
 export interface FbWebhookPayload {

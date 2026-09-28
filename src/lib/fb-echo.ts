@@ -60,28 +60,31 @@ export async function resolveOwnAppIds(): Promise<{ ids: Set<string>; ownIdResol
   return { ids, ownIdResolved: own !== null };
 }
 
+/** One log line per echo, so a reply that never reached the inbox can be traced
+ *  to the exact branch that skipped it. */
 export async function handleFbEcho(psid: string, message: FbMessage, timestamp: number): Promise<void> {
+  const outcome = await processEcho(psid, message, timestamp);
+  console.log(`[FB echo] app_id=${message.app_id ?? "none"} psid=…${psid.slice(-4)} → ${outcome}`);
+}
+
+async function processEcho(psid: string, message: FbMessage, timestamp: number): Promise<string> {
   const { ids, ownIdResolved } = await resolveOwnAppIds();
   const source = classifyEcho(message.app_id, ids, ownIdResolved);
-  if (source !== "PAGE_INBOX") {
-    if (source === "UNKNOWN") {
-      console.warn(`[FB echo] dropped: own app id unresolved (app_id=${message.app_id ?? "none"})`);
-    }
-    return;
-  }
+  if (source === "OURS") return "ours, skipped";
+  if (source === "UNKNOWN") return "dropped: own app id unresolved";
 
   const content = echoContent(message);
-  if (!content) return;
+  if (!content) return "no text or attachment";
 
   const existing = await db.message.findFirst({ where: { externalId: message.mid } });
-  if (existing) return;
+  if (existing) return "already stored";
 
   const candidate = await db.candidate.findUnique({ where: { facebookUserId: psid } });
-  if (!candidate) return; // page wrote first to someone we've never heard from
+  if (!candidate) return "no candidate for this psid"; // page wrote first to someone we've never heard from
   const conversation = await db.conversation.findFirst({
     where: { candidateId: candidate.id, status: { not: "CLOSED" } },
   });
-  if (!conversation) return;
+  if (!conversation) return "no open conversation";
 
   // Belt and braces: an outgoing message we saved ourselves with the same text
   // a moment ago is this echo, whatever app_id says. Claim it instead of
@@ -98,7 +101,7 @@ export async function handleFbEcho(psid: string, message: FbMessage, timestamp: 
   });
   if (twin) {
     await db.message.update({ where: { id: twin.id }, data: { externalId: message.mid } });
-    return;
+    return "matched a message we already saved";
   }
 
   // senderId stays null — Meta doesn't say which staff member typed it. The
@@ -127,4 +130,5 @@ export async function handleFbEcho(psid: string, message: FbMessage, timestamp: 
     where: { id: conversation.id },
     data: { lastMessageAt: new Date(), botEnabled: false },
   });
+  return "saved as HR reply, bot paused";
 }

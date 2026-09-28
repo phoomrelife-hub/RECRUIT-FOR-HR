@@ -71,6 +71,11 @@ export async function POST(req: Request) {
   }
 
   for (const entry of payload.entry ?? []) {
+    // Events under `standby` mean another app (e.g. Meta's Page Inbox) holds the
+    // thread and we only get copies — logged so a missing reply is explainable.
+    if (entry.standby?.length) {
+      console.log(`[FB webhook] standby events=${entry.standby.length} echo=${entry.standby.filter((e) => e.message?.is_echo).length}`);
+    }
     for (const event of entry.messaging ?? []) {
       // Echoes — messages the Page itself sent. Never treat one as inbound (the
       // bot's own reply would re-enter → loop). Replies HR typed in Business
