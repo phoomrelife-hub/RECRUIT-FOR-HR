@@ -18,6 +18,7 @@ export default async function ShortlistPage() {
       lineDisplayName: true,
       lineProfilePicUrl: true,
       lineUserId: true,
+      facebookUserId: true,
       phone: true,
       currentStatus: true,
       interestedPosition: { select: { title: true } },
