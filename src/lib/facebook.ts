@@ -115,6 +115,30 @@ export async function getFbProfile(psid: string): Promise<FbProfile | null> {
   }
 }
 
+// ─── Attachment download ─────────────────────────────────────────────────────
+// The URL in a webhook event expires, but the Graph API hands out a fresh one for
+// any message id the page can see — so the inbox can open a resume days later.
+
+export async function getFbAttachmentUrl(mid: string, index: number): Promise<{ url: string; name?: string } | null> {
+  const { pageAccessToken } = await getCredentials();
+  if (!pageAccessToken) return null;
+  try {
+    const res = await fetch(
+      `${GRAPH_API}/${encodeURIComponent(mid)}?fields=attachments{name,mime_type,file_url,image_data}&access_token=${pageAccessToken}`,
+      { signal: AbortSignal.timeout(8000) },
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      attachments?: { data?: { name?: string; file_url?: string; image_data?: { url?: string } }[] };
+    };
+    const att = data.attachments?.data?.[index];
+    const url = att?.file_url ?? att?.image_data?.url;
+    return url ? { url, name: att?.name } : null;
+  } catch {
+    return null;
+  }
+}
+
 // ─── Send message ────────────────────────────────────────────────────────────
 
 // Optional Messenger message tag. Needed to message a user outside the 24-hour

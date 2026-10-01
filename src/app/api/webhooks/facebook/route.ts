@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { verifyFbSignature, getVerifyToken, getFbProfile, sendFbMessage, FbWebhookPayload } from "@/lib/facebook";
 import { isPlatformBotEnabled } from "@/lib/bot-switch";
 import { handleFbEcho } from "@/lib/fb-echo";
+import { describeFbAttachments, type FbAttachmentMessage } from "@/lib/fb-attachments";
 
 // VPS bridge — forwards the FB message to middleware.py /fb/webhook, where it is
 // wrapped as a synthetic LINE event and answered by the same OpenClaw (หลิน) brain.
@@ -89,11 +90,14 @@ export async function POST(req: Request) {
         continue;
       }
 
-      // Only handle text messages (skip delivery/read receipts, etc.)
-      if (!event.message?.text || event.message.text === "") continue;
+      // Skip delivery/read receipts and the like. A message with no text but a
+      // file/photo is a real candidate message (a resume) — it used to be dropped
+      // here, so it never reached the inbox.
+      const attachments = describeFbAttachments(event.message ?? { mid: "" });
+      if (!event.message || (!event.message.text && attachments.length === 0)) continue;
 
       const facebookUserId = event.sender.id;
-      const messageText    = event.message.text;
+      const messageText    = event.message.text ?? "";
       const messageId      = event.message.mid;
       // Quick-reply taps carry the real intent in payload; text is the chip title.
       const quickReplyPayload = event.message.quick_reply?.payload;
@@ -102,7 +106,7 @@ export async function POST(req: Request) {
       if (event.recipient?.id === facebookUserId) continue;
 
       try {
-        await handleFbMessage(facebookUserId, messageText, messageId, quickReplyPayload);
+        await handleFbMessage(facebookUserId, messageText, messageId, quickReplyPayload, attachments);
       } catch (err) {
         console.error("[FB webhook] error processing message:", err);
       }
@@ -114,7 +118,13 @@ export async function POST(req: Request) {
 
 // ─── Core message handler ─────────────────────────────────────────────────────
 
-async function handleFbMessage(facebookUserId: string, text: string, externalId: string, quickReplyPayload?: string) {
+async function handleFbMessage(
+  facebookUserId: string,
+  text: string,
+  externalId: string,
+  quickReplyPayload?: string,
+  attachments: FbAttachmentMessage[] = [],
+) {
   // fetch Messenger profile (name + picture) — null on failure
   const fbProfile = await getFbProfile(facebookUserId);
 
@@ -163,19 +173,28 @@ async function handleFbMessage(facebookUserId: string, text: string, externalId:
     });
   }
 
-  // dedup: skip if we've already saved this message
+  // dedup: skip if we've already saved this message (Meta retries deliveries).
+  // With an attachment-only message the mid is held by the attachment row.
   const existing = await db.message.findFirst({ where: { externalId } });
   if (existing) return;
 
-  // save candidate message
-  await db.message.create({
-    data: {
-      conversationId: conversation.id,
-      content: text,
-      senderType: "CANDIDATE",
-      externalId,
-    },
-  });
+  // Text and each attachment are separate bubbles. The text row only exists when
+  // there is text, so an attachment-only message keeps the plain mid on the file.
+  const rows: { content: string; externalId: string; messageType: string; mediaUrl: string | null }[] = [];
+  if (text) rows.push({ content: text, externalId, messageType: "text", mediaUrl: null });
+  for (const att of attachments) {
+    rows.push({
+      content: att.content,
+      externalId: text && att.externalId === externalId ? `${externalId}#0` : att.externalId,
+      messageType: att.messageType,
+      mediaUrl: att.mediaUrl,
+    });
+  }
+  for (const row of rows) {
+    await db.message.create({
+      data: { conversationId: conversation.id, senderType: "CANDIDATE", ...row },
+    });
+  }
 
   // auto-promote NEW_APPLICANT → BOT_SCREENING
   if (candidate.currentStatus === "NEW_APPLICANT") {
@@ -214,7 +233,8 @@ async function handleFbMessage(facebookUserId: string, text: string, externalId:
   //   2. this conversation's own botEnabled (HR takeover)
   // The message above is already saved either way — turning the channel off
   // silences the bot, it does not drop the candidate's message.
-  if (conversation.botEnabled && (await isPlatformBotEnabled("FACEBOOK"))) {
+  // A bare file/photo has nothing for หลิน to answer; HR sees it in the inbox.
+  if (text && conversation.botEnabled && (await isPlatformBotEnabled("FACEBOOK"))) {
     await forwardToBotBridge(facebookUserId, text, externalId);
   }
 }
