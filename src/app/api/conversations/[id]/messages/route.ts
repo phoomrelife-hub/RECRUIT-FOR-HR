@@ -25,10 +25,34 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const parsed = sendMessageSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
+  const text = parsed.data.content;
+
+  // Push to the real channel FIRST. If it fails nothing is saved and the client
+  // gets a 502, so the UI shows a failed bubble and a retry can never duplicate
+  // a stored-but-undelivered message. (Our own FB echoes are skipped by
+  // lib/fb-echo.ts, so saving after the push cannot double-record.)
+  if (conversation.channel === "LINE" && conversation.candidate.lineUserId) {
+    try {
+      await pushMessage(conversation.candidate.lineUserId, text);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[LINE push] failed:", msg);
+      return NextResponse.json({ error: msg, channel: "LINE" }, { status: 502 });
+    }
+  } else if (conversation.channel === "FACEBOOK" && conversation.candidate.facebookUserId) {
+    try {
+      await sendFbMessage(conversation.candidate.facebookUserId, text);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[FB push] failed:", msg);
+      return NextResponse.json({ error: msg, channel: "FACEBOOK" }, { status: 502 });
+    }
+  }
+
   const message = await db.message.create({
     data: {
       conversationId: id,
-      content: parsed.data.content,
+      content: text,
       senderType: "HR",
       senderId: session.user.id,
     },
@@ -42,24 +66,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     data: { lastMessageAt: new Date() },
   });
 
-  // forward to real channel if connected
-  let linePushError: string | null = null;
-  if (conversation.channel === "LINE" && conversation.candidate.lineUserId) {
-    try {
-      await pushMessage(conversation.candidate.lineUserId, parsed.data.content);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error("[LINE push] failed:", msg);
-      linePushError = msg;
-    }
-  } else if (conversation.channel === "FACEBOOK" && conversation.candidate.facebookUserId) {
-    try {
-      await sendFbMessage(conversation.candidate.facebookUserId, parsed.data.content);
-    } catch (err) {
-      console.error("[FB push] failed:", err);
-    }
-  }
-
   await db.auditLog.create({
     data: {
       userId: session.user.id,
@@ -69,8 +75,5 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     },
   });
 
-  return NextResponse.json(
-    { ...message, linePushError },
-    { status: 201 }
-  );
+  return NextResponse.json(message, { status: 201 });
 }
