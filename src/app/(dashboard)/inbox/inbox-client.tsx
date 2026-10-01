@@ -35,6 +35,16 @@ import {
 import Link from "next/link";
 import { applyTemplate } from "@/lib/quick-reply-template";
 import { QuickReplyChips } from "./quick-reply-chips";
+import {
+  makePendingMessage,
+  mergeServerMessages,
+  reconcileSent,
+  markSendFailed,
+  markSending,
+  removeByClientId,
+  messageKey,
+  type ChatMessage,
+} from "@/lib/chat-merge";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -453,7 +463,15 @@ function MessageMedia({ msg, isRight }: { msg: Message; isRight: boolean }) {
   );
 }
 
-function MessageBubble({ msg }: { msg: Message }) {
+function MessageBubble({
+  msg,
+  onRetry,
+  onDiscard,
+}: {
+  msg: ChatMessage<Message>;
+  onRetry?: (clientId: string) => void;
+  onDiscard?: (clientId: string) => void;
+}) {
   if (msg.senderType === "SYSTEM") {
     return (
       <div className="flex justify-center my-2">
@@ -498,11 +516,39 @@ function MessageBubble({ msg }: { msg: Message }) {
           <span className="text-[10px] text-slate-400 mr-1 text-right">ตอบจากเพจ Facebook</span>
         )}
 
-        <MessageMedia msg={msg} isRight={isRight} />
+        <div className={msg.pending === "sending" ? "opacity-70 transition-opacity" : "transition-opacity"}>
+          <MessageMedia msg={msg} isRight={isRight} />
+        </div>
 
-        <span className={`text-[10px] text-slate-400 mx-1 ${isRight ? "text-right" : ""}`}>
-          {formatDistanceToNow(new Date(msg.createdAt), { addSuffix: true, locale: th })}
-        </span>
+        {msg.pending === "failed" && msg.clientId ? (
+          <div role="alert" className="flex flex-col items-end gap-1 mx-1 text-right">
+            <span className="text-[11px] text-red-600 leading-snug">{msg.error ?? "ส่งไม่สำเร็จ"}</span>
+            <span className="flex items-center gap-3 text-[11px] font-medium">
+              <button
+                type="button"
+                onClick={() => onRetry?.(msg.clientId!)}
+                className="text-blue-600 hover:text-blue-700 hover:underline"
+              >
+                ส่งอีกครั้ง
+              </button>
+              <button
+                type="button"
+                onClick={() => onDiscard?.(msg.clientId!)}
+                className="text-slate-500 hover:text-slate-700 hover:underline"
+              >
+                ลบ
+              </button>
+            </span>
+          </div>
+        ) : msg.pending === "sending" ? (
+          <span className="text-[10px] text-slate-400 mx-1 text-right" aria-live="polite">
+            กำลังส่ง…
+          </span>
+        ) : (
+          <span className={`text-[10px] text-slate-400 mx-1 ${isRight ? "text-right" : ""}`}>
+            {formatDistanceToNow(new Date(msg.createdAt), { addSuffix: true, locale: th })}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -898,9 +944,11 @@ export function InboxClient({
   const [conversations, setConversations] = useState<Conversation[]>(initialConversations);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [activeConv, setActiveConv] = useState<Conversation | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<ChatMessage<Message>[]>([]);
   const [inputMsg, setInputMsg] = useState("");
-  const [sending, setSending] = useState(false);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const composingRef = useRef(false);
+  const takeoverRef = useRef<Promise<boolean> | null>(null);
   const [showQuickReplies, setShowQuickReplies] = useState(false);
   const [showSimulate, setShowSimulate] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>("ALL");
@@ -914,7 +962,6 @@ export function InboxClient({
   const [showFilters, setShowFilters] = useState(false);
   const [showNewConv, setShowNewConv] = useState(false);
   const [takingOver, setTakingOver] = useState(false);
-  const [linePushError, setLinePushError] = useState<string | null>(null);
 
   // Quick Actions state
   const [candidateTags, setCandidateTags] = useState<CandidateTag[]>([]);
@@ -1029,20 +1076,13 @@ export function InboxClient({
     const res = await fetch(`/api/conversations/${id}`);
     if (!res.ok) return;
     const data = await res.json();
+    // A poll for conversation A can resolve after the user switched to B —
+    // never write A's data into B.
+    if (activeIdRef.current !== id) return;
     setActiveConv(data);
-    const incoming: Message[] = data.messages ?? [];
-    setMessages((prev) => {
-      // ถ้า length เท่ากันและ message ล่าสุดเหมือนกัน → ไม่ต้อง re-render
-      // (กรณี poll แล้วไม่มีข้อความใหม่)
-      if (
-        incoming.length === prev.length &&
-        incoming.length > 0 &&
-        incoming[incoming.length - 1].id === prev[prev.length - 1]?.id
-      ) {
-        return prev;
-      }
-      return incoming;
-    });
+    // Merge by id, never replace: a snapshot read before a send committed must
+    // not erase the optimistic bubble (lib/chat-merge.ts).
+    setMessages((prev) => mergeServerMessages(prev, (data.messages ?? []) as Message[]));
     setConversations((prev) =>
       prev.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c))
     );
@@ -1117,7 +1157,7 @@ export function InboxClient({
     setShowTagMenu(false);
     setShowAssignMenu(false);
     setShowScheduleForm(false);
-    setLinePushError(null);
+    takeoverRef.current = null;
     const conv = conversations.find((c) => c.id === id);
     if (conv) {
       await Promise.all([
@@ -1175,60 +1215,113 @@ export function InboxClient({
     if (isAtBottomRef.current) setShowScrollBtn(false);
   }
 
-  // ── send HR message ──
-  async function sendMessage() {
-    if (!inputMsg.trim() || !activeId || sending) return;
-    const text = inputMsg.trim();
-
-    // 1. Clear input + optimistic bubble ทันที
-    setInputMsg("");
-    setSending(true);
-    setLinePushError(null);
-    const tempId = `temp-${Date.now()}`;
-    const tempMsg: Message = {
-      id: tempId,
-      content: text,
-      senderType: "HR",
-      senderId: currentUser.id,
-      sender: { id: currentUser.id, name: currentUser.name },
-      createdAt: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, tempMsg]);
-    isAtBottomRef.current = true;
-
-    // 2. Auto-takeover ถ้า bot ยังเปิดอยู่
-    if (activeConv?.botEnabled) {
-      const takeoverRes = await fetch(`/api/conversations/${activeId}/takeover`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "TAKE_OVER" }),
-      });
-      if (!takeoverRes.ok) {
-        // rollback
-        setMessages((prev) => prev.filter((m) => m.id !== tempId));
-        setInputMsg(text);
-        setSending(false);
-        return;
+  // ── send HR message (optimistic) ──
+  // Flow: insert a pending bubble keyed by a client id -> (auto-takeover) ->
+  // POST -> swap the saved message in under the SAME key. The 3s poll merges by
+  // id and never touches pending bubbles, so nothing flickers. A failure leaves
+  // a visible failed bubble with retry; the text is never lost.
+  const ensureTakeover = useCallback(
+    (convId: string): Promise<boolean> => {
+      if (!activeConv?.botEnabled) return Promise.resolve(true);
+      if (!takeoverRef.current) {
+        takeoverRef.current = fetch(`/api/conversations/${convId}/takeover`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "TAKE_OVER" }),
+        })
+          .then((r) => {
+            if (r.ok) {
+              setActiveConv((c) => (c && c.id === convId ? { ...c, botEnabled: false } : c));
+              setConversations((prev) => prev.map((c) => (c.id === convId ? { ...c, botEnabled: false } : c)));
+            } else {
+              takeoverRef.current = null;
+            }
+            return r.ok;
+          })
+          .catch(() => {
+            takeoverRef.current = null;
+            return false;
+          });
       }
-    }
+      return takeoverRef.current;
+    },
+    [activeConv?.botEnabled],
+  );
 
-    // 3. ส่งจริง
-    const res = await fetch(`/api/conversations/${activeId}/messages`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: text }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      // โหลด conv เพื่อแทน temp msg ด้วย real ID (silent — ไม่แสดง loading)
-      await loadConversation(activeId);
-      if (data.linePushError) setLinePushError(data.linePushError);
-    } else {
-      // rollback ถ้า fail
-      setMessages((prev) => prev.filter((m) => m.id !== tempId));
-      setInputMsg(text);
-    }
-    setSending(false);
+  const transmit = useCallback(
+    async (convId: string, clientId: string, text: string) => {
+      // Messages state only holds the active conversation; skip if user moved on
+      // (the send itself still goes through, the poll will show it later).
+      const apply = (fn: (prev: ChatMessage<Message>[]) => ChatMessage<Message>[]) => {
+        if (activeIdRef.current === convId) setMessages(fn);
+      };
+      const fail = (reason: string) => apply((prev) => markSendFailed(prev, clientId, reason));
+      try {
+        if (!(await ensureTakeover(convId))) {
+          fail("รับแชทจากบอทไม่สำเร็จ");
+          return;
+        }
+        const res = await fetch(`/api/conversations/${convId}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: text }),
+        });
+        if (res.ok) {
+          const saved = (await res.json()) as Message;
+          apply((prev) => reconcileSent(prev, clientId, saved));
+          const last = saved.createdAt;
+          setConversations((prev) =>
+            prev.map((c) => (c.id === convId ? { ...c, lastMessageAt: last } : c)),
+          );
+          return;
+        }
+        const body = await res.json().catch(() => null);
+        const detail = typeof body?.error === "string" ? body.error : `HTTP ${res.status}`;
+        const channel = body?.channel === "LINE" ? "LINE" : body?.channel === "FACEBOOK" ? "Facebook" : null;
+        fail(channel ? `ส่งถึง ${channel} ไม่สำเร็จ: ${detail}` : `ส่งไม่สำเร็จ: ${detail}`);
+      } catch {
+        fail("เชื่อมต่อไม่ได้ — ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่");
+      }
+    },
+    [ensureTakeover],
+  );
+
+  function sendMessage() {
+    const text = inputMsg.trim();
+    if (!text || !activeId) return;
+    const clientId = `c-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setInputMsg("");
+    setMessages((prev) => [
+      ...prev,
+      makePendingMessage<Message>(
+        {
+          content: text,
+          senderType: "HR",
+          senderId: currentUser.id,
+          sender: { id: currentUser.id, name: currentUser.name },
+        },
+        clientId,
+      ),
+    ]);
+    isAtBottomRef.current = true; // your own message always pins the view
+    inputRef.current?.focus();
+    void transmit(activeId, clientId, text);
+  }
+
+  function retryMessage(clientId: string) {
+    const m = messages.find((x) => x.clientId === clientId);
+    if (!m || !activeId) return;
+    setMessages((prev) => markSending(prev, clientId));
+    isAtBottomRef.current = true;
+    void transmit(activeId, clientId, m.content);
+  }
+
+  function discardMessage(clientId: string) {
+    const m = messages.find((x) => x.clientId === clientId);
+    setMessages((prev) => removeByClientId(prev, clientId));
+    // give the text back so it isn't lost, unless the user already typed more
+    if (m && !inputMsg) setInputMsg(m.content);
+    inputRef.current?.focus();
   }
 
   // ── takeover / release ──
@@ -1805,7 +1898,14 @@ export function InboxClient({
                 )}
               </div>
             ) : (
-              messages.map((msg) => <MessageBubble key={msg.id} msg={msg} />)
+              messages.map((msg) => (
+                <MessageBubble
+                  key={messageKey(msg)}
+                  msg={msg}
+                  onRetry={retryMessage}
+                  onDiscard={discardMessage}
+                />
+              ))
             )}
             <div ref={messagesEndRef} />
           </div>
@@ -1845,22 +1945,6 @@ export function InboxClient({
 
           {/* Input area */}
           <div className="bg-white border-t border-slate-200 p-3 flex-shrink-0">
-            {linePushError && (
-              <div className="mb-2 flex items-start justify-between gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg">
-                <div className="text-xs text-red-700 space-y-0.5">
-                  <p className="font-medium">⚠️ ส่งถึง LINE ไม่สำเร็จ</p>
-                  <p className="text-red-600 leading-relaxed">{linePushError}</p>
-                  <p className="text-red-500">
-                    แนะนำ: ไป{" "}
-                    <a href="/integrations" className="underline font-medium hover:text-red-700">
-                      /integrations
-                    </a>{" "}
-                    → กด "ทดสอบ" เพื่อตรวจสอบ Channel Access Token
-                  </p>
-                </div>
-                <button onClick={() => setLinePushError(null)} className="text-red-400 hover:text-red-600 text-xs shrink-0 mt-0.5">✕</button>
-              </div>
-            )}
             <QuickReplyChips quickReplies={quickReplies} onSelect={insertQuickReply} />
             <div className="flex items-end gap-2">
               <button
@@ -1872,9 +1956,19 @@ export function InboxClient({
               </button>
 
               <textarea
+                ref={inputRef}
                 value={inputMsg}
                 onChange={(e) => setInputMsg(e.target.value)}
+                onCompositionStart={() => {
+                  composingRef.current = true;
+                }}
+                onCompositionEnd={() => {
+                  composingRef.current = false;
+                }}
                 onKeyDown={(e) => {
+                  // Enter that confirms a Thai/CJK IME candidate must not send
+                  // (keyCode 229 covers browsers that fire keydown after compositionend).
+                  if (e.nativeEvent.isComposing || composingRef.current || e.keyCode === 229) return;
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
                     sendMessage();
@@ -1887,7 +1981,9 @@ export function InboxClient({
 
               <button
                 onClick={sendMessage}
-                disabled={sending || !inputMsg.trim()}
+                onMouseDown={(e) => e.preventDefault()} // keep focus in the textarea
+                aria-label="ส่งข้อความ"
+                disabled={!inputMsg.trim()}
                 className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors flex-shrink-0"
               >
                 <Send size={16} />
